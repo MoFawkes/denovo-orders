@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "denovo-orders",
+    "slug": "denovo-orders",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.denovoorders.denovoorders",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.denovoorders.denovoorders"
+    },
+    "web": {},
+    "extra": {
+      "eas": {
+        "projectId": "38af05bb-8981-483a-9e96-d8de9f52ad31"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/38af05bb-8981-483a-9e96-d8de9f52ad31"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
