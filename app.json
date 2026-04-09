@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "denovo-orders",
+    "name": "Denovo Production",
     "slug": "denovo-orders",
+    "icon": "./assets//images/denovo_icon_1024.png",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -16,9 +17,13 @@
       }
     },
     "android": {
-      "package": "com.denovoorders.denovoorders"
+      "package": "com.denovoorders.denovoorders",
+      "softwareKeyboardLayoutMode": "resize"
     },
-    "web": {},
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
     "extra": {
       "eas": {
         "projectId": "38af05bb-8981-483a-9e96-d8de9f52ad31"
