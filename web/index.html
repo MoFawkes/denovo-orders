@@ -454,8 +454,13 @@ function stageClass(s) {
 
 function parseExFactory(val) {
   if (!val) return new Date(0)
-  const d = new Date(val)
-  return isNaN(d) ? new Date(0) : d
+  // Dates stored as YYYY-DD-MM (e.g. 2026-12-01 = 12th Jan)
+  const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) {
+    const d = new Date(`${m[1]}-${m[3]}-${m[2]}`)
+    return isNaN(d) ? new Date(0) : d
+  }
+  return new Date(0)
 }
 
 function getVisible() {
