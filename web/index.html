@@ -112,10 +112,10 @@
 </div>
 
 <!-- DASHBOARD SCREEN -->
-<div id="dashboard-screen" class="hidden flex h-screen overflow-hidden">
+<div id="dashboard-screen" class="hidden h-screen overflow-hidden" style="display:none;">
 
-  <!-- Sidebar -->
-  <nav class="flex flex-col p-6 bg-inverse-surface h-screen w-56 flex-shrink-0 border-r border-white/5 z-50">
+  <!-- Sidebar (desktop only) -->
+  <nav class="hidden md:flex flex-col p-6 bg-inverse-surface h-screen w-56 flex-shrink-0 border-r border-white/5 z-50">
     <div class="mb-8">
       <h1 class="text-base font-bold text-white tracking-tighter">Denovo Orders</h1>
       <p id="user-role" class="text-xs text-[#9e9c9c] mt-1">Loading...</p>
@@ -136,8 +136,18 @@
   <div class="flex flex-col flex-1 overflow-hidden">
 
     <!-- Top bar -->
-    <header class="flex items-center justify-between px-6 h-14 bg-white/80 backdrop-blur-md border-b border-outline-variant/20 flex-shrink-0 gap-4">
-      <div class="flex items-center gap-6">
+    <header class="flex items-center justify-between px-4 md:px-6 h-14 bg-white/90 backdrop-blur-md border-b border-outline-variant/20 flex-shrink-0 gap-3">
+      <!-- Mobile: title + sign out -->
+      <div class="flex md:hidden items-center gap-3 flex-1">
+        <span class="text-sm font-bold tracking-tighter text-on-surface">Denovo Orders</span>
+        <span id="user-role-mobile" class="text-xs text-on-surface-variant"></span>
+      </div>
+      <button id="sign-out-btn-mobile" class="flex md:hidden items-center gap-1 text-xs text-on-surface-variant">
+        <span class="material-symbols-outlined" style="font-size:18px;">logout</span>
+      </button>
+
+      <!-- Desktop: search + tabs + kpis -->
+      <div class="hidden md:flex items-center gap-6 flex-1">
         <div class="flex items-center bg-surface-container rounded px-3 py-1.5 w-64">
           <span class="material-symbols-outlined text-on-surface-variant mr-2" style="font-size:18px;">search</span>
           <input class="bg-transparent border-none focus:ring-0 text-xs w-full p-0 placeholder-on-surface-variant/50 outline-none" id="search-input" placeholder="Search PO, style, colour, notes..." type="text"/>
@@ -147,20 +157,31 @@
           <button id="tab-completed" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Completed <span id="tab-completed-count" class="ml-1 font-normal">(0)</span></button>
         </nav>
       </div>
-      <div class="flex items-center gap-3 text-xs text-on-surface-variant">
+      <div class="hidden md:flex items-center gap-3 text-xs text-on-surface-variant">
         <span id="kpi-active" class="font-bold text-on-surface">0</span> active &nbsp;·&nbsp;
         <span id="kpi-ready" class="font-bold text-green-600">0</span> ready &nbsp;·&nbsp;
         <span id="kpi-completed" class="font-bold text-on-surface-variant">0</span> completed
       </div>
     </header>
 
+    <!-- Mobile search + tabs -->
+    <div class="md:hidden px-4 pt-3 pb-2 bg-background border-b border-outline-variant/20 space-y-2">
+      <div class="flex items-center bg-surface-container rounded-lg px-3 py-2">
+        <span class="material-symbols-outlined text-on-surface-variant mr-2" style="font-size:18px;">search</span>
+        <input class="bg-transparent border-none focus:ring-0 text-sm w-full p-0 placeholder-on-surface-variant/50 outline-none" id="search-input-mobile" placeholder="Search orders..." type="text"/>
+      </div>
+      <div class="flex gap-2">
+        <button id="tab-active-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white">Active <span id="tab-active-count-mobile" class="font-normal opacity-70">(0)</span></button>
+        <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
+      </div>
+    </div>
+
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden">
 
-      <!-- Table -->
-      <div class="flex-1 overflow-auto bg-surface-container-lowest">
+      <!-- Desktop Table -->
+      <div class="hidden md:block flex-1 overflow-auto bg-surface-container-lowest">
         <div class="min-w-[900px]">
-          <!-- Column headers -->
           <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;">
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">PO</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Description</span>
@@ -172,18 +193,24 @@
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Notes</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Docket</span>
           </div>
-          <!-- Rows -->
           <div id="orders-body">
-            <div id="loading-row" class="flex items-center justify-center py-16 text-sm text-on-surface-variant">
+            <div class="flex items-center justify-center py-16 text-sm text-on-surface-variant">
               <span class="material-symbols-outlined animate-spin mr-2" style="font-size:20px;">progress_activity</span> Loading orders...
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Side Panel -->
-      <aside id="panel" class="w-0 overflow-hidden border-l border-outline-variant/20 bg-surface-container-low flex-shrink-0 transition-all duration-200" style="min-width:0;">
-        <div class="w-88 p-6 overflow-y-auto h-full" style="width:352px;">
+      <!-- Mobile Cards -->
+      <div class="md:hidden flex-1 overflow-auto bg-background pb-4" id="orders-cards">
+        <div class="flex items-center justify-center py-16 text-sm text-on-surface-variant">
+          <span class="material-symbols-outlined animate-spin mr-2" style="font-size:20px;">progress_activity</span> Loading orders...
+        </div>
+      </div>
+
+      <!-- Desktop Side Panel -->
+      <aside id="panel" class="hidden md:block w-0 overflow-hidden border-l border-outline-variant/20 bg-surface-container-low flex-shrink-0 transition-all duration-200" style="min-width:0;">
+        <div class="p-6 overflow-y-auto h-full" style="width:352px;">
           <div class="flex justify-between items-start mb-6">
             <div>
               <span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase mb-1 block">Selected Order</span>
@@ -193,84 +220,22 @@
               <span class="material-symbols-outlined" style="font-size:20px;">close</span>
             </button>
           </div>
-
-          <div class="space-y-5">
-            <!-- Style image -->
-            <div id="panel-image-wrap" class="hidden rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container cursor-pointer" onclick="document.getElementById('panel-image-full').classList.remove('hidden')">
-              <img id="panel-image" src="" alt="Style" class="w-full object-cover max-h-52"/>
-            </div>
-            <!-- Fullscreen image overlay -->
-            <div id="panel-image-full" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onclick="this.classList.add('hidden')">
-              <img id="panel-image-full-img" src="" alt="Style" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"/>
-            </div>
-
-            <!-- Stage -->
-            <div>
-              <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
-              <select id="panel-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
-                <option value="Cutting">Cutting</option>
-                <option value="Production">Production</option>
-                <option value="Packing">Packing</option>
-                <option value="Ready">Ready</option>
-                <option value="Completed">Completed</option>
-              </select>
-            </div>
-
-            <!-- Details grid -->
-            <div class="grid grid-cols-2 gap-3">
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Style No</p>
-                <p id="panel-style-no" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Fabric</p>
-                <p id="panel-fabric" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Colour</p>
-                <p id="panel-colour" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Qty</p>
-                <p id="panel-qty" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Ex Factory</p>
-                <p id="panel-ex-factory" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
-                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Invoice No</p>
-                <p id="panel-invoice" class="text-xs font-semibold text-on-surface">—</p>
-              </div>
-            </div>
-
-            <!-- Notes -->
-            <div>
-              <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Production Notes</label>
-              <textarea id="panel-notes" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary h-24 placeholder:italic resize-none" placeholder="Add notes here..."></textarea>
-            </div>
-
-            <!-- Save error -->
-            <div id="panel-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2"></div>
-
-            <!-- Actions -->
-            <div class="space-y-2.5 pt-1">
-              <button id="update-btn" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">
-                Update Order
-              </button>
-              <button id="docket-btn" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">
-                Open Docket
-              </button>
-              <button id="packing-btn" class="hidden w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">
-                Open Packing List
-              </button>
-            </div>
-          </div>
+          <div id="panel-content"></div>
         </div>
       </aside>
-
     </div>
   </div>
+</div>
+
+<!-- Mobile Order Drawer (full screen) -->
+<div id="mobile-drawer" class="hidden fixed inset-0 z-40 flex flex-col bg-background">
+  <div class="flex items-center gap-3 px-4 py-3 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="closeMobileDrawer()" class="text-on-surface-variant p-1">
+      <span class="material-symbols-outlined">arrow_back</span>
+    </button>
+    <h3 id="drawer-po" class="text-base font-bold text-on-surface flex-1">—</h3>
+  </div>
+  <div class="flex-1 overflow-y-auto p-4" id="drawer-content"></div>
 </div>
 
 <script>
@@ -284,12 +249,13 @@ let currentTab = 'active'
 let searchQuery = ''
 let realtimeChannel = null
 
-// ── Auth ────────────────────────────────────────────────────────────────────
+const isMobile = () => window.innerWidth < 768
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
 
 sb.auth.getSession().then(({ data: { session } }) => {
   if (session) showDashboard(session.user)
 })
-
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'SIGNED_IN' && session) showDashboard(session.user)
   if (event === 'SIGNED_OUT') showLogin()
@@ -303,52 +269,44 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   errEl.classList.add('hidden')
   btnText.textContent = 'Signing in...'
   btn.disabled = true
-
   const { error } = await sb.auth.signInWithPassword({
     email: document.getElementById('email').value,
     password: document.getElementById('password').value,
   })
-
   btn.disabled = false
   btnText.textContent = 'Sign In'
-
-  if (error) {
-    errEl.textContent = error.message
-    errEl.classList.remove('hidden')
-  }
+  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden') }
 })
 
 document.getElementById('sign-out-btn').addEventListener('click', () => sb.auth.signOut())
+document.getElementById('sign-out-btn-mobile').addEventListener('click', () => sb.auth.signOut())
 
-// ── Screen toggles ───────────────────────────────────────────────────────────
+// ── Screen toggles ────────────────────────────────────────────────────────────
 
 function showLogin() {
   document.getElementById('login-screen').classList.remove('hidden')
-  document.getElementById('dashboard-screen').classList.add('hidden')
+  document.getElementById('dashboard-screen').style.display = 'none'
   if (realtimeChannel) sb.removeChannel(realtimeChannel)
 }
 
 async function showDashboard(user) {
   document.getElementById('login-screen').classList.add('hidden')
-  document.getElementById('dashboard-screen').classList.remove('hidden')
-  document.getElementById('dashboard-screen').classList.add('flex')
+  document.getElementById('dashboard-screen').style.display = 'flex'
 
   const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).single()
-  document.getElementById('user-role').textContent = profile?.role ? `Role: ${profile.role}` : user.email
+  const roleText = profile?.role ? `Role: ${profile.role}` : user.email
+  document.getElementById('user-role').textContent = roleText
+  document.getElementById('user-role-mobile').textContent = roleText
 
   await loadOrders()
   subscribeRealtime()
 }
 
-// ── Data ─────────────────────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────────────────────────────────
 
 async function loadOrders() {
   const { data, error } = await sb.from('orders').select('*').order('po', { ascending: true })
-  if (!error) {
-    allOrders = data || []
-    renderOrders()
-    updateKpis()
-  }
+  if (!error) { allOrders = data || []; renderOrders(); updateKpis() }
 }
 
 function subscribeRealtime() {
@@ -359,39 +317,26 @@ function subscribeRealtime() {
       } else if (payload.eventType === 'UPDATE') {
         const idx = allOrders.findIndex(o => o.id === payload.new.id)
         if (idx >= 0) allOrders[idx] = payload.new
-        if (selectedOrderId === payload.new.id) populatePanel(payload.new)
+        if (selectedOrderId === payload.new.id) {
+          if (isMobile()) renderDrawerContent(payload.new)
+          else populatePanelContent(payload.new)
+        }
       } else if (payload.eventType === 'DELETE') {
         allOrders = allOrders.filter(o => o.id !== payload.old.id)
-        if (selectedOrderId === payload.old.id) closePanel()
+        if (selectedOrderId === payload.old.id) { closePanel(); closeMobileDrawer() }
       }
-      renderOrders()
-      updateKpis()
-    })
-    .subscribe()
+      renderOrders(); updateKpis()
+    }).subscribe()
 }
 
-// ── Rendering ────────────────────────────────────────────────────────────────
+// ── Rendering ─────────────────────────────────────────────────────────────────
 
-function stageClass(stage) {
-  switch (stage) {
-    case 'Cutting':    return 'stage-cutting'
-    case 'Production': return 'stage-production'
-    case 'Packing':    return 'stage-packing'
-    case 'Ready':      return 'stage-ready'
-    case 'Completed':  return 'stage-completed'
-    default:           return 'stage-production'
-  }
+function stageClass(s) {
+  return { Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Completed:'stage-completed' }[s] || 'stage-production'
 }
 
 function parseExFactory(val) {
   if (!val) return new Date(0)
-  // Dates stored as YYYY-DD-MM — swap day and month for correct parsing
-  const parts = val.split('-')
-  if (parts.length === 3) {
-    const [year, day, month] = parts
-    const d = new Date(`${year}-${month}-${day}`)
-    return isNaN(d) ? new Date(0) : d
-  }
   const d = new Date(val)
   return isNaN(d) ? new Date(0) : d
 }
@@ -400,8 +345,7 @@ function getVisible() {
   const base = currentTab === 'active'
     ? allOrders.filter(o => o.stage !== 'Completed')
     : allOrders.filter(o => o.stage === 'Completed')
-      .sort((a, b) => parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory))
-
+        .sort((a, b) => parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory))
   if (!searchQuery) return base
   const q = searchQuery.toLowerCase()
   return base.filter(o =>
@@ -410,39 +354,60 @@ function getVisible() {
   )
 }
 
+function emptyHtml() {
+  return `<div class="flex flex-col items-center justify-center py-20 text-sm text-on-surface-variant gap-2">
+    <span class="material-symbols-outlined opacity-30" style="font-size:36px;">inbox</span>
+    <span>${searchQuery ? 'No matching orders' : currentTab === 'active' ? 'No active orders' : 'No completed orders'}</span>
+  </div>`
+}
+
 function renderOrders() {
-  const body = document.getElementById('orders-body')
   const visible = getVisible()
-
-  if (!visible.length) {
-    body.innerHTML = `<div class="flex flex-col items-center justify-center py-20 text-sm text-on-surface-variant gap-2">
-      <span class="material-symbols-outlined text-3xl opacity-30">inbox</span>
-      <span>${searchQuery ? 'No matching orders' : currentTab === 'active' ? 'No active orders' : 'No completed orders'}</span>
-    </div>`
-    return
+  // Desktop table
+  const body = document.getElementById('orders-body')
+  if (body) {
+    if (!visible.length) { body.innerHTML = emptyHtml(); }
+    else body.innerHTML = visible.map(o => {
+      const sel = o.id === selectedOrderId
+      return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
+        style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;"
+        onclick="selectOrder('${o.id}')">
+        <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
+        <span class="text-xs text-on-surface pr-3 truncate">${o.description||o.style||'—'}</span>
+        <span class="text-xs text-on-surface-variant truncate">${o.style_no||o.style||'—'}</span>
+        <span class="text-xs text-on-surface-variant truncate">${o.colour||'—'}</span>
+        <span class="text-xs text-on-surface">${o.qty??'—'}</span>
+        <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
+        <div><span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span></div>
+        <span class="text-xs text-on-surface-variant italic truncate pr-4">${o.notes||'—'}</span>
+        <div>${o.docket_url
+          ? `<button class="text-on-surface-variant hover:text-primary" onclick="event.stopPropagation();openPdf('${o.docket_url}','Docket – PO ${o.po||''}')"><span class="material-symbols-outlined" style="font-size:18px;">description</span></button>`
+          : '<span class="text-on-surface-variant/30 text-xs">—</span>'
+        }</div>
+      </div>`
+    }).join('')
   }
-
-  body.innerHTML = visible.map((o, i) => {
-    const isSelected = o.id === selectedOrderId
-    return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${isSelected ? 'row-selected' : ''}"
-      style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;"
-      onclick="selectOrder('${o.id}')">
-      <span class="text-xs font-semibold text-on-surface">${o.po || '—'}</span>
-      <span class="text-xs text-on-surface pr-3 truncate">${o.description || o.style || '—'}</span>
-      <span class="text-xs text-on-surface-variant truncate">${o.style_no || o.style || '—'}</span>
-      <span class="text-xs text-on-surface-variant truncate">${o.colour || '—'}</span>
-      <span class="text-xs text-on-surface">${o.qty ?? '—'}</span>
-      <span class="text-xs text-on-surface-variant">${o.ex_factory || '—'}</span>
-      <div><span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage || '—'}</span></div>
-      <span class="text-xs text-on-surface-variant italic truncate pr-4">${o.notes || '—'}</span>
-      <div>${o.docket_url
-        ? `<button class="text-on-surface-variant hover:text-primary transition-colors" onclick="event.stopPropagation();openPdf('${o.docket_url}','Docket – PO ${o.po || ''}')">
-            <span class="material-symbols-outlined" style="font-size:18px;">description</span>
-           </button>`
-        : '<span class="text-on-surface-variant/30 text-xs">—</span>'
-      }</div>
-    </div>`
-  }).join('')
+  // Mobile cards
+  const cards = document.getElementById('orders-cards')
+  if (cards) {
+    if (!visible.length) { cards.innerHTML = emptyHtml(); return }
+    cards.innerHTML = `<div class="p-3 space-y-3">` + visible.map(o => `
+      <div class="bg-white rounded-xl border border-outline-variant/30 overflow-hidden shadow-sm active:opacity-70" onclick="selectOrder('${o.id}')">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2">
+          <span class="text-sm font-bold text-on-surface">PO ${o.po||'—'}</span>
+          <span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span>
+        </div>
+        <div class="px-4 pb-3">
+          <p class="text-sm text-on-surface mb-1 leading-snug">${o.description||o.style||'—'}</p>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
+            <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
+            <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
+          </div>
+          ${o.notes ? `<p class="text-xs text-on-surface-variant italic mt-2 line-clamp-2">${o.notes}</p>` : ''}
+        </div>
+      </div>`).join('') + `</div>`
+  }
 }
 
 function updateKpis() {
@@ -454,60 +419,62 @@ function updateKpis() {
   document.getElementById('kpi-completed').textContent = completed.length
   document.getElementById('tab-active-count').textContent = `(${active.length})`
   document.getElementById('tab-completed-count').textContent = `(${completed.length})`
+  document.getElementById('tab-active-count-mobile').textContent = `(${active.length})`
+  document.getElementById('tab-completed-count-mobile').textContent = `(${completed.length})`
 }
 
-// ── Panel ────────────────────────────────────────────────────────────────────
+// ── Order detail content (shared between panel + drawer) ──────────────────────
+
+function orderDetailHtml(o, idPrefix) {
+  return `
+    ${o.image_url ? `
+      <div class="rounded-lg overflow-hidden border border-outline-variant/20 mb-4 cursor-pointer" onclick="document.getElementById('panel-image-full').classList.remove('hidden');document.getElementById('panel-image-full-img').src='${o.image_url}'">
+        <img src="${o.image_url}" alt="Style" class="w-full object-cover max-h-52"/>
+      </div>` : ''}
+    <div class="mb-4">
+      <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
+      <select id="${idPrefix}-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
+        ${['Cutting','Production','Packing','Ready','Completed'].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      ${[['Style No', o.style_no||o.style],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
+        <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+          <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">${l}</p>
+          <p class="text-xs font-semibold text-on-surface">${v||'—'}</p>
+        </div>`).join('')}
+    </div>
+    <div class="mb-4">
+      <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Production Notes</label>
+      <textarea id="${idPrefix}-notes" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary h-24 placeholder:italic resize-none" placeholder="Add notes here...">${o.notes||''}</textarea>
+    </div>
+    <div id="${idPrefix}-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 mb-3"></div>
+    <div class="space-y-2">
+      <button onclick="saveOrder('${o.id}','${idPrefix}')" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">Update Order</button>
+      ${o.docket_url ? `<button onclick="openPdf('${o.docket_url}','Docket – PO ${o.po||''}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Docket</button>` : ''}
+      ${o.packing_list_url ? `<button onclick="openUrl('${o.packing_list_url}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Packing List</button>` : ''}
+    </div>`
+}
+
+// ── Select order ──────────────────────────────────────────────────────────────
 
 function selectOrder(id) {
   const order = allOrders.find(o => o.id === id)
   if (!order) return
   selectedOrderId = id
-  populatePanel(order)
-  openPanel()
-  renderOrders()
+  if (isMobile()) openMobileDrawer(order)
+  else { populatePanelContent(order); openPanel(); renderOrders() }
 }
 
-function populatePanel(o) {
-  document.getElementById('panel-po').textContent = `PO ${o.po || '—'}`
-  const imgWrap = document.getElementById('panel-image-wrap')
-  const img = document.getElementById('panel-image')
-  const imgFull = document.getElementById('panel-image-full-img')
-  if (o.image_url) {
-    img.src = o.image_url
-    imgFull.src = o.image_url
-    imgWrap.classList.remove('hidden')
-  } else {
-    imgWrap.classList.add('hidden')
-    img.src = ''
-    imgFull.src = ''
-  }
-  document.getElementById('panel-stage').value = o.stage || 'Cutting'
-  document.getElementById('panel-style-no').textContent = o.style_no || o.style || '—'
-  document.getElementById('panel-fabric').textContent = o.fabric || '—'
-  document.getElementById('panel-colour').textContent = o.colour || '—'
-  document.getElementById('panel-qty').textContent = o.qty ?? '—'
-  document.getElementById('panel-ex-factory').textContent = o.ex_factory || '—'
-  document.getElementById('panel-invoice').textContent = o.invoice_no || '—'
-  document.getElementById('panel-notes').value = o.notes || ''
-  document.getElementById('panel-error').classList.add('hidden')
-
-  const docketBtn = document.getElementById('docket-btn')
-  docketBtn.onclick = () => openPdf(o.docket_url, `Docket – PO ${o.po || ''}`)
-  docketBtn.disabled = !o.docket_url
-  docketBtn.classList.toggle('opacity-40', !o.docket_url)
-
-  const packingBtn = document.getElementById('packing-btn')
-  if (o.packing_list_url) {
-    packingBtn.classList.remove('hidden')
-    packingBtn.onclick = () => openUrl(o.packing_list_url)
-  } else {
-    packingBtn.classList.add('hidden')
-  }
+function populatePanelContent(o) {
+  document.getElementById('panel-po').textContent = `PO ${o.po||'—'}`
+  document.getElementById('panel-content').innerHTML = orderDetailHtml(o, 'panel')
 }
+
+// ── Desktop panel ─────────────────────────────────────────────────────────────
 
 function openPanel() {
-  const panel = document.getElementById('panel')
-  panel.style.width = '352px'
+  document.getElementById('panel').style.width = '352px'
 }
 
 function closePanel() {
@@ -518,61 +485,74 @@ function closePanel() {
 
 document.getElementById('panel-close').addEventListener('click', closePanel)
 
-document.getElementById('update-btn').addEventListener('click', async () => {
-  if (!selectedOrderId) return
-  const btn = document.getElementById('update-btn')
-  const errEl = document.getElementById('panel-error')
+// ── Mobile drawer ─────────────────────────────────────────────────────────────
+
+function openMobileDrawer(o) {
+  document.getElementById('drawer-po').textContent = `PO ${o.po||'—'}`
+  renderDrawerContent(o)
+  document.getElementById('mobile-drawer').classList.remove('hidden')
+}
+
+function renderDrawerContent(o) {
+  document.getElementById('drawer-content').innerHTML = orderDetailHtml(o, 'drawer')
+}
+
+function closeMobileDrawer() {
+  document.getElementById('mobile-drawer').classList.add('hidden')
+  selectedOrderId = null
+}
+
+// ── Save order ────────────────────────────────────────────────────────────────
+
+async function saveOrder(orderId, prefix) {
+  const stageEl = document.getElementById(`${prefix}-stage`)
+  const notesEl = document.getElementById(`${prefix}-notes`)
+  const errEl = document.getElementById(`${prefix}-error`)
+  if (!stageEl) return
   errEl.classList.add('hidden')
+
+  const btn = event.target
   btn.textContent = 'Saving...'
   btn.disabled = true
 
   const { data: { user } } = await sb.auth.getUser()
   const { error } = await sb.from('orders').update({
-    stage: document.getElementById('panel-stage').value,
-    notes: document.getElementById('panel-notes').value.trim(),
+    stage: stageEl.value,
+    notes: notesEl.value.trim(),
     updated_by: user?.id ?? null,
-  }).eq('id', selectedOrderId)
+  }).eq('id', orderId)
 
   btn.textContent = 'Update Order'
   btn.disabled = false
 
-  if (error) {
-    errEl.textContent = error.message
-    errEl.classList.remove('hidden')
-  }
-})
+  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden') }
+}
 
-// ── Tabs & Search ────────────────────────────────────────────────────────────
+// ── Tabs & Search ─────────────────────────────────────────────────────────────
 
-document.getElementById('tab-active').addEventListener('click', () => {
-  currentTab = 'active'
-  document.getElementById('tab-active').classList.add('border-primary', 'text-on-surface')
-  document.getElementById('tab-active').classList.remove('text-on-surface-variant', 'border-transparent')
-  document.getElementById('tab-completed').classList.remove('border-primary', 'text-on-surface')
-  document.getElementById('tab-completed').classList.add('text-on-surface-variant', 'border-transparent')
+function setTab(tab) {
+  currentTab = tab
+  // Desktop tabs
+  document.getElementById('tab-active').className = `text-xs font-bold uppercase tracking-widest h-14 flex items-center border-b-2 ${tab==='active' ? 'text-on-surface border-primary' : 'text-on-surface-variant border-transparent'}`
+  document.getElementById('tab-completed').className = `text-xs font-bold uppercase tracking-widest h-14 flex items-center border-b-2 ${tab==='completed' ? 'text-on-surface border-primary' : 'text-on-surface-variant border-transparent'}`
+  // Mobile tabs
+  document.getElementById('tab-active-mobile').className = `flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${tab==='active' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`
+  document.getElementById('tab-completed-mobile').className = `flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${tab==='completed' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`
   renderOrders()
-})
+}
 
-document.getElementById('tab-completed').addEventListener('click', () => {
-  currentTab = 'completed'
-  document.getElementById('tab-completed').classList.add('border-primary', 'text-on-surface')
-  document.getElementById('tab-completed').classList.remove('text-on-surface-variant', 'border-transparent')
-  document.getElementById('tab-active').classList.remove('border-primary', 'text-on-surface')
-  document.getElementById('tab-active').classList.add('text-on-surface-variant', 'border-transparent')
-  renderOrders()
-})
+document.getElementById('tab-active').addEventListener('click', () => setTab('active'))
+document.getElementById('tab-completed').addEventListener('click', () => setTab('completed'))
+document.getElementById('tab-active-mobile').addEventListener('click', () => setTab('active'))
+document.getElementById('tab-completed-mobile').addEventListener('click', () => setTab('completed'))
+document.getElementById('search-input').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
+document.getElementById('search-input-mobile').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 
-document.getElementById('search-input').addEventListener('input', (e) => {
-  searchQuery = e.target.value.trim()
-  renderOrders()
-})
-
-// ── Util ─────────────────────────────────────────────────────────────────────
+// ── Util ──────────────────────────────────────────────────────────────────────
 
 function openUrl(url) {
   if (!url) return
-  const u = url.startsWith('http') ? url : `https://${url}`
-  window.open(u, '_blank', 'noopener')
+  window.open(url.startsWith('http') ? url : `https://${url}`, '_blank', 'noopener')
 }
 
 function openPdf(url, title) {
