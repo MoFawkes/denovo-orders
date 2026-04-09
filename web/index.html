@@ -6,6 +6,8 @@
 <title>Denovo Orders</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
@@ -129,6 +131,10 @@
         <span class="material-symbols-outlined" style="font-size:20px;">bar_chart</span>
         <span>Reports</span>
       </button>
+      <button id="nav-import" onclick="showView('import')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+        <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>
+        <span>Import</span>
+      </button>
     </div>
     <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm mt-4">
       <span class="material-symbols-outlined" style="font-size:20px;">logout</span>
@@ -178,6 +184,7 @@
         <button id="tab-active-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white">Active <span id="tab-active-count-mobile" class="font-normal opacity-70">(0)</span></button>
         <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
+        <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
       </div>
     </div>
 
@@ -190,7 +197,7 @@
           <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;">
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">PO</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Description</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Style</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">SKU</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Colour</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Qty</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Ex Factory</span>
@@ -346,11 +353,77 @@
           </div>
         </div>
 
+        <!-- Save button -->
+        <button onclick="saveReport()" class="w-full h-11 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all">
+          Save Report
+        </button>
+
         <div id="report-empty" class="hidden text-center py-8 text-sm text-on-surface-variant">
-          No orders completed in this date range.
+          No orders set to ready in this date range.
         </div>
 
       </div>
+
+      <!-- Saved reports history -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+        <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Saved Reports</h3>
+        <div id="saved-reports-list" class="space-y-2 text-sm text-on-surface-variant">Loading…</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Import Screen ─────────────────────────────────────────────────────── -->
+<div id="import-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
+  <div class="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface">
+      <span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span>
+    </button>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Import PO</h2>
+  </div>
+
+  <div class="flex-1 overflow-auto p-6 md:p-10">
+    <div class="max-w-2xl mx-auto space-y-6">
+
+      <!-- Drop zones -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- PDF drop -->
+        <div id="drop-pdf" class="border-2 border-dashed border-outline-variant/40 rounded-xl p-8 text-center cursor-pointer hover:border-primary hover:bg-primary-container/20 transition-all" onclick="document.getElementById('input-pdf').click()" ondragover="event.preventDefault();this.classList.add('border-primary')" ondragleave="this.classList.remove('border-primary')" ondrop="handleDrop(event,'pdf')">
+          <span class="material-symbols-outlined text-on-surface-variant mb-2" style="font-size:36px;">picture_as_pdf</span>
+          <p class="text-sm font-semibold text-on-surface mt-1">PO Document</p>
+          <p id="pdf-label" class="text-xs text-on-surface-variant mt-1">Drop PDF here or tap to browse</p>
+          <input id="input-pdf" type="file" accept=".pdf" class="hidden" onchange="handleFile(this,'pdf')"/>
+        </div>
+        <!-- CSV drop -->
+        <div id="drop-csv" class="border-2 border-dashed border-outline-variant/40 rounded-xl p-8 text-center cursor-pointer hover:border-primary hover:bg-primary-container/20 transition-all" onclick="document.getElementById('input-csv').click()" ondragover="event.preventDefault();this.classList.add('border-primary')" ondragleave="this.classList.remove('border-primary')" ondrop="handleDrop(event,'csv')">
+          <span class="material-symbols-outlined text-on-surface-variant mb-2" style="font-size:36px;">table_chart</span>
+          <p class="text-sm font-semibold text-on-surface mt-1">Order CSV</p>
+          <p id="csv-label" class="text-xs text-on-surface-variant mt-1">Drop CSV here or tap to browse</p>
+          <input id="input-csv" type="file" accept=".csv" class="hidden" onchange="handleFile(this,'csv')"/>
+        </div>
+      </div>
+
+      <!-- Fabric override -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block mb-2">Fabrication</label>
+        <input id="import-fabric" type="text" value="Bengaline" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary"/>
+      </div>
+
+      <!-- Process button -->
+      <button id="import-btn" onclick="runImport()" disabled class="w-full h-12 bg-primary text-on-primary text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+        Generate Dockets &amp; Import Orders
+      </button>
+
+      <!-- Log -->
+      <div id="import-log" class="hidden bg-inverse-surface rounded-xl p-5 space-y-1 max-h-80 overflow-y-auto font-mono text-xs text-white/80"></div>
+
+      <!-- Results -->
+      <div id="import-results" class="hidden space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Orders Created</h3>
+        <div id="import-results-list" class="space-y-2"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -414,6 +487,12 @@ async function showDashboard(user) {
   const roleText = profile?.role ? `Role: ${profile.role}` : user.email
   document.getElementById('user-role').textContent = roleText
   document.getElementById('user-role-mobile').textContent = roleText
+
+  const isManager = profile?.role === 'manager'
+  document.getElementById('nav-reports').style.display = isManager ? '' : 'none'
+  document.getElementById('nav-import').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-reports-mobile').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-import-mobile').style.display = isManager ? '' : 'none'
 
   await loadOrders()
   subscribeRealtime()
@@ -520,8 +599,9 @@ function renderOrders() {
           <span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span>
         </div>
         <div class="px-4 pb-3">
-          <p class="text-sm text-on-surface mb-1 leading-snug">${o.description||o.style||'—'}</p>
+          <p class="text-sm text-on-surface mb-1 leading-snug">${o.description||'—'}</p>
           <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            ${o.style ? `<span class="text-xs font-mono font-semibold text-primary">${o.style}</span>` : ''}
             <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
             <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
             <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
@@ -560,7 +640,7 @@ function orderDetailHtml(o, idPrefix) {
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-4">
-      ${[['Style No', o.style_no||o.style],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
+      ${[['SKU', o.style||o.style_no],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
         <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
           <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">${l}</p>
           <p class="text-xs font-semibold text-on-surface">${v||'—'}</p>
@@ -699,18 +779,36 @@ let reportData = { totalQty: 0, totalCmt: 0 }
 function showView(view) {
   currentView = view
   const reportsScreen = document.getElementById('reports-screen')
+  const importScreen = document.getElementById('import-screen')
+
+  // Hide all overlays first
+  reportsScreen.classList.add('hidden')
+  importScreen.classList.add('hidden')
+
+  // Reset nav styles
+  const navActive = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
+  const navIdle = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
+  const tabActive = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white'
+  const tabIdle = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant'
+
+  document.getElementById('nav-orders').className = navIdle
+  document.getElementById('nav-reports').className = navIdle
+  document.getElementById('nav-import').className = navIdle
+  document.getElementById('tab-reports-mobile').className = tabIdle
+  document.getElementById('tab-import-mobile').className = tabIdle
+
   if (view === 'reports') {
     reportsScreen.classList.remove('hidden')
     initReportDates()
-    // Update nav
-    document.getElementById('nav-orders').className = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
-    document.getElementById('nav-reports').className = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
-    document.getElementById('tab-reports-mobile').className = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white'
+    loadSavedReports()
+    document.getElementById('nav-reports').className = navActive
+    document.getElementById('tab-reports-mobile').className = tabActive
+  } else if (view === 'import') {
+    importScreen.classList.remove('hidden')
+    document.getElementById('nav-import').className = navActive
+    document.getElementById('tab-import-mobile').className = tabActive
   } else {
-    reportsScreen.classList.add('hidden')
-    document.getElementById('nav-orders').className = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
-    document.getElementById('nav-reports').className = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
-    document.getElementById('tab-reports-mobile').className = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant'
+    document.getElementById('nav-orders').className = navActive
   }
 }
 
@@ -743,7 +841,7 @@ async function loadReport() {
   const { data: events, error } = await sb
     .from('order_events')
     .select('order_id, created_at')
-    .eq('new_stage', 'Completed')
+    .eq('new_stage', 'Ready')
     .gte('created_at', start + 'T00:00:00')
     .lte('created_at', endTs)
 
@@ -827,6 +925,426 @@ function updateSummary() {
     netEl.textContent = '—'
     netEl.className = 'text-2xl font-extrabold'
   }
+}
+
+async function saveReport() {
+  const start = document.getElementById('report-week-start').value
+  const end = document.getElementById('report-week-end').value
+  const hours = parseFloat(document.getElementById('report-hours').value) || 0
+  const wages = parseFloat(document.getElementById('report-wages').value) || 0
+  const { totalQty, totalCmt } = reportData
+
+  if (!start || !end) return alert('Load a report first.')
+
+  const { error } = await sb.from('weekly_reports').upsert({
+    week_start: start,
+    week_end: end,
+    total_qty: totalQty,
+    total_cmt: totalCmt,
+    hours_worked: hours,
+    wage_cost: wages,
+    net: totalCmt - wages,
+  }, { onConflict: 'week_start' })
+
+  if (error) return alert('Failed to save: ' + error.message)
+  alert('Report saved!')
+  loadSavedReports()
+}
+
+async function loadSavedReports() {
+  const el = document.getElementById('saved-reports-list')
+  const { data, error } = await sb
+    .from('weekly_reports')
+    .select('*')
+    .order('week_start', { ascending: false })
+    .limit(20)
+
+  if (error || !data || data.length === 0) {
+    el.innerHTML = '<p class="text-xs text-on-surface-variant">No saved reports yet.</p>'
+    return
+  }
+
+  el.innerHTML = data.map(r => {
+    const net = r.net ?? (r.total_cmt - r.wage_cost)
+    const netColor = net >= 0 ? 'text-green-600' : 'text-red-500'
+    const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })
+    return `<div class="flex items-center justify-between py-3 border-b border-outline-variant/10 last:border-0 cursor-pointer hover:bg-surface-container-low rounded px-2 -mx-2" onclick="restoreReport(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+      <div>
+        <p class="text-xs font-semibold text-on-surface">${fmtDate(r.week_start)} – ${fmtDate(r.week_end)}</p>
+        <p class="text-[11px] text-on-surface-variant mt-0.5">${r.total_qty} pcs · £${(r.total_cmt||0).toFixed(2)} CMT · ${r.hours_worked||0}h</p>
+      </div>
+      <p class="text-sm font-bold ${netColor} flex-shrink-0 ml-4">£${net.toFixed(2)}</p>
+    </div>`
+  }).join('')
+}
+
+function restoreReport(r) {
+  document.getElementById('report-week-start').value = r.week_start
+  document.getElementById('report-week-end').value = r.week_end
+  document.getElementById('report-hours').value = r.hours_worked || ''
+  document.getElementById('report-wages').value = r.wage_cost || ''
+  loadReport()
+}
+
+// ── Import ────────────────────────────────────────────────────────────────────
+
+let importFiles = { pdf: null, csv: null }
+
+function handleDrop(e, type) {
+  e.preventDefault()
+  document.getElementById('drop-' + type).classList.remove('border-primary')
+  const file = e.dataTransfer.files[0]
+  if (file) setImportFile(type, file)
+}
+
+function handleFile(input, type) {
+  if (input.files[0]) setImportFile(type, input.files[0])
+}
+
+function setImportFile(type, file) {
+  importFiles[type] = file
+  document.getElementById(type + '-label').textContent = file.name
+  document.getElementById('drop-' + type).classList.add('border-primary', 'bg-primary-container/20')
+  checkImportReady()
+}
+
+function checkImportReady() {
+  document.getElementById('import-btn').disabled = !(importFiles.pdf && importFiles.csv)
+}
+
+function importLog(msg, colour) {
+  const log = document.getElementById('import-log')
+  log.classList.remove('hidden')
+  const span = document.createElement('p')
+  span.textContent = msg
+  if (colour) span.style.color = colour
+  log.appendChild(span)
+  log.scrollTop = log.scrollHeight
+}
+
+// ── PDF parsing (pdf.js via CDN as module – loaded inline async) ──────────────
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer()
+  // pdf.js loaded as module, access via window.pdfjsLib or dynamic import
+  const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs'
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  let text = ''
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    text += content.items.map(item => item.str).join(' ') + '\n'
+  }
+  return text
+}
+
+function extractFirstDate(label, text) {
+  const re = new RegExp(label.replace(/\s/g, '\\s*') + '[:\\s]*([\\d]{2}/[\\d]{2}/[\\d]{4})', 'i')
+  const m = text.match(re)
+  return m ? m[1] : ''
+}
+
+function extractPpu(text) {
+  const matches = [...text.matchAll(/\bEach\s+£?\s*(\d+(?:\.\d{1,2})?)\b/gi)]
+  if (!matches.length) return '£0.00'
+  return '£' + parseFloat(matches[matches.length - 1][1]).toFixed(2)
+}
+
+function ukDateToIso(d) {
+  const m = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : d
+}
+
+// ── CSV parsing ───────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim())
+  return lines.slice(1).map(line => {
+    // Handle quoted commas
+    const vals = []
+    let cur = '', inQ = false
+    for (const ch of line) {
+      if (ch === '"') inQ = !inQ
+      else if (ch === ',' && !inQ) { vals.push(cur); cur = '' }
+      else cur += ch
+    }
+    vals.push(cur)
+    const row = {}
+    headers.forEach((h, i) => row[h] = (vals[i] || '').replace(/^"|"$/g, '').trim())
+    return row
+  })
+}
+
+function pickColourCol(row) {
+  const candidates = ['colour','color','productColour','productColor','variantColour','variantColor','colourName','colorName','colourway','colorway']
+  const keys = Object.keys(row).map(k => k.toLowerCase())
+  for (const c of candidates) {
+    const idx = keys.indexOf(c.toLowerCase())
+    if (idx !== -1) return Object.keys(row)[idx]
+  }
+  return null
+}
+
+function extractSizeFromName(name) {
+  const m = String(name).match(/-(\d+)\s*$/)
+  return m ? m[1] : null
+}
+
+function extractColourFromName(name) {
+  const parts = String(name).replace(/-\d+\s*$/, '').trim().split(/\s+/)
+  return parts[parts.length - 1] || 'Unknown'
+}
+
+function skuFromProductCode(code) {
+  return String(code).split('/')[0].trim()
+}
+
+function buildPltImageUrl(sku, colour) {
+  if (!sku || !colour) return ''
+  const s = sku.toLowerCase()
+  const c = colour.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  return `https://mediahub.prettylittlething.com/${s}_${c}_xl?qlt=70&w=1200&ssz=true&dpr=1`
+}
+
+// ── Docket number from Supabase (max existing + 1) ────────────────────────────
+async function nextDocketNumber() {
+  const { data } = await sb.from('orders').select('docket').order('docket', { ascending: false }).limit(1)
+  const max = data?.[0]?.docket ?? 241
+  return max + 1
+}
+
+// ── CMT lookup ────────────────────────────────────────────────────────────────
+async function lookupCmt(styleNo) {
+  const { data } = await sb.from('style_costings').select('cmt').eq('style_no', styleNo).single()
+  return data?.cmt ?? null
+}
+
+// ── Excel docket generation (SheetJS) ────────────────────────────────────────
+function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
+  // rows: [{ styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits }]
+  const wb = XLSX.utils.book_new()
+
+  for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes } of rows) {
+    const skuDisplay = Object.entries(colourSkuMap).map(([c, s]) => s ? `${c}: ${s}` : `${c}: (blank)`).join(' | ')
+    const aoa = []
+
+    aoa.push([`DOCKET SHEET #${docketNumber}`])
+    aoa.push([])
+    aoa.push(['DATE:', dateOrdered])
+    aoa.push(['EX-FACTORY DATE:', exFactory])
+    aoa.push(['PO NUMBER:', poNumber])
+    aoa.push(['STYLE NO.:', styleNo])
+    aoa.push(['SKU:', skuDisplay])
+    aoa.push(['DESCRIPTION:', description])
+    aoa.push(['SUPPLIER:', 'Denovo'])
+    aoa.push(['FABRICATION:', fabrication])
+    aoa.push([])
+
+    // Size header row
+    aoa.push(['SIZE', ...sizes])
+    // Colour rows
+    for (const [colour, qtyMap] of Object.entries(sizeTable)) {
+      aoa.push([colour, ...sizes.map(s => qtyMap[s] || 0)])
+    }
+    aoa.push([])
+    aoa.push(['CUT', ...sizes.map(() => '')])
+    aoa.push([])
+    aoa.push(['PACKED QTY', ...sizes.map(() => '')])
+    aoa.push([])
+    const totalParts = Object.entries(colourTotals).map(([c, q]) => `${c} ${q}`).join(' | ')
+    aoa.push([`TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`])
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    ws['!cols'] = [{ wch: 20 }, { wch: 45 }, ...sizes.map(() => ({ wch: 10 }))]
+    XLSX.utils.book_append_sheet(wb, ws, String(styleNo).slice(0, 31))
+  }
+  return wb
+}
+
+// ── Main import runner ────────────────────────────────────────────────────────
+async function runImport() {
+  const btn = document.getElementById('import-btn')
+  btn.disabled = true
+  btn.textContent = 'Processing…'
+  document.getElementById('import-log').innerHTML = ''
+  document.getElementById('import-log').classList.remove('hidden')
+  document.getElementById('import-results').classList.add('hidden')
+
+  const fabrication = document.getElementById('import-fabric').value || 'Bengaline'
+
+  try {
+    // 1) Parse PDF
+    importLog('📄 Reading PDF…')
+    const pdfText = await extractPdfText(importFiles.pdf)
+    const dateOrdered = extractFirstDate('Date Order Placed', pdfText)
+    const exFactoryRaw = extractFirstDate('Ex Factory Date', pdfText)
+    importLog(`   Date ordered: ${dateOrdered || '(not found)'}`)
+    importLog(`   Ex-factory:   ${exFactoryRaw || '(not found)'}`)
+
+    // 2) Parse CSV
+    importLog('📊 Reading CSV…')
+    const csvText = await importFiles.csv.text()
+    const rows = parseCSV(csvText)
+    if (!rows.length) throw new Error('CSV is empty or could not be parsed.')
+    const poNumber = rows[0]['PONumber'] || rows[0]['poNumber'] || rows[0]['ponumber'] || ''
+    importLog(`   PO Number: ${poNumber}`)
+
+    // Build description
+    const colourColSample = pickColourCol(rows[0])
+    const allColours = new Set(rows.map(r => colourColSample ? r[colourColSample] : extractColourFromName(r['productName'])).filter(Boolean))
+    const colourList = [...allColours].sort()
+
+    // Base description = most common product name stripped of size/colour suffix
+    const baseDesc = rows.map(r => {
+      let n = String(r['productName'] || '').replace(/-\d+\s*$/, '').trim()
+      const parts = n.split(/\s+/)
+      if (parts.length && allColours.has(parts[parts.length - 1])) parts.pop()
+      return parts.join(' ')
+    }).sort((a, b) => rows.filter(r => r.productName?.includes(b)).length - rows.filter(r => r.productName?.includes(a)).length)[0] || ''
+
+    const descDisplay = `${colourList.join('/')} ${baseDesc}`.trim()
+    importLog(`   Description: ${descDisplay}`)
+
+    // 3) Get docket number
+    const docketNumber = await nextDocketNumber()
+    importLog(`🔢 Docket #${docketNumber}`)
+
+    // 4) Group by supplierRef
+    const groups = {}
+    for (const row of rows) {
+      const ref = row['supplierRef'] || row['SupplierRef'] || 'Unknown'
+      if (!groups[ref]) groups[ref] = []
+      groups[ref].push(row)
+    }
+
+    // 5) Build per-style data
+    const docketRows = []
+    const dbRows = []
+
+    for (const [styleNo, group] of Object.entries(groups)) {
+      importLog(`\n🧵 Style: ${styleNo}`)
+      const colourCol = pickColourCol(group[0])
+
+      // colour -> sku map
+      const colourSkuMap = {}
+      for (const r of group) {
+        const colour = (colourCol ? r[colourCol] : extractColourFromName(r['productName'])).toUpperCase()
+        const sku = skuFromProductCode(r['productCode'] || '')
+        if (!colourSkuMap[colour]) colourSkuMap[colour] = sku
+      }
+
+      // size table: colour -> size -> qty
+      const sizeTable = {}
+      const sizesSet = new Set()
+      for (const r of group) {
+        const colour = (colourCol ? r[colourCol] : extractColourFromName(r['productName'])).toUpperCase()
+        const size = extractSizeFromName(r['productName'])
+        if (!size) continue
+        sizesSet.add(size)
+        if (!sizeTable[colour]) sizeTable[colour] = {}
+        sizeTable[colour][size] = (sizeTable[colour][size] || 0) + (parseInt(r['orderQty']) || 0)
+      }
+      const sizes = [...sizesSet].sort((a, b) => parseInt(a) - parseInt(b))
+
+      const colourTotals = {}
+      for (const [colour, qtyMap] of Object.entries(sizeTable)) {
+        colourTotals[colour] = Object.values(qtyMap).reduce((a, b) => a + b, 0)
+      }
+      const totalUnits = Object.values(colourTotals).reduce((a, b) => a + b, 0)
+      importLog(`   ${Object.keys(colourTotals).join(', ')} — ${totalUnits} total`)
+
+      docketRows.push({ styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes })
+
+      // DB rows per colour
+      for (const [colour, qty] of Object.entries(colourTotals)) {
+        const sku = colourSkuMap[colour] || ''
+        const imageUrl = buildPltImageUrl(sku, colour)
+        const cmt = await lookupCmt(styleNo)
+        if (cmt) importLog(`   CMT for ${styleNo}: £${cmt.toFixed(2)}`, '#86efac')
+        else importLog(`   CMT not found for ${styleNo} — add to style_costings`, '#fca5a5')
+
+        dbRows.push({ styleNo, sku, colour, qty, imageUrl, cmt })
+      }
+    }
+
+    // 6) Generate Excel docket
+    importLog('\n📁 Generating docket workbook…')
+    const wb = buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, fabrication, descDisplay, docketRows)
+    const wbArrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const docketBlob = new Blob([wbArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const docketFileName = `${docketNumber}_${poNumber}.xlsx`
+
+    // 7) Upload docket to Supabase Storage
+    importLog('☁️  Uploading docket…')
+    const storagePath = `${poNumber}/dockets/${docketFileName}`
+    const { error: uploadError } = await sb.storage.from('orders').upload(storagePath, docketBlob, {
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      upsert: true,
+    })
+    if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
+    const docketUrl = sb.storage.from('orders').getPublicUrl(storagePath).data.publicUrl
+    importLog(`   Uploaded: ${docketFileName}`, '#86efac')
+
+    // 8) Upsert orders to DB
+    importLog('\n💾 Saving orders to database…')
+    const created = []
+    for (const { styleNo, sku, colour, qty, imageUrl, cmt } of dbRows) {
+      const row = {
+        source_tab: 'OPO',
+        company: 'Sourcing',
+        po: poNumber,
+        style_no: styleNo,
+        style: sku,
+        description: `${colour.charAt(0)+colour.slice(1).toLowerCase()} ${baseDesc}`.trim(),
+        fabric: fabrication,
+        colour: colour,
+        qty: qty,
+        ex_factory: ukDateToIso(exFactoryRaw),
+        docket: docketNumber,
+        docket_url: docketUrl,
+        invoice_no: '',
+        packing_list_url: '',
+        stage: 'Cutting',
+        image_url: imageUrl,
+      }
+      if (cmt !== null) row.cmt = cmt
+
+      const { error } = await sb.from('orders').upsert(row, { onConflict: 'po,style,colour' })
+      if (error) importLog(`   ⚠️ ${styleNo} ${colour}: ${error.message}`, '#fca5a5')
+      else { importLog(`   ✓ PO ${poNumber} · ${sku} · ${colour} · ${qty} pcs`, '#86efac'); created.push(row) }
+    }
+
+    // 9) Also trigger a download of the docket for the user
+    const dlUrl = URL.createObjectURL(docketBlob)
+    const a = document.createElement('a')
+    a.href = dlUrl
+    a.download = docketFileName
+    a.click()
+    URL.revokeObjectURL(dlUrl)
+
+    importLog(`\n✅ Done! ${created.length} order rows saved. Docket #${docketNumber} downloaded.`, '#86efac')
+
+    // Show results
+    document.getElementById('import-results').classList.remove('hidden')
+    document.getElementById('import-results-list').innerHTML = created.map(r =>
+      `<div class="flex items-center justify-between bg-surface-container-low rounded-lg px-4 py-3">
+        <div>
+          <span class="text-xs font-semibold text-on-surface">PO ${r.po}</span>
+          <span class="text-xs font-mono text-primary ml-2">${r.style}</span>
+          <span class="text-xs text-on-surface-variant ml-2">${r.colour} · ${r.qty} pcs</span>
+        </div>
+        <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded stage-cutting">Cutting</span>
+      </div>`
+    ).join('')
+
+    await loadOrders()
+  } catch (err) {
+    importLog(`\n❌ Error: ${err.message}`, '#fca5a5')
+    console.error(err)
+  }
+
+  btn.disabled = false
+  btn.textContent = 'Generate Dockets & Import Orders'
 }
 </script>
 </body>
