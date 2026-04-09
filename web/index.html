@@ -121,10 +121,14 @@
       <p id="user-role" class="text-xs text-[#9e9c9c] mt-1">Loading...</p>
     </div>
     <div class="flex flex-col gap-1 flex-1">
-      <div class="flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm">
+      <button id="nav-orders" onclick="showView('orders')" class="flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">package_2</span>
         <span>Orders</span>
-      </div>
+      </button>
+      <button id="nav-reports" onclick="showView('reports')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+        <span class="material-symbols-outlined" style="font-size:20px;">bar_chart</span>
+        <span>Reports</span>
+      </button>
     </div>
     <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm mt-4">
       <span class="material-symbols-outlined" style="font-size:20px;">logout</span>
@@ -173,6 +177,7 @@
       <div class="flex gap-2">
         <button id="tab-active-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white">Active <span id="tab-active-count-mobile" class="font-normal opacity-70">(0)</span></button>
         <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
+        <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
       </div>
     </div>
 
@@ -236,6 +241,118 @@
     <h3 id="drawer-po" class="text-base font-bold text-on-surface flex-1">—</h3>
   </div>
   <div class="flex-1 overflow-y-auto p-4" id="drawer-content"></div>
+</div>
+
+<!-- Image fullscreen overlay -->
+<div id="panel-image-full" class="hidden fixed inset-0 z-50 bg-black/90 flex items-center justify-center" onclick="this.classList.add('hidden')">
+  <img id="panel-image-full-img" src="" class="max-w-full max-h-full object-contain rounded" />
+</div>
+
+<!-- Reports Screen (full overlay over dashboard body) -->
+<div id="reports-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="top:0;left:0;">
+  <!-- Header -->
+  <div class="flex items-center gap-3 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors md:hidden">
+      <span class="material-symbols-outlined">arrow_back</span>
+    </button>
+    <div class="hidden md:block w-56 flex-shrink-0">
+      <span class="text-sm font-bold text-on-surface tracking-tighter">Denovo Orders</span>
+    </div>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Weekly Production Report</h2>
+    <button onclick="showView('orders')" class="hidden md:flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-on-surface">
+      <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span> Back to Orders
+    </button>
+  </div>
+
+  <div class="flex-1 overflow-auto p-4 md:p-8">
+    <div class="max-w-2xl mx-auto space-y-6">
+
+      <!-- Week picker -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+        <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Select Week</h3>
+        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+          <div class="flex-1 space-y-1">
+            <label class="text-xs text-on-surface-variant">Week start (Monday)</label>
+            <input id="report-week-start" type="date" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary" />
+          </div>
+          <div class="flex-1 space-y-1">
+            <label class="text-xs text-on-surface-variant">Week end (Sunday)</label>
+            <input id="report-week-end" type="date" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary" />
+          </div>
+          <button onclick="loadReport()" class="h-10 px-5 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded shadow-sm hover:bg-primary-dim transition-all">
+            Load Report
+          </button>
+        </div>
+      </div>
+
+      <!-- Results (hidden until loaded) -->
+      <div id="report-results" class="hidden space-y-5">
+
+        <!-- Auto stats -->
+        <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Completed This Week</h3>
+          <div id="report-orders-list" class="space-y-2 mb-4 max-h-64 overflow-y-auto"></div>
+          <div class="grid grid-cols-2 gap-3 pt-3 border-t border-outline-variant/20">
+            <div class="bg-surface-container-low rounded-lg p-4">
+              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Total Garments</p>
+              <p id="report-total-qty" class="text-2xl font-extrabold text-on-surface">—</p>
+            </div>
+            <div class="bg-surface-container-low rounded-lg p-4">
+              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">CMT Earned</p>
+              <p id="report-total-cmt" class="text-2xl font-extrabold text-on-surface">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual inputs -->
+        <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Labour Costs</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-on-surface-variant">Hours Worked</label>
+              <input id="report-hours" type="number" min="0" step="0.5" placeholder="e.g. 120" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary" oninput="updateSummary()" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-on-surface-variant">Total Wage Cost (£)</label>
+              <input id="report-wages" type="number" min="0" step="0.01" placeholder="e.g. 850.00" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary" oninput="updateSummary()" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div id="report-summary" class="bg-inverse-surface rounded-xl p-5 text-white space-y-3">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-white/60 mb-3">Weekly Summary</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Garments Made</p>
+              <p id="sum-qty" class="text-xl font-extrabold">—</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">CMT Earned</p>
+              <p id="sum-cmt" class="text-xl font-extrabold">—</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Hours Worked</p>
+              <p id="sum-hours" class="text-xl font-extrabold">—</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Wage Cost</p>
+              <p id="sum-wages" class="text-xl font-extrabold">—</p>
+            </div>
+          </div>
+          <div class="border-t border-white/10 pt-3 mt-1">
+            <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Net (CMT – Wages)</p>
+            <p id="sum-net" class="text-2xl font-extrabold">—</p>
+          </div>
+        </div>
+
+        <div id="report-empty" class="hidden text-center py-8 text-sm text-on-surface-variant">
+          No orders completed in this date range.
+        </div>
+
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -567,6 +684,144 @@ function openPdf(url, title) {
 function closePdfModal() {
   document.getElementById('pdf-modal').classList.add('hidden')
   document.getElementById('pdf-frame').src = ''
+}
+
+// ── View switching ────────────────────────────────────────────────────────────
+
+let currentView = 'orders'
+let reportData = { totalQty: 0, totalCmt: 0 }
+
+function showView(view) {
+  currentView = view
+  const reportsScreen = document.getElementById('reports-screen')
+  if (view === 'reports') {
+    reportsScreen.classList.remove('hidden')
+    initReportDates()
+    // Update nav
+    document.getElementById('nav-orders').className = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
+    document.getElementById('nav-reports').className = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
+    document.getElementById('tab-reports-mobile').className = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white'
+  } else {
+    reportsScreen.classList.add('hidden')
+    document.getElementById('nav-orders').className = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
+    document.getElementById('nav-reports').className = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
+    document.getElementById('tab-reports-mobile').className = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant'
+  }
+}
+
+function initReportDates() {
+  const today = new Date()
+  // Last Monday
+  const dayOfWeek = today.getDay() // 0=Sun
+  const diffToLastMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const lastMon = new Date(today)
+  lastMon.setDate(today.getDate() + diffToLastMon - 7)
+  const lastSun = new Date(lastMon)
+  lastSun.setDate(lastMon.getDate() + 6)
+
+  const fmt = d => d.toISOString().split('T')[0]
+  const startEl = document.getElementById('report-week-start')
+  const endEl = document.getElementById('report-week-end')
+  if (!startEl.value) startEl.value = fmt(lastMon)
+  if (!endEl.value) endEl.value = fmt(lastSun)
+}
+
+async function loadReport() {
+  const start = document.getElementById('report-week-start').value
+  const end = document.getElementById('report-week-end').value
+  if (!start || !end) return
+
+  // end of day Sunday
+  const endTs = end + 'T23:59:59'
+
+  // Query order_events for completions in range
+  const { data: events, error } = await sb
+    .from('order_events')
+    .select('order_id, created_at')
+    .eq('new_stage', 'Completed')
+    .gte('created_at', start + 'T00:00:00')
+    .lte('created_at', endTs)
+
+  document.getElementById('report-results').classList.remove('hidden')
+  document.getElementById('report-empty').classList.add('hidden')
+
+  if (error || !events || events.length === 0) {
+    document.getElementById('report-orders-list').innerHTML = ''
+    document.getElementById('report-total-qty').textContent = '0'
+    document.getElementById('report-total-cmt').textContent = '£0.00'
+    reportData = { totalQty: 0, totalCmt: 0 }
+    document.getElementById('report-empty').classList.remove('hidden')
+    updateSummary()
+    return
+  }
+
+  // Get unique order IDs (an order may have been marked completed multiple times)
+  const orderIds = [...new Set(events.map(e => e.order_id))]
+
+  // Fetch those orders
+  const { data: orders } = await sb
+    .from('orders')
+    .select('id, po, description, style_no, style, colour, qty, cmt')
+    .in('id', orderIds)
+
+  if (!orders || orders.length === 0) {
+    document.getElementById('report-orders-list').innerHTML = ''
+    document.getElementById('report-total-qty').textContent = '0'
+    document.getElementById('report-total-cmt').textContent = '£0.00'
+    reportData = { totalQty: 0, totalCmt: 0 }
+    document.getElementById('report-empty').classList.remove('hidden')
+    updateSummary()
+    return
+  }
+
+  let totalQty = 0
+  let totalCmt = 0
+
+  const listHtml = orders.map(o => {
+    const qty = o.qty || 0
+    const cmt = o.cmt || 0
+    const lineVal = qty * cmt
+    totalQty += qty
+    totalCmt += lineVal
+    return `<div class="flex items-center justify-between py-2 border-b border-outline-variant/10 last:border-0">
+      <div>
+        <span class="text-xs font-semibold text-on-surface">PO ${o.po||'—'}</span>
+        <span class="text-xs text-on-surface-variant ml-2">${o.description||o.style_no||o.style||''}</span>
+        ${o.colour ? `<span class="text-xs text-on-surface-variant ml-1">· ${o.colour}</span>` : ''}
+      </div>
+      <div class="text-right flex-shrink-0 ml-4">
+        <span class="text-xs font-semibold text-on-surface">${qty} pcs</span>
+        ${cmt ? `<span class="text-xs text-on-surface-variant ml-2">× £${cmt.toFixed(2)} = <span class="font-semibold text-on-surface">£${lineVal.toFixed(2)}</span></span>` : '<span class="text-xs text-on-surface-variant ml-2">no CMT</span>'}
+      </div>
+    </div>`
+  }).join('')
+
+  document.getElementById('report-orders-list').innerHTML = listHtml
+  document.getElementById('report-total-qty').textContent = totalQty.toLocaleString()
+  document.getElementById('report-total-cmt').textContent = `£${totalCmt.toFixed(2)}`
+  reportData = { totalQty, totalCmt }
+  updateSummary()
+}
+
+function updateSummary() {
+  const hours = parseFloat(document.getElementById('report-hours').value) || 0
+  const wages = parseFloat(document.getElementById('report-wages').value) || 0
+  const { totalQty, totalCmt } = reportData
+  const net = totalCmt - wages
+
+  document.getElementById('sum-qty').textContent = totalQty ? totalQty.toLocaleString() : '—'
+  document.getElementById('sum-cmt').textContent = totalCmt ? `£${totalCmt.toFixed(2)}` : '—'
+  document.getElementById('sum-hours').textContent = hours ? `${hours}h` : '—'
+  document.getElementById('sum-wages').textContent = wages ? `£${wages.toFixed(2)}` : '—'
+
+  const netEl = document.getElementById('sum-net')
+  if (totalCmt && wages) {
+    netEl.textContent = `£${net.toFixed(2)}`
+    netEl.className = `text-2xl font-extrabold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`
+  } else {
+    netEl.textContent = '—'
+    netEl.className = 'text-2xl font-extrabold'
+  }
 }
 </script>
 </body>
