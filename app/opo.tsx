@@ -70,6 +70,13 @@ function getStageRank(stage: string | null): number {
 
 function parseExFactory(val: string | null): number {
   if (!val) return 0
+  // Dates stored as YYYY-DD-MM — swap day and month for correct parsing
+  const parts = val.split('-')
+  if (parts.length === 3) {
+    const [year, day, month] = parts
+    const d = new Date(`${year}-${month}-${day}`)
+    return isNaN(d.getTime()) ? 0 : d.getTime()
+  }
   const d = new Date(val)
   return isNaN(d.getTime()) ? 0 : d.getTime()
 }
