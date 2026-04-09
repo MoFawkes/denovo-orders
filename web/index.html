@@ -195,6 +195,15 @@
           </div>
 
           <div class="space-y-5">
+            <!-- Style image -->
+            <div id="panel-image-wrap" class="hidden rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container cursor-pointer" onclick="document.getElementById('panel-image-full').classList.remove('hidden')">
+              <img id="panel-image" src="" alt="Style" class="w-full object-cover max-h-52"/>
+            </div>
+            <!-- Fullscreen image overlay -->
+            <div id="panel-image-full" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onclick="this.classList.add('hidden')">
+              <img id="panel-image-full-img" src="" alt="Style" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"/>
+            </div>
+
             <!-- Stage -->
             <div>
               <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
@@ -446,6 +455,18 @@ function selectOrder(id) {
 
 function populatePanel(o) {
   document.getElementById('panel-po').textContent = `PO ${o.po || '—'}`
+  const imgWrap = document.getElementById('panel-image-wrap')
+  const img = document.getElementById('panel-image')
+  const imgFull = document.getElementById('panel-image-full-img')
+  if (o.image_url) {
+    img.src = o.image_url
+    imgFull.src = o.image_url
+    imgWrap.classList.remove('hidden')
+  } else {
+    imgWrap.classList.add('hidden')
+    img.src = ''
+    imgFull.src = ''
+  }
   document.getElementById('panel-stage').value = o.stage || 'Cutting'
   document.getElementById('panel-style-no').textContent = o.style_no || o.style || '—'
   document.getElementById('panel-fabric').textContent = o.fabric || '—'
