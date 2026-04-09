@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, StyleSheet, Alert } from "react-native";
+import { Text, TextInput, StyleSheet, Alert } from "react-native";
 import { supabase } from "../../lib/supabase";
 import AppCard from "../ui/AppCard";
 import AppButton from "../ui/AppButton";

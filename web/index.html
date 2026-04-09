@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Denovo Orders</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          "background": "#fcf9f8",
+          "surface": "#fcf9f8",
+          "surface-container-low": "#f6f3f2",
+          "surface-container": "#f0eded",
+          "surface-container-lowest": "#ffffff",
+          "on-surface": "#323233",
+          "on-surface-variant": "#5f5f5f",
+          "primary": "#576062",
+          "primary-dim": "#4b5456",
+          "primary-container": "#dbe4e6",
+          "on-primary": "#f0f9fb",
+          "outline-variant": "#b2b2b1",
+          "inverse-surface": "#0e0e0e",
+        },
+        fontFamily: { sans: ["Inter"] }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .ghost-border-bottom { border-bottom: 1px solid rgba(178,178,177,0.15); }
+  .stage-cutting    { color: #9f403d; background-color: rgba(254,137,131,0.2); }
+  .stage-production { color: #E67E22; background-color: rgba(230,126,34,0.15); }
+  .stage-packing    { color: #486272; background-color: rgba(208,236,255,0.4); }
+  .stage-ready      { color: #27AE60; background-color: rgba(39,174,96,0.15); }
+  .stage-completed  { color: #323233; background-color: #ccd6d8; }
+  #panel { transition: transform 0.2s ease; }
+  .row-selected { background-color: rgba(219,228,230,0.4); border-left: 2px solid #576062; }
+  .row-hover:hover { background-color: rgba(219,228,230,0.2); cursor: pointer; }
+  select, textarea, input { font-family: 'Inter', sans-serif; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
+</style>
+</head>
+<body class="bg-background text-on-surface min-h-screen">
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center p-6">
+  <div class="w-full max-w-md">
+    <div class="mb-10 text-center">
+      <div class="inline-flex items-center justify-center w-12 h-12 bg-inverse-surface rounded-lg mb-6">
+        <span class="material-symbols-outlined text-white" style="font-variation-settings:'FILL' 1;">grid_view</span>
+      </div>
+      <h1 class="text-lg font-extrabold tracking-tighter text-on-surface uppercase">Denovo Orders</h1>
+      <p class="text-xs font-medium uppercase tracking-widest text-on-surface-variant mt-2">Order Management System</p>
+    </div>
+    <div class="bg-surface-container-lowest p-8 shadow-sm border border-outline-variant/20 rounded-xl">
+      <div class="space-y-6">
+        <div>
+          <h2 class="text-lg font-bold tracking-tight text-on-surface">Secure Access</h2>
+          <p class="text-sm text-on-surface-variant">Enter your credentials to manage active orders.</p>
+        </div>
+        <div id="login-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-3"></div>
+        <form id="login-form" class="space-y-5">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-medium uppercase tracking-widest text-on-surface-variant" for="email">Email Address</label>
+            <input class="w-full h-11 bg-surface-container border-none rounded-md px-4 text-sm focus:ring-1 focus:ring-primary transition-all" id="email" placeholder="your@email.com" required type="email"/>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-medium uppercase tracking-widest text-on-surface-variant" for="password">Password</label>
+            <div class="relative">
+              <input class="w-full h-11 bg-surface-container border-none rounded-md px-4 text-sm focus:ring-1 focus:ring-primary transition-all" id="password" required type="password"/>
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-on-surface-variant/40">
+                <span class="material-symbols-outlined" style="font-size:18px;">lock</span>
+              </div>
+            </div>
+          </div>
+          <div class="pt-2">
+            <button class="w-full h-11 bg-primary text-on-primary text-sm font-bold tracking-tight rounded-md shadow-sm hover:bg-primary-dim active:scale-[0.98] transition-all flex items-center justify-center gap-2" id="login-btn" type="submit">
+              <span id="login-btn-text">Sign In</span>
+              <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD SCREEN -->
+<div id="dashboard-screen" class="hidden flex h-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <nav class="flex flex-col p-6 bg-inverse-surface h-screen w-56 flex-shrink-0 border-r border-white/5 z-50">
+    <div class="mb-8">
+      <h1 class="text-base font-bold text-white tracking-tighter">Denovo Orders</h1>
+      <p id="user-role" class="text-xs text-[#9e9c9c] mt-1">Loading...</p>
+    </div>
+    <div class="flex flex-col gap-1 flex-1">
+      <div class="flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm">
+        <span class="material-symbols-outlined" style="font-size:20px;">package_2</span>
+        <span>Orders</span>
+      </div>
+    </div>
+    <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm mt-4">
+      <span class="material-symbols-outlined" style="font-size:20px;">logout</span>
+      <span>Sign Out</span>
+    </button>
+  </nav>
+
+  <!-- Main -->
+  <div class="flex flex-col flex-1 overflow-hidden">
+
+    <!-- Top bar -->
+    <header class="flex items-center justify-between px-6 h-14 bg-white/80 backdrop-blur-md border-b border-outline-variant/20 flex-shrink-0 gap-4">
+      <div class="flex items-center gap-6">
+        <div class="flex items-center bg-surface-container rounded px-3 py-1.5 w-64">
+          <span class="material-symbols-outlined text-on-surface-variant mr-2" style="font-size:18px;">search</span>
+          <input class="bg-transparent border-none focus:ring-0 text-xs w-full p-0 placeholder-on-surface-variant/50 outline-none" id="search-input" placeholder="Search PO, style, colour, notes..." type="text"/>
+        </div>
+        <nav class="flex gap-5 h-14 items-center">
+          <button id="tab-active" class="text-xs font-bold uppercase tracking-widest text-on-surface border-b-2 border-primary h-14 flex items-center">Active <span id="tab-active-count" class="ml-1 text-on-surface-variant font-normal">(0)</span></button>
+          <button id="tab-completed" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Completed <span id="tab-completed-count" class="ml-1 font-normal">(0)</span></button>
+        </nav>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-on-surface-variant">
+        <span id="kpi-active" class="font-bold text-on-surface">0</span> active &nbsp;·&nbsp;
+        <span id="kpi-ready" class="font-bold text-green-600">0</span> ready &nbsp;·&nbsp;
+        <span id="kpi-completed" class="font-bold text-on-surface-variant">0</span> completed
+      </div>
+    </header>
+
+    <!-- Body -->
+    <div class="flex flex-1 overflow-hidden">
+
+      <!-- Table -->
+      <div class="flex-1 overflow-auto bg-surface-container-lowest">
+        <div class="min-w-[900px]">
+          <!-- Column headers -->
+          <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;">
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">PO</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Description</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Style</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Colour</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Qty</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Ex Factory</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Stage</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Notes</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Docket</span>
+          </div>
+          <!-- Rows -->
+          <div id="orders-body">
+            <div id="loading-row" class="flex items-center justify-center py-16 text-sm text-on-surface-variant">
+              <span class="material-symbols-outlined animate-spin mr-2" style="font-size:20px;">progress_activity</span> Loading orders...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Side Panel -->
+      <aside id="panel" class="w-0 overflow-hidden border-l border-outline-variant/20 bg-surface-container-low flex-shrink-0 transition-all duration-200" style="min-width:0;">
+        <div class="w-88 p-6 overflow-y-auto h-full" style="width:352px;">
+          <div class="flex justify-between items-start mb-6">
+            <div>
+              <span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase mb-1 block">Selected Order</span>
+              <h3 id="panel-po" class="text-lg font-bold text-on-surface">—</h3>
+            </div>
+            <button id="panel-close" class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors">
+              <span class="material-symbols-outlined" style="font-size:20px;">close</span>
+            </button>
+          </div>
+
+          <div class="space-y-5">
+            <!-- Stage -->
+            <div>
+              <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
+              <select id="panel-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
+                <option value="Cutting">Cutting</option>
+                <option value="Production">Production</option>
+                <option value="Packing">Packing</option>
+                <option value="Ready">Ready</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+
+            <!-- Details grid -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Style No</p>
+                <p id="panel-style-no" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Fabric</p>
+                <p id="panel-fabric" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Colour</p>
+                <p id="panel-colour" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Qty</p>
+                <p id="panel-qty" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Ex Factory</p>
+                <p id="panel-ex-factory" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+              <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+                <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">Invoice No</p>
+                <p id="panel-invoice" class="text-xs font-semibold text-on-surface">—</p>
+              </div>
+            </div>
+
+            <!-- Notes -->
+            <div>
+              <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Production Notes</label>
+              <textarea id="panel-notes" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary h-24 placeholder:italic resize-none" placeholder="Add notes here..."></textarea>
+            </div>
+
+            <!-- Save error -->
+            <div id="panel-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2"></div>
+
+            <!-- Actions -->
+            <div class="space-y-2.5 pt-1">
+              <button id="update-btn" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">
+                Update Order
+              </button>
+              <button id="docket-btn" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">
+                Open Docket
+              </button>
+              <button id="packing-btn" class="hidden w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">
+                Open Packing List
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://sfwnmddlmiprvsoxbatz.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_duNC--xXncN1Et3VedYPNw_oaBtBcu1'
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+let allOrders = []
+let selectedOrderId = null
+let currentTab = 'active'
+let searchQuery = ''
+let realtimeChannel = null
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) showDashboard(session.user)
+})
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session) showDashboard(session.user)
+  if (event === 'SIGNED_OUT') showLogin()
+})
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const btn = document.getElementById('login-btn')
+  const btnText = document.getElementById('login-btn-text')
+  const errEl = document.getElementById('login-error')
+  errEl.classList.add('hidden')
+  btnText.textContent = 'Signing in...'
+  btn.disabled = true
+
+  const { error } = await sb.auth.signInWithPassword({
+    email: document.getElementById('email').value,
+    password: document.getElementById('password').value,
+  })
+
+  btn.disabled = false
+  btnText.textContent = 'Sign In'
+
+  if (error) {
+    errEl.textContent = error.message
+    errEl.classList.remove('hidden')
+  }
+})
+
+document.getElementById('sign-out-btn').addEventListener('click', () => sb.auth.signOut())
+
+// ── Screen toggles ───────────────────────────────────────────────────────────
+
+function showLogin() {
+  document.getElementById('login-screen').classList.remove('hidden')
+  document.getElementById('dashboard-screen').classList.add('hidden')
+  if (realtimeChannel) sb.removeChannel(realtimeChannel)
+}
+
+async function showDashboard(user) {
+  document.getElementById('login-screen').classList.add('hidden')
+  document.getElementById('dashboard-screen').classList.remove('hidden')
+  document.getElementById('dashboard-screen').classList.add('flex')
+
+  const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).single()
+  document.getElementById('user-role').textContent = profile?.role ? `Role: ${profile.role}` : user.email
+
+  await loadOrders()
+  subscribeRealtime()
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+
+async function loadOrders() {
+  const { data, error } = await sb.from('orders').select('*').order('po', { ascending: true })
+  if (!error) {
+    allOrders = data || []
+    renderOrders()
+    updateKpis()
+  }
+}
+
+function subscribeRealtime() {
+  realtimeChannel = sb.channel('orders-web')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+      if (payload.eventType === 'INSERT') {
+        if (!allOrders.find(o => o.id === payload.new.id)) allOrders.push(payload.new)
+      } else if (payload.eventType === 'UPDATE') {
+        const idx = allOrders.findIndex(o => o.id === payload.new.id)
+        if (idx >= 0) allOrders[idx] = payload.new
+        if (selectedOrderId === payload.new.id) populatePanel(payload.new)
+      } else if (payload.eventType === 'DELETE') {
+        allOrders = allOrders.filter(o => o.id !== payload.old.id)
+        if (selectedOrderId === payload.old.id) closePanel()
+      }
+      renderOrders()
+      updateKpis()
+    })
+    .subscribe()
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+
+function stageClass(stage) {
+  switch (stage) {
+    case 'Cutting':    return 'stage-cutting'
+    case 'Production': return 'stage-production'
+    case 'Packing':    return 'stage-packing'
+    case 'Ready':      return 'stage-ready'
+    case 'Completed':  return 'stage-completed'
+    default:           return 'stage-production'
+  }
+}
+
+function getVisible() {
+  const base = currentTab === 'active'
+    ? allOrders.filter(o => o.stage !== 'Completed')
+    : allOrders.filter(o => o.stage === 'Completed')
+
+  if (!searchQuery) return base
+  const q = searchQuery.toLowerCase()
+  return base.filter(o =>
+    [o.po, o.style, o.style_no, o.colour, o.description, o.fabric, o.notes, o.company]
+      .some(f => (f || '').toLowerCase().includes(q))
+  )
+}
+
+function renderOrders() {
+  const body = document.getElementById('orders-body')
+  const visible = getVisible()
+
+  if (!visible.length) {
+    body.innerHTML = `<div class="flex flex-col items-center justify-center py-20 text-sm text-on-surface-variant gap-2">
+      <span class="material-symbols-outlined text-3xl opacity-30">inbox</span>
+      <span>${searchQuery ? 'No matching orders' : currentTab === 'active' ? 'No active orders' : 'No completed orders'}</span>
+    </div>`
+    return
+  }
+
+  body.innerHTML = visible.map((o, i) => {
+    const isSelected = o.id === selectedOrderId
+    return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${isSelected ? 'row-selected' : ''}"
+      style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;"
+      onclick="selectOrder('${o.id}')">
+      <span class="text-xs font-semibold text-on-surface">${o.po || '—'}</span>
+      <span class="text-xs text-on-surface pr-3 truncate">${o.description || o.style || '—'}</span>
+      <span class="text-xs text-on-surface-variant truncate">${o.style_no || o.style || '—'}</span>
+      <span class="text-xs text-on-surface-variant truncate">${o.colour || '—'}</span>
+      <span class="text-xs text-on-surface">${o.qty ?? '—'}</span>
+      <span class="text-xs text-on-surface-variant">${o.ex_factory || '—'}</span>
+      <div><span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage || '—'}</span></div>
+      <span class="text-xs text-on-surface-variant italic truncate pr-4">${o.notes || '—'}</span>
+      <div>${o.docket_url
+        ? `<button class="text-on-surface-variant hover:text-primary transition-colors" onclick="event.stopPropagation();openUrl('${o.docket_url}')">
+            <span class="material-symbols-outlined" style="font-size:18px;">description</span>
+           </button>`
+        : '<span class="text-on-surface-variant/30 text-xs">—</span>'
+      }</div>
+    </div>`
+  }).join('')
+}
+
+function updateKpis() {
+  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const completed = allOrders.filter(o => o.stage === 'Completed')
+  const ready = active.filter(o => o.stage === 'Ready')
+  document.getElementById('kpi-active').textContent = active.length
+  document.getElementById('kpi-ready').textContent = ready.length
+  document.getElementById('kpi-completed').textContent = completed.length
+  document.getElementById('tab-active-count').textContent = `(${active.length})`
+  document.getElementById('tab-completed-count').textContent = `(${completed.length})`
+}
+
+// ── Panel ────────────────────────────────────────────────────────────────────
+
+function selectOrder(id) {
+  const order = allOrders.find(o => o.id === id)
+  if (!order) return
+  selectedOrderId = id
+  populatePanel(order)
+  openPanel()
+  renderOrders()
+}
+
+function populatePanel(o) {
+  document.getElementById('panel-po').textContent = `PO ${o.po || '—'}`
+  document.getElementById('panel-stage').value = o.stage || 'Cutting'
+  document.getElementById('panel-style-no').textContent = o.style_no || o.style || '—'
+  document.getElementById('panel-fabric').textContent = o.fabric || '—'
+  document.getElementById('panel-colour').textContent = o.colour || '—'
+  document.getElementById('panel-qty').textContent = o.qty ?? '—'
+  document.getElementById('panel-ex-factory').textContent = o.ex_factory || '—'
+  document.getElementById('panel-invoice').textContent = o.invoice_no || '—'
+  document.getElementById('panel-notes').value = o.notes || ''
+  document.getElementById('panel-error').classList.add('hidden')
+
+  const docketBtn = document.getElementById('docket-btn')
+  docketBtn.onclick = () => openUrl(o.docket_url)
+  docketBtn.disabled = !o.docket_url
+  docketBtn.classList.toggle('opacity-40', !o.docket_url)
+
+  const packingBtn = document.getElementById('packing-btn')
+  if (o.packing_list_url) {
+    packingBtn.classList.remove('hidden')
+    packingBtn.onclick = () => openUrl(o.packing_list_url)
+  } else {
+    packingBtn.classList.add('hidden')
+  }
+}
+
+function openPanel() {
+  const panel = document.getElementById('panel')
+  panel.style.width = '352px'
+}
+
+function closePanel() {
+  document.getElementById('panel').style.width = '0'
+  selectedOrderId = null
+  renderOrders()
+}
+
+document.getElementById('panel-close').addEventListener('click', closePanel)
+
+document.getElementById('update-btn').addEventListener('click', async () => {
+  if (!selectedOrderId) return
+  const btn = document.getElementById('update-btn')
+  const errEl = document.getElementById('panel-error')
+  errEl.classList.add('hidden')
+  btn.textContent = 'Saving...'
+  btn.disabled = true
+
+  const { data: { user } } = await sb.auth.getUser()
+  const { error } = await sb.from('orders').update({
+    stage: document.getElementById('panel-stage').value,
+    notes: document.getElementById('panel-notes').value.trim(),
+    updated_by: user?.id ?? null,
+  }).eq('id', selectedOrderId)
+
+  btn.textContent = 'Update Order'
+  btn.disabled = false
+
+  if (error) {
+    errEl.textContent = error.message
+    errEl.classList.remove('hidden')
+  }
+})
+
+// ── Tabs & Search ────────────────────────────────────────────────────────────
+
+document.getElementById('tab-active').addEventListener('click', () => {
+  currentTab = 'active'
+  document.getElementById('tab-active').classList.add('border-primary', 'text-on-surface')
+  document.getElementById('tab-active').classList.remove('text-on-surface-variant', 'border-transparent')
+  document.getElementById('tab-completed').classList.remove('border-primary', 'text-on-surface')
+  document.getElementById('tab-completed').classList.add('text-on-surface-variant', 'border-transparent')
+  renderOrders()
+})
+
+document.getElementById('tab-completed').addEventListener('click', () => {
+  currentTab = 'completed'
+  document.getElementById('tab-completed').classList.add('border-primary', 'text-on-surface')
+  document.getElementById('tab-completed').classList.remove('text-on-surface-variant', 'border-transparent')
+  document.getElementById('tab-active').classList.remove('border-primary', 'text-on-surface')
+  document.getElementById('tab-active').classList.add('text-on-surface-variant', 'border-transparent')
+  renderOrders()
+})
+
+document.getElementById('search-input').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim()
+  renderOrders()
+})
+
+// ── Util ─────────────────────────────────────────────────────────────────────
+
+function openUrl(url) {
+  if (!url) return
+  const u = url.startsWith('http') ? url : `https://${url}`
+  window.open(u, '_blank', 'noopener')
+}
+</script>
+</body>
+</html>

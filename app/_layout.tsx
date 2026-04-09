@@ -1,31 +1,69 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native'
-import { Stack } from 'expo-router'
-import { StatusBar } from 'expo-status-bar'
-import 'react-native-reanimated'
+import { useEffect } from 'react'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
+import { Stack, usePathname, useRouter } from 'expo-router'
+import { ThemeProvider, useAppTheme } from '../providers/ThemeProvider'
+import { AuthProvider, useAuth } from '../providers/AuthProvider'
 
-import { useColorScheme } from '@/hooks/use-color-scheme'
-import { AuthProvider } from '../providers/AuthProvider'
+function RootNavigator() {
+  const { theme } = useAppTheme()
+  const { session, loading } = useAuth()
+  const pathname = usePathname()
+  const router = useRouter()
 
-export const unstable_settings = {
-  anchor: '(tabs)',
+  useEffect(() => {
+    if (loading) return
+
+    const onLoginScreen = pathname === '/login'
+
+    if (!session && !onLoginScreen) {
+      router.replace('/login')
+      return
+    }
+
+    if (session && onLoginScreen) {
+      router.replace('/')
+    }
+  }, [loading, pathname, router, session])
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.loadingScreen,
+          { backgroundColor: theme === 'dark' ? '#0f1115' : '#ffffff' },
+        ]}
+      >
+        <ActivityIndicator size="large" color={theme === 'dark' ? '#60a5fa' : '#005EB8'} />
+      </View>
+    )
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: theme === 'dark' ? '#0f1115' : '#ffffff',
+        },
+      }}
+    />
+  )
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme()
-
   return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="modal"
-            options={{ presentation: 'modal', title: 'Modal' }}
-          />
-        </Stack>
-        <StatusBar style="auto" />
+      <ThemeProvider>
+        <RootNavigator />
       </ThemeProvider>
     </AuthProvider>
   )
 }
+
+const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})
