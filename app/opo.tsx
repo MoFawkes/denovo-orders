@@ -68,7 +68,18 @@ function getStageRank(stage: string | null): number {
   }
 }
 
+function parseExFactory(val: string | null): number {
+  if (!val) return 0
+  const d = new Date(val)
+  return isNaN(d.getTime()) ? 0 : d.getTime()
+}
+
 function sortOrders(a: Order, b: Order) {
+  // Completed orders: newest ex-factory date first
+  if (a.stage === 'Completed' && b.stage === 'Completed') {
+    return parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory)
+  }
+
   const stageDiff = getStageRank(a.stage) - getStageRank(b.stage)
   if (stageDiff !== 0) return stageDiff
 
