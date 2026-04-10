@@ -1158,10 +1158,10 @@ function extractPpuValue(text) {
   return parseFloat(matches[matches.length - 1][1])
 }
 
-// Is this a D5/style_no (e.g. cno7708) vs a buyer SKU (e.g. CNQ4218)?
-// D5s have no slash and typically start lowercase
+// Is this a D5/style_no (e.g. D5723) vs a buyer SKU (e.g. cno7708, CNQ4218)?
+// D5 numbers always start with D followed by digits
 function isD5StyleNo(ref) {
-  return ref && !ref.includes('/') && /^[a-z]/i.test(ref) && !/^[A-Z]{2,}/.test(ref)
+  return ref && /^D\d+$/i.test(ref.trim())
 }
 
 // Look up style_no from style_costings by matching description keywords
@@ -1248,14 +1248,16 @@ async function nextDocketNumber() {
 }
 
 // ── CMT lookup ────────────────────────────────────────────────────────────────
-async function lookupCmt(styleNo, skuFallback) {
+async function lookupCmt(styleNo, sku) {
+  // Try by style_no first (D5 number)
   if (styleNo) {
-    const { data } = await sb.from('style_costings').select('cmt').eq('style_no', styleNo).single()
-    if (data?.cmt != null) return data.cmt
+    const { data } = await sb.from('style_costings').select('cmt').ilike('style_no', styleNo).limit(1)
+    if (data?.[0]?.cmt != null) return data[0].cmt
   }
-  if (skuFallback) {
-    const { data } = await sb.from('style_costings').select('cmt').eq('style_no', skuFallback).single()
-    if (data?.cmt != null) return data.cmt
+  // Try by style/SKU (case-insensitive) — PLT supplierRef is the SKU
+  if (sku) {
+    const { data } = await sb.from('style_costings').select('cmt').ilike('style', sku).limit(1)
+    if (data?.[0]?.cmt != null) return data[0].cmt
   }
   return null
 }
@@ -1385,11 +1387,13 @@ async function runImport() {
         skuForDb = Object.values(colourSkuMap)[0] || ''
         importLog(`   D5 style_no: ${styleNo} | SKU: ${skuForDb}`)
       } else {
-        // Buyer put SKU in supplierRef — look up real style_no from style_costings by description
-        skuForDb = supplierRef
-        styleNo = await lookupStyleNoByDesc(baseDesc)
-        if (styleNo) importLog(`   SKU: ${skuForDb} | Style No (matched): ${styleNo}`, '#86efac')
-        else importLog(`   SKU: ${skuForDb} | Style No: not found by description`, '#fbbf24')
+        // supplierRef is the SKU (e.g. cno7708 = CNO7708) — look up style_no from style_costings
+        skuForDb = supplierRef.toUpperCase()
+        // Try direct SKU match first, then description fallback
+        const { data: skuMatch } = await sb.from('style_costings').select('style_no').ilike('style', supplierRef).limit(1)
+        styleNo = skuMatch?.[0]?.style_no || await lookupStyleNoByDesc(baseDesc)
+        if (styleNo) importLog(`   SKU: ${skuForDb} | Style No: ${styleNo}`, '#86efac')
+        else importLog(`   SKU: ${skuForDb} | Style No: not found`, '#fbbf24')
       }
 
       // size table: colour -> size -> qty
