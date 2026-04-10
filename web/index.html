@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
@@ -1292,50 +1292,46 @@ async function lookupCosting(sku, styleNo) {
   return null
 }
 
-// ── Excel docket generation (SheetJS with formatting) ────────────────────────
-function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
-  const wb = XLSX.utils.book_new()
+// ── Excel docket generation (ExcelJS with full formatting) ───────────────────
+async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
+  const wb = new ExcelJS.Workbook()
 
-  // Style helpers
-  const thin = { style: 'thin' }
+  const thin = { style: 'thin', color: { argb: 'FF000000' } }
   const border = { top: thin, bottom: thin, left: thin, right: thin }
-  const grayFill = { patternType: 'solid', fgColor: { rgb: 'E5E5E5' } }
-  const fontTitle  = { name: 'Times New Roman', bold: true,  sz: 18 }
-  const fontBold   = { name: 'Times New Roman', bold: true,  sz: 12 }
-  const fontNormal = { name: 'Times New Roman', bold: false, sz: 12 }
-  const center = { horizontal: 'center', vertical: 'center' }
-  const left   = { horizontal: 'left',   vertical: 'center' }
+  const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E5E5' } }
 
-  function cell(v, font, align, bord, fill) {
-    const c = { v, t: typeof v === 'number' ? 'n' : 's', s: {} }
-    if (font)  c.s.font = font
-    if (align) c.s.alignment = align
-    if (bord)  c.s.border = bord
-    if (fill)  c.s.fill = fill
-    return c
-  }
+  function applyBorder(cell) { cell.border = border }
+  function applyGray(cell) { cell.fill = grayFill; applyBorder(cell) }
 
   for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes } of rows) {
     const skuDisplay = Object.entries(colourSkuMap).map(([c, s]) => s ? `${c}: ${s}` : `${c}: (blank)`).join(' | ')
-    const displaySizes = sizes.slice(0, 13) // max 13 size cols
+    const displaySizes = sizes.slice(0, 13)
     const tableWidth = Math.max(2, displaySizes.length + 1)
-    const ws = {}
-    const merges = []
-    const rowHeights = []
 
-    let r = 0 // 0-indexed row
+    const ws = wb.addWorksheet(String(styleNo || 'Sheet').slice(0, 31))
+    ws.pageSetup.orientation = 'landscape'
+    ws.pageSetup.fitToWidth = 1
+    ws.pageSetup.fitToHeight = 0
+    ws.pageSetup.margins = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0, footer: 0 }
 
-    // ── Row 0: Title (merged) ─────────────────────────────────────────────────
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(`DOCKET SHEET #${docketNumber}`, fontTitle, center, border)
-    for (let c = 1; c < tableWidth; c++) ws[XLSX.utils.encode_cell({ r, c })] = cell('', fontTitle, center, border)
-    merges.push({ s: { r, c: 0 }, e: { r, c: tableWidth - 1 } })
-    rowHeights[r] = { hpt: 40 }
-    r++
+    ws.columns = [
+      { width: 20 },
+      { width: 45 },
+      ...displaySizes.map(() => ({ width: 15 })),
+    ]
 
-    // ── Row 1: blank ──────────────────────────────────────────────────────────
-    r++
+    // ── Title row ─────────────────────────────────────────────────────────────
+    const titleRow = ws.addRow([`DOCKET SHEET #${docketNumber}`])
+    titleRow.height = 40
+    ws.mergeCells(titleRow.number, 1, titleRow.number, tableWidth)
+    const titleCell = titleRow.getCell(1)
+    titleCell.font = { name: 'Times New Roman', bold: true, size: 18 }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    for (let c = 1; c <= tableWidth; c++) applyBorder(titleRow.getCell(c))
 
-    // ── Metadata rows ─────────────────────────────────────────────────────────
+    ws.addRow([]) // blank
+
+    // ── Metadata ──────────────────────────────────────────────────────────────
     const meta = [
       ['DATE:', dateOrdered],
       ['EX-FACTORY DATE:', exFactory],
@@ -1347,73 +1343,82 @@ function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fab
       ['FABRICATION:', fabrication],
     ]
     for (const [label, value] of meta) {
-      ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(label, fontBold, left, border)
-      ws[XLSX.utils.encode_cell({ r, c: 1 })] = cell(String(value || ''), fontNormal, left, border)
-      rowHeights[r] = { hpt: 26 }
-      r++
+      const row = ws.addRow([label, String(value || '')])
+      row.height = 26
+      const lc = row.getCell(1)
+      const vc = row.getCell(2)
+      lc.font = { name: 'Times New Roman', bold: true, size: 12 }
+      lc.alignment = { horizontal: 'left', vertical: 'middle' }
+      vc.font = { name: 'Times New Roman', bold: false, size: 12 }
+      vc.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
+      applyBorder(lc); applyBorder(vc)
     }
 
-    r++ // blank row before table
+    ws.addRow([]) // blank before table
 
-    // ── SIZE header row ───────────────────────────────────────────────────────
-    const sizeHeaderRow = r
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('SIZE', fontBold, center, border, grayFill)
-    displaySizes.forEach((sz, i) => {
-      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell(sz, fontBold, center, border, grayFill)
+    // ── SIZE header ───────────────────────────────────────────────────────────
+    const sizeRow = ws.addRow(['SIZE', ...displaySizes])
+    sizeRow.height = 40
+    sizeRow.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > tableWidth) return
+      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      applyGray(cell)
     })
-    rowHeights[r] = { hpt: 40 }
-    r++
 
-    // ── Quantity rows per colour ──────────────────────────────────────────────
+    // ── Colour / qty rows ─────────────────────────────────────────────────────
     for (const [colour, qtyMap] of Object.entries(sizeTable)) {
-      ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(colour, fontBold, center, border)
-      displaySizes.forEach((sz, i) => {
-        ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell(qtyMap[sz] || 0, fontNormal, center, border)
+      const qtyRow = ws.addRow([colour, ...displaySizes.map(s => qtyMap[s] || 0)])
+      qtyRow.height = 30
+      qtyRow.getCell(1).font = { name: 'Times New Roman', bold: true, size: 12 }
+      qtyRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+      applyBorder(qtyRow.getCell(1))
+      displaySizes.forEach((_, i) => {
+        const c = qtyRow.getCell(i + 2)
+        c.font = { name: 'Times New Roman', bold: false, size: 12 }
+        c.alignment = { horizontal: 'center', vertical: 'middle' }
+        applyBorder(c)
       })
-      rowHeights[r] = { hpt: 30 }
-      r++
     }
 
     // ── Cut row ───────────────────────────────────────────────────────────────
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('Cut', fontBold, center, border, grayFill)
-    displaySizes.forEach((_, i) => {
-      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell('', fontNormal, center, border, grayFill)
+    const cutRow = ws.addRow(['Cut', ...displaySizes.map(() => '')])
+    cutRow.height = 40
+    cutRow.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > tableWidth) return
+      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      applyGray(cell)
     })
-    rowHeights[r] = { hpt: 40 }
-    r++
 
-    r++ // blank
+    ws.addRow([]) // blank
 
     // ── Packed Qty row ────────────────────────────────────────────────────────
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('Packed Qty', fontBold, center, border, grayFill)
-    displaySizes.forEach((_, i) => {
-      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell('', fontNormal, center, border, grayFill)
+    const packedRow = ws.addRow(['Packed Qty', ...displaySizes.map(() => '')])
+    packedRow.height = 40
+    packedRow.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > tableWidth) return
+      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      applyGray(cell)
     })
-    rowHeights[r] = { hpt: 40 }
-    r++
 
-    r++ // blank
-    r++ // blank
+    ws.addRow([]) // blank
+    ws.addRow([]) // blank
 
     // ── Total row (merged) ────────────────────────────────────────────────────
     const totalParts = Object.entries(colourTotals).map(([c, q]) => `${c} ${q}`).join(' | ')
-    const totalText = `TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(totalText, fontBold, center, border)
-    for (let c = 1; c < tableWidth; c++) ws[XLSX.utils.encode_cell({ r, c })] = cell('', fontBold, center, border)
-    merges.push({ s: { r, c: 0 }, e: { r, c: tableWidth - 1 } })
-    rowHeights[r] = { hpt: 34 }
-
-    // ── Sheet settings ────────────────────────────────────────────────────────
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r, c: tableWidth - 1 } })
-    ws['!merges'] = merges
-    ws['!rows'] = rowHeights
-    ws['!cols'] = [{ wch: 20 }, { wch: 45 }, ...displaySizes.map(() => ({ wch: 15 }))]
-    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 }
-    ws['!margins'] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5 }
-
-    XLSX.utils.book_append_sheet(wb, ws, String(styleNo || 'Sheet').slice(0, 31))
+    const totalRow = ws.addRow([`TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`])
+    totalRow.height = 34
+    ws.mergeCells(totalRow.number, 1, totalRow.number, tableWidth)
+    const tc = totalRow.getCell(1)
+    tc.font = { name: 'Times New Roman', bold: true, size: 12 }
+    tc.alignment = { horizontal: 'center', vertical: 'middle' }
+    for (let c = 1; c <= tableWidth; c++) applyBorder(totalRow.getCell(c))
   }
-  return wb
+
+  const buffer = await wb.xlsx.writeBuffer()
+  return new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
 }
 
 // ── Main import runner ────────────────────────────────────────────────────────
@@ -1532,9 +1537,7 @@ async function runImport() {
 
     // 6) Generate Excel docket
     importLog('\n📁 Generating docket workbook…')
-    const wb = buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, fabrication, descDisplay, docketRows)
-    const wbArrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-    const docketBlob = new Blob([wbArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const docketBlob = await buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, fabrication, descDisplay, docketRows)
     const docketFileName = `${docketNumber}_${poNumber}.xlsx`
 
     // 7) Upload docket to Supabase Storage (optional — continues even if upload fails)
