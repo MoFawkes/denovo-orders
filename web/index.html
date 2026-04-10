@@ -208,9 +208,10 @@
       <!-- Desktop Table -->
       <div class="hidden md:block flex-1 overflow-auto bg-surface-container-lowest">
         <div class="min-w-[900px]">
-          <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;">
+          <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 80px 110px 100px 70px 110px 120px 1fr 70px;">
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">PO</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Description</span>
+            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Style No</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">SKU</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Colour</span>
             <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Qty</span>
@@ -585,11 +586,12 @@ function renderOrders() {
     else body.innerHTML = visible.map(o => {
       const sel = o.id === selectedOrderId
       return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
-        style="grid-template-columns:90px 1fr 100px 100px 70px 110px 120px 1fr 70px;"
+        style="grid-template-columns:90px 1fr 80px 110px 100px 70px 110px 120px 1fr 70px;"
         onclick="selectOrder('${o.id}')">
         <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
-        <span class="text-xs text-on-surface pr-3 truncate">${o.description||o.style||'—'}</span>
-        <span class="text-xs text-on-surface-variant truncate">${o.style_no||o.style||'—'}</span>
+        <span class="text-xs text-on-surface pr-3 truncate">${o.description||'—'}</span>
+        <span class="text-xs font-mono text-on-surface-variant truncate">${o.style_no||'—'}</span>
+        <span class="text-xs font-mono text-primary truncate">${o.style||'—'}</span>
         <span class="text-xs text-on-surface-variant truncate">${o.colour||'—'}</span>
         <span class="text-xs text-on-surface">${o.qty??'—'}</span>
         <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
@@ -615,6 +617,7 @@ function renderOrders() {
         <div class="px-4 pb-3">
           <p class="text-sm text-on-surface mb-1 leading-snug">${o.description||'—'}</p>
           <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            ${o.style_no ? `<span class="text-xs font-mono text-on-surface-variant">${o.style_no}</span>` : ''}
             ${o.style ? `<span class="text-xs font-mono font-semibold text-primary">${o.style}</span>` : ''}
             <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
             <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
@@ -647,6 +650,7 @@ function orderDetailHtml(o, idPrefix) {
       <div class="rounded-lg overflow-hidden border border-outline-variant/20 mb-4 cursor-pointer" onclick="document.getElementById('panel-image-full').classList.remove('hidden');document.getElementById('panel-image-full-img').src='${o.image_url}'">
         <img src="${o.image_url}" alt="Style" class="w-full object-cover max-h-52"/>
       </div>` : ''}
+    ${o.description ? `<p class="text-sm font-semibold text-on-surface mb-3 leading-snug">${o.description}</p>` : ''}
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
       <select id="${idPrefix}-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
@@ -654,7 +658,7 @@ function orderDetailHtml(o, idPrefix) {
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-4">
-      ${[['SKU', o.style||o.style_no],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
+      ${[['Style No', o.style_no],['SKU', o.style],['PPU', o.ppu != null ? '£'+parseFloat(o.ppu).toFixed(2) : null],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
         <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
           <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">${l}</p>
           <p class="text-xs font-semibold text-on-surface">${v||'—'}</p>
@@ -1147,10 +1151,37 @@ function extractFirstDate(label, text) {
   return m ? m[1] : ''
 }
 
-function extractPpu(text) {
+function extractPpuValue(text) {
+  // Match "Each 9.10" or "Each £9.10"
   const matches = [...text.matchAll(/\bEach\s+£?\s*(\d+(?:\.\d{1,2})?)\b/gi)]
-  if (!matches.length) return '£0.00'
-  return '£' + parseFloat(matches[matches.length - 1][1]).toFixed(2)
+  if (!matches.length) return null
+  return parseFloat(matches[matches.length - 1][1])
+}
+
+// Is this a D5/style_no (e.g. cno7708) vs a buyer SKU (e.g. CNQ4218)?
+// D5s have no slash and typically start lowercase
+function isD5StyleNo(ref) {
+  return ref && !ref.includes('/') && /^[a-z]/i.test(ref) && !/^[A-Z]{2,}/.test(ref)
+}
+
+// Look up style_no from style_costings by matching description keywords
+async function lookupStyleNoByDesc(description) {
+  if (!description) return null
+  // Pull significant words (4+ chars, skip colour/size words)
+  const skipWords = new Set(['white','black','blue','red','green','pink','grey','gray','beige','brown','cream','maxi','mini','midi','with','from','that','this','petite','plus'])
+  const keywords = description.split(/\s+/).filter(w => w.length >= 4 && !skipWords.has(w.toLowerCase()))
+  if (!keywords.length) return null
+  // Try matching on most distinctive words
+  for (const kw of keywords.slice(0, 3)) {
+    const { data } = await sb.from('style_costings').select('style_no').ilike('description', `%${kw}%`).limit(5)
+    if (data && data.length === 1) return data[0].style_no // unique match
+  }
+  // Try two-keyword combo
+  if (keywords.length >= 2) {
+    const { data } = await sb.from('style_costings').select('style_no').ilike('description', `%${keywords[0]}%`).ilike('description', `%${keywords[1]}%`).limit(5)
+    if (data && data.length === 1) return data[0].style_no
+  }
+  return null
 }
 
 function ukDateToIso(d) {
@@ -1217,9 +1248,16 @@ async function nextDocketNumber() {
 }
 
 // ── CMT lookup ────────────────────────────────────────────────────────────────
-async function lookupCmt(styleNo) {
-  const { data } = await sb.from('style_costings').select('cmt').eq('style_no', styleNo).single()
-  return data?.cmt ?? null
+async function lookupCmt(styleNo, skuFallback) {
+  if (styleNo) {
+    const { data } = await sb.from('style_costings').select('cmt').eq('style_no', styleNo).single()
+    if (data?.cmt != null) return data.cmt
+  }
+  if (skuFallback) {
+    const { data } = await sb.from('style_costings').select('cmt').eq('style_no', skuFallback).single()
+    if (data?.cmt != null) return data.cmt
+  }
+  return null
 }
 
 // ── Excel docket generation (SheetJS) ────────────────────────────────────────
@@ -1281,8 +1319,10 @@ async function runImport() {
     const pdfText = await extractPdfText(importFiles.pdf)
     const dateOrdered = extractFirstDate('Date Order Placed', pdfText)
     const exFactoryRaw = extractFirstDate('Ex Factory Date', pdfText)
+    const ppu = extractPpuValue(pdfText)
     importLog(`   Date ordered: ${dateOrdered || '(not found)'}`)
     importLog(`   Ex-factory:   ${exFactoryRaw || '(not found)'}`)
+    if (ppu) importLog(`   PPU: £${ppu.toFixed(2)}`)
 
     // 2) Parse CSV
     importLog('📊 Reading CSV…')
@@ -1324,16 +1364,32 @@ async function runImport() {
     const docketRows = []
     const dbRows = []
 
-    for (const [styleNo, group] of Object.entries(groups)) {
-      importLog(`\n🧵 Style: ${styleNo}`)
+    for (const [supplierRef, group] of Object.entries(groups)) {
+      importLog(`\n🧵 Supplier Ref: ${supplierRef}`)
       const colourCol = pickColourCol(group[0])
 
-      // colour -> sku map
+      // colour -> sku map (SKU = first part of productCode before '/')
       const colourSkuMap = {}
       for (const r of group) {
         const colour = (colourCol ? r[colourCol] : extractColourFromName(r['productName'])).toUpperCase()
-        const sku = skuFromProductCode(r['productCode'] || '')
+        const sku = skuFromProductCode(r['productCode'] || r['productcode'] || '')
         if (!colourSkuMap[colour]) colourSkuMap[colour] = sku
+      }
+
+      // Determine style_no (D5) vs SKU
+      // If supplierRef looks like a D5 (e.g. cno7708) → style_no = supplierRef, style = from productCode
+      // If supplierRef looks like a SKU → style = supplierRef, look up style_no by description
+      let styleNo, skuForDb
+      if (isD5StyleNo(supplierRef)) {
+        styleNo = supplierRef
+        skuForDb = Object.values(colourSkuMap)[0] || ''
+        importLog(`   D5 style_no: ${styleNo} | SKU: ${skuForDb}`)
+      } else {
+        // Buyer put SKU in supplierRef — look up real style_no from style_costings by description
+        skuForDb = supplierRef
+        styleNo = await lookupStyleNoByDesc(baseDesc)
+        if (styleNo) importLog(`   SKU: ${skuForDb} | Style No (matched): ${styleNo}`, '#86efac')
+        else importLog(`   SKU: ${skuForDb} | Style No: not found by description`, '#fbbf24')
       }
 
       // size table: colour -> size -> qty
@@ -1356,17 +1412,17 @@ async function runImport() {
       const totalUnits = Object.values(colourTotals).reduce((a, b) => a + b, 0)
       importLog(`   ${Object.keys(colourTotals).join(', ')} — ${totalUnits} total`)
 
-      docketRows.push({ styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes })
+      docketRows.push({ styleNo: styleNo || skuForDb, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes })
 
       // DB rows per colour
       for (const [colour, qty] of Object.entries(colourTotals)) {
-        const sku = colourSkuMap[colour] || ''
+        const sku = colourSkuMap[colour] || skuForDb
         const imageUrl = buildPltImageUrl(sku, colour)
-        const cmt = await lookupCmt(styleNo)
-        if (cmt) importLog(`   CMT for ${styleNo}: £${cmt.toFixed(2)}`, '#86efac')
-        else importLog(`   CMT not found for ${styleNo} — add to style_costings`, '#fca5a5')
+        const cmt = await lookupCmt(styleNo, skuForDb)
+        if (cmt) importLog(`   CMT: £${cmt.toFixed(2)}`, '#86efac')
+        else importLog(`   CMT not found for ${styleNo || skuForDb} — add to style_costings`, '#fca5a5')
 
-        dbRows.push({ styleNo, sku, colour, qty, imageUrl, cmt })
+        dbRows.push({ styleNo, skuForDb: sku, colour, qty, imageUrl, cmt })
       }
     }
 
@@ -1395,14 +1451,15 @@ async function runImport() {
     // 8) Upsert orders to DB
     importLog('\n💾 Saving orders to database…')
     const created = []
-    for (const { styleNo, sku, colour, qty, imageUrl, cmt } of dbRows) {
+    for (const { styleNo, skuForDb, colour, qty, imageUrl, cmt } of dbRows) {
+      const colourTitle = colour.charAt(0) + colour.slice(1).toLowerCase()
       const row = {
         source_tab: 'OPO',
         company: 'Sourcing',
         po: poNumber,
-        style_no: styleNo,
-        style: sku,
-        description: `${colour.charAt(0)+colour.slice(1).toLowerCase()} ${baseDesc}`.trim(),
+        style_no: styleNo || null,
+        style: skuForDb,
+        description: `${colourTitle} ${baseDesc}`.trim(),
         fabric: fabrication,
         colour: colour,
         qty: qty,
@@ -1413,6 +1470,7 @@ async function runImport() {
         packing_list_url: '',
         stage: 'Cutting',
         image_url: imageUrl,
+        ppu: ppu ?? null,
       }
       if (cmt !== null) row.cmt = cmt
 
