@@ -97,6 +97,20 @@
   </div>
 </div>
 
+<!-- PACKING LIST MODAL -->
+<div id="packing-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface mb-1">Mark as Completed</h2>
+    <p class="text-xs text-on-surface-variant mb-4">Paste the packing list URL before completing this order.</p>
+    <label class="text-xs font-medium text-on-surface-variant uppercase tracking-wider block mb-1.5">Packing List URL</label>
+    <input id="packing-list-input" type="url" placeholder="https://..." class="w-full border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm text-on-surface focus:ring-1 focus:ring-primary mb-4"/>
+    <div class="flex gap-2">
+      <button onclick="cancelPackingModal()" class="flex-1 py-2.5 border border-outline-variant/40 rounded-lg text-xs font-bold uppercase text-on-surface-variant hover:bg-surface-container transition-all">Cancel</button>
+      <button onclick="confirmComplete()" class="flex-1 py-2.5 bg-primary text-on-primary rounded-lg text-xs font-bold uppercase shadow-sm hover:bg-primary-dim transition-all">Complete Order</button>
+    </div>
+  </div>
+</div>
+
 <!-- PDF VIEWER MODAL -->
 <div id="pdf-modal" class="hidden fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
   <div class="flex items-center justify-between px-6 py-3 bg-inverse-surface">
@@ -704,6 +718,29 @@ function closeMobileDrawer() {
   selectedOrderId = null
 }
 
+// ── Packing list modal ────────────────────────────────────────────────────────
+
+let _pendingComplete = null // { orderId, prefix, btn, origText }
+
+function cancelPackingModal() {
+  document.getElementById('packing-modal').classList.add('hidden')
+  if (_pendingComplete) {
+    const { btn, origText } = _pendingComplete
+    btn.textContent = origText
+    btn.disabled = false
+    _pendingComplete = null
+  }
+}
+
+async function confirmComplete() {
+  if (!_pendingComplete) return
+  const url = document.getElementById('packing-list-input').value.trim()
+  document.getElementById('packing-modal').classList.add('hidden')
+  const { orderId, prefix, btn, origText } = _pendingComplete
+  _pendingComplete = null
+  await doSaveOrder(orderId, prefix, btn, origText, url)
+}
+
 // ── Save order ────────────────────────────────────────────────────────────────
 
 async function saveOrder(orderId, prefix) {
@@ -718,16 +755,40 @@ async function saveOrder(orderId, prefix) {
   btn.textContent = 'Saving...'
   btn.disabled = true
 
+  const newStage = stageEl.value
+
+  // If completing, prompt for packing list first
+  if (newStage === 'Completed') {
+    const oldOrder = allOrders.find(o => o.id === orderId)
+    document.getElementById('packing-list-input').value = oldOrder?.packing_list_url || ''
+    _pendingComplete = { orderId, prefix, btn, origText }
+    document.getElementById('packing-modal').classList.remove('hidden')
+    document.getElementById('packing-list-input').focus()
+    return
+  }
+
+  await doSaveOrder(orderId, prefix, btn, origText, null)
+}
+
+async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
+  const stageEl = document.getElementById(`${prefix}-stage`)
+  const notesEl = document.getElementById(`${prefix}-notes`)
+  const errEl = document.getElementById(`${prefix}-error`)
+  errEl.classList.add('hidden')
+
   try {
     const { data: { user } } = await sb.auth.getUser()
     const oldOrder = allOrders.find(o => o.id === orderId)
     const newStage = stageEl.value
 
-    const { error } = await sb.from('orders').update({
+    const updatePayload = {
       stage: newStage,
       notes: notesEl.value.trim(),
       updated_by: user?.id ?? null,
-    }).eq('id', orderId)
+    }
+    if (packingListUrl !== null) updatePayload.packing_list_url = packingListUrl
+
+    const { error } = await sb.from('orders').update(updatePayload).eq('id', orderId)
 
     if (error) {
       console.error('saveOrder error:', error)
@@ -751,7 +812,7 @@ async function saveOrder(orderId, prefix) {
     // Update local data immediately (realtime may lag)
     const idx = allOrders.findIndex(o => o.id === orderId)
     if (idx >= 0) {
-      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim() }
+      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
       renderOrders(); updateKpis()
     }
 
@@ -764,7 +825,7 @@ async function saveOrder(orderId, prefix) {
     }, 2000)
 
   } catch (e) {
-    console.error('saveOrder exception:', e)
+    console.error('doSaveOrder exception:', e)
     errEl.textContent = '❌ Unexpected error: ' + e.message
     errEl.classList.remove('hidden')
     btn.textContent = origText
