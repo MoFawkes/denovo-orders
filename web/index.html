@@ -869,7 +869,11 @@ function openPdf(url, title) {
   const u = url.startsWith('http') ? url : `https://${url}`
   document.getElementById('pdf-modal-title').textContent = title || 'Document'
   document.getElementById('pdf-modal-download').href = u
-  document.getElementById('pdf-frame').src = u
+  // Excel files: use Microsoft Office Online viewer for preview
+  const isExcel = u.match(/\.xlsx?$/i)
+  document.getElementById('pdf-frame').src = isExcel
+    ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(u)}`
+    : u
   document.getElementById('pdf-modal').classList.remove('hidden')
 }
 
