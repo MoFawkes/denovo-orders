@@ -1247,17 +1247,17 @@ async function nextDocketNumber() {
   return max + 1
 }
 
-// ── CMT lookup ────────────────────────────────────────────────────────────────
-async function lookupCmt(styleNo, sku) {
-  // Try by style_no first (D5 number)
-  if (styleNo) {
-    const { data } = await sb.from('style_costings').select('cmt').ilike('style_no', styleNo).limit(1)
-    if (data?.[0]?.cmt != null) return data[0].cmt
-  }
-  // Try by style/SKU (case-insensitive) — PLT supplierRef is the SKU
+// ── Style costings lookup (returns { style_no, cmt, price } or null) ──────────
+async function lookupCosting(sku, styleNo) {
+  // 1) Try by SKU (style column) — most accurate
   if (sku) {
-    const { data } = await sb.from('style_costings').select('cmt').ilike('style', sku).limit(1)
-    if (data?.[0]?.cmt != null) return data[0].cmt
+    const { data } = await sb.from('style_costings').select('style_no, cmt, price').ilike('style', sku).limit(1)
+    if (data?.[0]) return data[0]
+  }
+  // 2) Try by D5 style_no directly
+  if (styleNo && isD5StyleNo(styleNo)) {
+    const { data } = await sb.from('style_costings').select('style_no, cmt, price').ilike('style_no', styleNo).limit(1)
+    if (data?.[0]) return data[0]
   }
   return null
 }
@@ -1378,23 +1378,15 @@ async function runImport() {
         if (!colourSkuMap[colour]) colourSkuMap[colour] = sku
       }
 
-      // Determine style_no (D5) vs SKU
-      // If supplierRef looks like a D5 (e.g. cno7708) → style_no = supplierRef, style = from productCode
-      // If supplierRef looks like a SKU → style = supplierRef, look up style_no by description
-      let styleNo, skuForDb
-      if (isD5StyleNo(supplierRef)) {
-        styleNo = supplierRef
-        skuForDb = Object.values(colourSkuMap)[0] || ''
-        importLog(`   D5 style_no: ${styleNo} | SKU: ${skuForDb}`)
-      } else {
-        // supplierRef is the SKU (e.g. cno7708 = CNO7708) — look up style_no from style_costings
-        skuForDb = supplierRef.toUpperCase()
-        // Try direct SKU match first, then description fallback
-        const { data: skuMatch } = await sb.from('style_costings').select('style_no').ilike('style', supplierRef).limit(1)
-        styleNo = skuMatch?.[0]?.style_no || await lookupStyleNoByDesc(baseDesc)
-        if (styleNo) importLog(`   SKU: ${skuForDb} | Style No: ${styleNo}`, '#86efac')
-        else importLog(`   SKU: ${skuForDb} | Style No: not found`, '#fbbf24')
-      }
+      // supplierRef is the PLT SKU (e.g. cno7708 → CNO7708)
+      // Look it up in style_costings by style column to get D5 style_no + CMT
+      const skuForDb = supplierRef.toUpperCase()
+      const costing = await lookupCosting(supplierRef, isD5StyleNo(supplierRef) ? supplierRef : null)
+      const styleNo = costing?.style_no || (isD5StyleNo(supplierRef) ? supplierRef : null)
+      const costingCmt = costing?.cmt ?? null
+
+      if (costing) importLog(`   Style No: ${styleNo} | CMT: £${(costingCmt||0).toFixed(2)}`, '#86efac')
+      else importLog(`   Style No: not found — add SKU ${skuForDb} to style_costings`, '#fca5a5')
 
       // size table: colour -> size -> qty
       const sizeTable = {}
@@ -1422,11 +1414,7 @@ async function runImport() {
       for (const [colour, qty] of Object.entries(colourTotals)) {
         const sku = colourSkuMap[colour] || skuForDb
         const imageUrl = buildPltImageUrl(sku, colour)
-        const cmt = await lookupCmt(styleNo, skuForDb)
-        if (cmt) importLog(`   CMT: £${cmt.toFixed(2)}`, '#86efac')
-        else importLog(`   CMT not found for ${styleNo || skuForDb} — add to style_costings`, '#fca5a5')
-
-        dbRows.push({ styleNo, skuForDb: sku, colour, qty, imageUrl, cmt })
+        dbRows.push({ styleNo, skuForDb: sku, colour, qty, imageUrl, cmt: costingCmt })
       }
     }
 
