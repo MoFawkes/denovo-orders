@@ -1316,16 +1316,20 @@ async function runImport() {
     const docketBlob = new Blob([wbArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const docketFileName = `${docketNumber}_${poNumber}.xlsx`
 
-    // 7) Upload docket to Supabase Storage
+    // 7) Upload docket to Supabase Storage (optional — continues even if upload fails)
     importLog('☁️  Uploading docket…')
     const storagePath = `${poNumber}/dockets/${docketFileName}`
+    let docketUrl = null
     const { error: uploadError } = await sb.storage.from('orders').upload(storagePath, docketBlob, {
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       upsert: true,
     })
-    if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
-    const docketUrl = sb.storage.from('orders').getPublicUrl(storagePath).data.publicUrl
-    importLog(`   Uploaded: ${docketFileName}`, '#86efac')
+    if (uploadError) {
+      importLog(`⚠️  Storage upload failed (${uploadError.message}) — orders will still be saved, docket URL will be empty.`, '#fbbf24')
+    } else {
+      docketUrl = sb.storage.from('orders').getPublicUrl(storagePath).data.publicUrl
+      importLog(`   Uploaded: ${docketFileName}`, '#86efac')
+    }
 
     // 8) Upsert orders to DB
     importLog('\n💾 Saving orders to database…')
