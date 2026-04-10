@@ -714,20 +714,62 @@ async function saveOrder(orderId, prefix) {
   errEl.classList.add('hidden')
 
   const btn = event.target
+  const origText = btn.textContent
   btn.textContent = 'Saving...'
   btn.disabled = true
 
-  const { data: { user } } = await sb.auth.getUser()
-  const { error } = await sb.from('orders').update({
-    stage: stageEl.value,
-    notes: notesEl.value.trim(),
-    updated_by: user?.id ?? null,
-  }).eq('id', orderId)
+  try {
+    const { data: { user } } = await sb.auth.getUser()
+    const oldOrder = allOrders.find(o => o.id === orderId)
+    const newStage = stageEl.value
 
-  btn.textContent = 'Update Order'
-  btn.disabled = false
+    const { error } = await sb.from('orders').update({
+      stage: newStage,
+      notes: notesEl.value.trim(),
+      updated_by: user?.id ?? null,
+    }).eq('id', orderId)
 
-  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden') }
+    if (error) {
+      console.error('saveOrder error:', error)
+      errEl.textContent = '❌ ' + error.message
+      errEl.classList.remove('hidden')
+      btn.textContent = origText
+      btn.disabled = false
+      return
+    }
+
+    // Insert order event if stage changed
+    if (oldOrder && oldOrder.stage !== newStage) {
+      await sb.from('order_events').insert({
+        order_id: orderId,
+        old_stage: oldOrder.stage,
+        new_stage: newStage,
+        changed_by: user?.id ?? null,
+      })
+    }
+
+    // Update local data immediately (realtime may lag)
+    const idx = allOrders.findIndex(o => o.id === orderId)
+    if (idx >= 0) {
+      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim() }
+      renderOrders(); updateKpis()
+    }
+
+    btn.textContent = '✓ Saved'
+    btn.style.background = '#16a34a'
+    setTimeout(() => {
+      btn.textContent = origText
+      btn.style.background = ''
+      btn.disabled = false
+    }, 2000)
+
+  } catch (e) {
+    console.error('saveOrder exception:', e)
+    errEl.textContent = '❌ Unexpected error: ' + e.message
+    errEl.classList.remove('hidden')
+    btn.textContent = origText
+    btn.disabled = false
+  }
 }
 
 // ── Tabs & Search ─────────────────────────────────────────────────────────────
