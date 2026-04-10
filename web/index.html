@@ -131,29 +131,36 @@
 <div id="dashboard-screen" class="hidden h-screen overflow-hidden" style="display:none;">
 
   <!-- Sidebar (desktop only) -->
-  <nav class="hidden md:flex flex-col p-6 bg-inverse-surface h-screen w-56 flex-shrink-0 border-r border-white/5 z-50">
-    <div class="mb-8">
-      <h1 class="text-base font-bold text-white tracking-tighter">Denovo Orders</h1>
-      <p id="user-role" class="text-xs text-[#9e9c9c] mt-1">Loading...</p>
+  <nav id="sidebar" class="hidden md:flex flex-col bg-inverse-surface h-screen flex-shrink-0 border-r border-white/5 z-50 transition-all duration-200 overflow-hidden" style="width:224px;">
+    <div class="flex items-center justify-between px-5 pt-6 pb-4 flex-shrink-0">
+      <div id="sidebar-title">
+        <h1 class="text-base font-bold text-white tracking-tighter">Denovo Orders</h1>
+        <p id="user-role" class="text-xs text-[#9e9c9c] mt-1">Loading...</p>
+      </div>
+      <button onclick="toggleSidebar()" class="text-[#9e9c9c] hover:text-white transition-colors flex-shrink-0 ml-2" title="Collapse sidebar">
+        <span class="material-symbols-outlined" style="font-size:20px;">menu_open</span>
+      </button>
     </div>
-    <div class="flex flex-col gap-1 flex-1">
+    <div id="sidebar-nav" class="flex flex-col gap-1 flex-1 px-3">
       <button id="nav-orders" onclick="showView('orders')" class="flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">package_2</span>
-        <span>Orders</span>
+        <span class="sidebar-label">Orders</span>
       </button>
       <button id="nav-reports" onclick="showView('reports')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">bar_chart</span>
-        <span>Reports</span>
+        <span class="sidebar-label">Reports</span>
       </button>
       <button id="nav-import" onclick="showView('import')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>
-        <span>Import</span>
+        <span class="sidebar-label">Import</span>
       </button>
     </div>
-    <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm mt-4">
-      <span class="material-symbols-outlined" style="font-size:20px;">logout</span>
-      <span>Sign Out</span>
-    </button>
+    <div class="px-3 pb-4">
+      <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full">
+        <span class="material-symbols-outlined" style="font-size:20px;">logout</span>
+        <span class="sidebar-label">Sign Out</span>
+      </button>
+    </div>
   </nav>
 
   <!-- Main -->
@@ -867,19 +874,38 @@ function openUrl(url) {
 function openPdf(url, title) {
   if (!url) return
   const u = url.startsWith('http') ? url : `https://${url}`
+  // Excel files: just download directly
+  if (u.match(/\.xlsx?$/i)) { window.open(u, '_blank'); return }
   document.getElementById('pdf-modal-title').textContent = title || 'Document'
   document.getElementById('pdf-modal-download').href = u
-  // Excel files: use Microsoft Office Online viewer for preview
-  const isExcel = u.match(/\.xlsx?$/i)
-  document.getElementById('pdf-frame').src = isExcel
-    ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(u)}`
-    : u
+  document.getElementById('pdf-frame').src = u
   document.getElementById('pdf-modal').classList.remove('hidden')
 }
 
 function closePdfModal() {
   document.getElementById('pdf-modal').classList.add('hidden')
   document.getElementById('pdf-frame').src = ''
+}
+
+// ── Sidebar toggle ────────────────────────────────────────────────────────────
+let sidebarCollapsed = false
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed
+  const sidebar = document.getElementById('sidebar')
+  const labels = document.querySelectorAll('.sidebar-label')
+  const title = document.getElementById('sidebar-title')
+  const icon = sidebar.querySelector('.material-symbols-outlined')
+  if (sidebarCollapsed) {
+    sidebar.style.width = '60px'
+    labels.forEach(el => el.classList.add('hidden'))
+    title.classList.add('hidden')
+    icon.textContent = 'menu'
+  } else {
+    sidebar.style.width = '224px'
+    labels.forEach(el => el.classList.remove('hidden'))
+    title.classList.remove('hidden')
+    icon.textContent = 'menu_open'
+  }
 }
 
 // ── View switching ────────────────────────────────────────────────────────────
