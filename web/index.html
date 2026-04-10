@@ -1292,44 +1292,126 @@ async function lookupCosting(sku, styleNo) {
   return null
 }
 
-// ── Excel docket generation (SheetJS) ────────────────────────────────────────
+// ── Excel docket generation (SheetJS with formatting) ────────────────────────
 function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
-  // rows: [{ styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits }]
   const wb = XLSX.utils.book_new()
+
+  // Style helpers
+  const thin = { style: 'thin' }
+  const border = { top: thin, bottom: thin, left: thin, right: thin }
+  const grayFill = { patternType: 'solid', fgColor: { rgb: 'E5E5E5' } }
+  const fontTitle  = { name: 'Times New Roman', bold: true,  sz: 18 }
+  const fontBold   = { name: 'Times New Roman', bold: true,  sz: 12 }
+  const fontNormal = { name: 'Times New Roman', bold: false, sz: 12 }
+  const center = { horizontal: 'center', vertical: 'center' }
+  const left   = { horizontal: 'left',   vertical: 'center' }
+
+  function cell(v, font, align, bord, fill) {
+    const c = { v, t: typeof v === 'number' ? 'n' : 's', s: {} }
+    if (font)  c.s.font = font
+    if (align) c.s.alignment = align
+    if (bord)  c.s.border = bord
+    if (fill)  c.s.fill = fill
+    return c
+  }
 
   for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes } of rows) {
     const skuDisplay = Object.entries(colourSkuMap).map(([c, s]) => s ? `${c}: ${s}` : `${c}: (blank)`).join(' | ')
-    const aoa = []
+    const displaySizes = sizes.slice(0, 13) // max 13 size cols
+    const tableWidth = Math.max(2, displaySizes.length + 1)
+    const ws = {}
+    const merges = []
+    const rowHeights = []
 
-    aoa.push([`DOCKET SHEET #${docketNumber}`])
-    aoa.push([])
-    aoa.push(['DATE:', dateOrdered])
-    aoa.push(['EX-FACTORY DATE:', exFactory])
-    aoa.push(['PO NUMBER:', poNumber])
-    aoa.push(['STYLE NO.:', styleNo])
-    aoa.push(['SKU:', skuDisplay])
-    aoa.push(['DESCRIPTION:', description])
-    aoa.push(['SUPPLIER:', 'Denovo'])
-    aoa.push(['FABRICATION:', fabrication])
-    aoa.push([])
+    let r = 0 // 0-indexed row
 
-    // Size header row
-    aoa.push(['SIZE', ...sizes])
-    // Colour rows
-    for (const [colour, qtyMap] of Object.entries(sizeTable)) {
-      aoa.push([colour, ...sizes.map(s => qtyMap[s] || 0)])
+    // ── Row 0: Title (merged) ─────────────────────────────────────────────────
+    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(`DOCKET SHEET #${docketNumber}`, fontTitle, center, border)
+    for (let c = 1; c < tableWidth; c++) ws[XLSX.utils.encode_cell({ r, c })] = cell('', fontTitle, center, border)
+    merges.push({ s: { r, c: 0 }, e: { r, c: tableWidth - 1 } })
+    rowHeights[r] = { hpt: 40 }
+    r++
+
+    // ── Row 1: blank ──────────────────────────────────────────────────────────
+    r++
+
+    // ── Metadata rows ─────────────────────────────────────────────────────────
+    const meta = [
+      ['DATE:', dateOrdered],
+      ['EX-FACTORY DATE:', exFactory],
+      ['PO NUMBER:', poNumber],
+      ['STYLE NO.:', styleNo],
+      ['SKU:', skuDisplay],
+      ['DESCRIPTION:', description],
+      ['SUPPLIER:', 'Denovo'],
+      ['FABRICATION:', fabrication],
+    ]
+    for (const [label, value] of meta) {
+      ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(label, fontBold, left, border)
+      ws[XLSX.utils.encode_cell({ r, c: 1 })] = cell(String(value || ''), fontNormal, left, border)
+      rowHeights[r] = { hpt: 26 }
+      r++
     }
-    aoa.push([])
-    aoa.push(['CUT', ...sizes.map(() => '')])
-    aoa.push([])
-    aoa.push(['PACKED QTY', ...sizes.map(() => '')])
-    aoa.push([])
-    const totalParts = Object.entries(colourTotals).map(([c, q]) => `${c} ${q}`).join(' | ')
-    aoa.push([`TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`])
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    ws['!cols'] = [{ wch: 20 }, { wch: 45 }, ...sizes.map(() => ({ wch: 10 }))]
-    XLSX.utils.book_append_sheet(wb, ws, String(styleNo).slice(0, 31))
+    r++ // blank row before table
+
+    // ── SIZE header row ───────────────────────────────────────────────────────
+    const sizeHeaderRow = r
+    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('SIZE', fontBold, center, border, grayFill)
+    displaySizes.forEach((sz, i) => {
+      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell(sz, fontBold, center, border, grayFill)
+    })
+    rowHeights[r] = { hpt: 40 }
+    r++
+
+    // ── Quantity rows per colour ──────────────────────────────────────────────
+    for (const [colour, qtyMap] of Object.entries(sizeTable)) {
+      ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(colour, fontBold, center, border)
+      displaySizes.forEach((sz, i) => {
+        ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell(qtyMap[sz] || 0, fontNormal, center, border)
+      })
+      rowHeights[r] = { hpt: 30 }
+      r++
+    }
+
+    // ── Cut row ───────────────────────────────────────────────────────────────
+    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('Cut', fontBold, center, border, grayFill)
+    displaySizes.forEach((_, i) => {
+      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell('', fontNormal, center, border, grayFill)
+    })
+    rowHeights[r] = { hpt: 40 }
+    r++
+
+    r++ // blank
+
+    // ── Packed Qty row ────────────────────────────────────────────────────────
+    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell('Packed Qty', fontBold, center, border, grayFill)
+    displaySizes.forEach((_, i) => {
+      ws[XLSX.utils.encode_cell({ r, c: i + 1 })] = cell('', fontNormal, center, border, grayFill)
+    })
+    rowHeights[r] = { hpt: 40 }
+    r++
+
+    r++ // blank
+    r++ // blank
+
+    // ── Total row (merged) ────────────────────────────────────────────────────
+    const totalParts = Object.entries(colourTotals).map(([c, q]) => `${c} ${q}`).join(' | ')
+    const totalText = `TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`
+    ws[XLSX.utils.encode_cell({ r, c: 0 })] = cell(totalText, fontBold, center, border)
+    for (let c = 1; c < tableWidth; c++) ws[XLSX.utils.encode_cell({ r, c })] = cell('', fontBold, center, border)
+    merges.push({ s: { r, c: 0 }, e: { r, c: tableWidth - 1 } })
+    rowHeights[r] = { hpt: 34 }
+
+    // ── Sheet settings ────────────────────────────────────────────────────────
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r, c: tableWidth - 1 } })
+    ws['!merges'] = merges
+    ws['!rows'] = rowHeights
+    ws['!cols'] = [{ wch: 20 }, { wch: 45 }, ...displaySizes.map(() => ({ wch: 15 }))]
+    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 }
+    ws['!margins'] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5 }
+
+    XLSX.utils.book_append_sheet(wb, ws, String(styleNo || 'Sheet').slice(0, 31))
   }
   return wb
 }
