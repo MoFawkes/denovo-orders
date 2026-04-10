@@ -1580,7 +1580,7 @@ async function runImport() {
 
       const { error } = await sb.from('orders').upsert(row, { onConflict: 'po,style,colour' })
       if (error) importLog(`   ⚠️ ${styleNo} ${colour}: ${error.message}`, '#fca5a5')
-      else { importLog(`   ✓ PO ${poNumber} · ${sku} · ${colour} · ${qty} pcs`, '#86efac'); created.push(row) }
+      else { importLog(`   ✓ PO ${poNumber} · ${skuForDb} · ${colour} · ${qty} pcs`, '#86efac'); created.push(row) }
     }
 
     // 9) Also trigger a download of the docket for the user
