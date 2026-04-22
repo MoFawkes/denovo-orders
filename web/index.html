@@ -560,8 +560,10 @@ async function showDashboard(user) {
   const isManager = profile?.role === 'manager'
   document.getElementById('nav-reports').style.display = isManager ? '' : 'none'
   document.getElementById('nav-import').style.display = isManager ? '' : 'none'
+  document.getElementById('nav-booking').style.display = isManager ? '' : 'none'
   document.getElementById('tab-reports-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-import-mobile').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-booking-mobile').style.display = isManager ? '' : 'none'
 
   await loadOrders()
   subscribeRealtime()
