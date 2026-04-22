@@ -154,6 +154,10 @@
         <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>
         <span class="sidebar-label">Import</span>
       </button>
+      <button id="nav-booking" onclick="showView('booking')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+        <span class="material-symbols-outlined" style="font-size:20px;">local_shipping</span>
+        <span class="sidebar-label">Booking</span>
+      </button>
     </div>
     <div class="px-3 pb-4">
       <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full">
@@ -206,6 +210,7 @@
         <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
+        <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
       </div>
     </div>
 
@@ -284,7 +289,7 @@
     <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors md:hidden">
       <span class="material-symbols-outlined">arrow_back</span>
     </button>
-    <div class="hidden md:block w-56 flex-shrink-0">
+    <div id="sidebar-spacer" class="hidden md:block flex-shrink-0" style="width:224px;">
       <span class="text-sm font-bold text-on-surface tracking-tighter">Denovo Orders</span>
     </div>
     <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Weekly Production Report</h2>
@@ -445,6 +450,48 @@
         <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Orders Created</h3>
         <div id="import-results-list" class="space-y-2"></div>
       </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Booking Screen ─────────────────────────────────────────────────────── -->
+<div id="booking-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
+  <div class="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface">
+      <span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span>
+    </button>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">PLT Booking Form</h2>
+  </div>
+
+  <div class="flex-1 overflow-auto p-6 md:p-10">
+    <div class="max-w-2xl mx-auto space-y-6">
+
+      <!-- Date + ASAP -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
+        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block">Earliest Available DC Delivery Date</label>
+        <div class="flex items-center gap-3">
+          <input id="booking-date" type="date" class="h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary flex-1"/>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input id="booking-asap" type="checkbox" class="rounded accent-primary" onchange="toggleBookingAsap()"/>
+            <span class="text-sm font-medium text-on-surface">ASAP</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Order selection -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Select Orders to Include</h3>
+          <button onclick="toggleSelectAllBooking()" id="booking-select-all-btn" class="text-xs text-primary font-semibold hover:underline">Select All</button>
+        </div>
+        <div id="booking-orders-list" class="space-y-2 text-sm text-on-surface-variant">Loading…</div>
+      </div>
+
+      <!-- Generate -->
+      <button id="booking-btn" onclick="generateBookingForm()" class="w-full h-12 bg-primary text-on-primary text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all">
+        Download Booking Form
+      </button>
 
     </div>
   </div>
@@ -874,8 +921,15 @@ function openUrl(url) {
 function openPdf(url, title) {
   if (!url) return
   const u = url.startsWith('http') ? url : `https://${url}`
-  // Excel files: just download directly
-  if (u.match(/\.xlsx?$/i)) { window.open(u, '_blank'); return }
+  // Excel files: preview via Office Online
+  if (u.match(/\.xlsx?/i)) {
+    const previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(u)}`
+    document.getElementById('pdf-modal-title').textContent = title || 'Document'
+    document.getElementById('pdf-modal-download').href = u
+    document.getElementById('pdf-frame').src = previewUrl
+    document.getElementById('pdf-modal').classList.remove('hidden')
+    return
+  }
   document.getElementById('pdf-modal-title').textContent = title || 'Document'
   document.getElementById('pdf-modal-download').href = u
   document.getElementById('pdf-frame').src = u
@@ -895,13 +949,22 @@ function toggleSidebar() {
   const labels = document.querySelectorAll('.sidebar-label')
   const title = document.getElementById('sidebar-title')
   const icon = sidebar.querySelector('.material-symbols-outlined')
+  const spacer = document.getElementById('sidebar-spacer')
+  const importScreen = document.getElementById('import-screen')
+  const bookingScreen = document.getElementById('booking-screen')
   if (sidebarCollapsed) {
-    sidebar.style.width = '60px'
+    sidebar.style.width = '48px'
+    if (spacer) spacer.style.width = '48px'
+    if (importScreen) importScreen.style.left = '48px'
+    if (bookingScreen) bookingScreen.style.left = '48px'
     labels.forEach(el => el.classList.add('hidden'))
     title.classList.add('hidden')
     icon.textContent = 'menu'
   } else {
     sidebar.style.width = '224px'
+    if (spacer) spacer.style.width = '224px'
+    if (importScreen) importScreen.style.left = '224px'
+    if (bookingScreen) bookingScreen.style.left = '224px'
     labels.forEach(el => el.classList.remove('hidden'))
     title.classList.remove('hidden')
     icon.textContent = 'menu_open'
@@ -917,12 +980,12 @@ function showView(view) {
   currentView = view
   const reportsScreen = document.getElementById('reports-screen')
   const importScreen = document.getElementById('import-screen')
+  const bookingScreen = document.getElementById('booking-screen')
 
-  // Hide all overlays first
   reportsScreen.classList.add('hidden')
   importScreen.classList.add('hidden')
+  bookingScreen.classList.add('hidden')
 
-  // Reset nav styles
   const navActive = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
   const navIdle = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
   const tabActive = 'flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white'
@@ -931,8 +994,10 @@ function showView(view) {
   document.getElementById('nav-orders').className = navIdle
   document.getElementById('nav-reports').className = navIdle
   document.getElementById('nav-import').className = navIdle
+  document.getElementById('nav-booking').className = navIdle
   document.getElementById('tab-reports-mobile').className = tabIdle
   document.getElementById('tab-import-mobile').className = tabIdle
+  document.getElementById('tab-booking-mobile').className = tabIdle
 
   if (view === 'reports') {
     reportsScreen.classList.remove('hidden')
@@ -944,6 +1009,11 @@ function showView(view) {
     importScreen.classList.remove('hidden')
     document.getElementById('nav-import').className = navActive
     document.getElementById('tab-import-mobile').className = tabActive
+  } else if (view === 'booking') {
+    bookingScreen.classList.remove('hidden')
+    renderBookingOrders()
+    document.getElementById('nav-booking').className = navActive
+    document.getElementById('tab-booking-mobile').className = tabActive
   } else {
     document.getElementById('nav-orders').className = navActive
   }
@@ -1292,46 +1362,227 @@ async function lookupCosting(sku, styleNo) {
   return null
 }
 
-// ── Excel docket generation (ExcelJS with full formatting) ───────────────────
-async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
+// ── Booking Form ──────────────────────────────────────────────────────────────
+
+let bookingSelected = new Set()
+
+function toggleBookingAsap() {
+  const asap = document.getElementById('booking-asap').checked
+  document.getElementById('booking-date').disabled = asap
+  if (asap) document.getElementById('booking-date').value = ''
+}
+
+function renderBookingOrders() {
+  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const list = document.getElementById('booking-orders-list')
+  if (!active.length) {
+    list.innerHTML = '<p class="text-xs text-on-surface-variant">No active orders found.</p>'
+    return
+  }
+  list.innerHTML = active.map(o => {
+    const checked = bookingSelected.has(o.id) ? 'checked' : ''
+    const isReady = o.stage === 'Ready'
+    const stageBadge = `<span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${stageClass(o.stage)}">${o.stage}</span>`
+    return `<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/20 cursor-pointer hover:bg-surface-container transition-all">
+      <input type="checkbox" class="booking-order-cb accent-primary rounded flex-shrink-0" data-id="${o.id}" ${checked} onchange="onBookingCbChange(this)"/>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs font-bold text-on-surface">PO ${o.po || '—'}</span>
+          <span class="text-xs font-mono text-primary">${o.style || ''}</span>
+          ${o.colour ? `<span class="text-xs text-on-surface-variant">${o.colour}</span>` : ''}
+          ${stageBadge}
+          ${isReady ? '<span class="text-[10px] font-bold text-green-600 uppercase">Ready → ASAP</span>' : ''}
+        </div>
+        <div class="text-xs text-on-surface-variant mt-0.5">${o.qty || 0} pcs${o.description ? ' · ' + o.description : ''}</div>
+      </div>
+      <div class="flex-shrink-0">
+        <input type="number" min="1" placeholder="Ctns" data-cartons="${o.id}"
+          class="w-16 h-8 bg-surface-container border-none rounded px-2 text-xs text-center focus:ring-1 focus:ring-primary"
+          onclick="event.stopPropagation()" onchange="event.stopPropagation()"/>
+      </div>
+    </label>`
+  }).join('')
+}
+
+function onBookingCbChange(cb) {
+  const id = cb.dataset.id
+  if (cb.checked) bookingSelected.add(id)
+  else bookingSelected.delete(id)
+}
+
+function toggleSelectAllBooking() {
+  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const allChecked = active.every(o => bookingSelected.has(o.id))
+  if (allChecked) {
+    active.forEach(o => bookingSelected.delete(o.id))
+  } else {
+    active.forEach(o => bookingSelected.add(o.id))
+  }
+  renderBookingOrders()
+}
+
+async function generateBookingForm() {
+  const asap = document.getElementById('booking-asap').checked
+  const dateVal = document.getElementById('booking-date').value
+
+  if (!asap && !dateVal) return alert('Please enter a delivery date or select ASAP.')
+
+  const selectedOrders = allOrders.filter(o => bookingSelected.has(o.id))
+  if (!selectedOrders.length) return alert('Select at least one order.')
+
+  const btn = document.getElementById('booking-btn')
+  btn.disabled = true
+  btn.textContent = 'Generating…'
+
+  try {
+    const blob = await buildBookingWorkbook(selectedOrders, dateVal, asap)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `PLT_Booking_${new Date().toISOString().slice(0,10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+    btn.textContent = '✓ Downloaded'
+    btn.style.background = '#16a34a'
+    setTimeout(() => { btn.textContent = 'Download Booking Form'; btn.style.background = ''; btn.disabled = false }, 2500)
+  } catch (e) {
+    alert('Error: ' + e.message)
+    btn.textContent = 'Download Booking Form'
+    btn.disabled = false
+  }
+}
+
+async function buildBookingWorkbook(orders, dateVal, asap) {
   const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('Booking Form')
 
   const thin = { style: 'thin', color: { argb: 'FF000000' } }
   const border = { top: thin, bottom: thin, left: thin, right: thin }
-  const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E5E5' } }
+  const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }
+  const titleFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } }
+  const arial = (size, bold = false, color = 'FF000000') => ({ name: 'Arial', size, bold, color: { argb: color } })
 
-  function applyBorder(cell) { cell.border = border }
-  function applyGray(cell) { cell.fill = grayFill; applyBorder(cell) }
+  const cols = [
+    { header: 'Supplier Name', width: 20 },
+    { header: 'Earliest Available DC Delivery Date', width: 22 },
+    { header: 'Booking Confirmation Email Address', width: 28 },
+    { header: 'Carrier', width: 10 },
+    { header: 'Palletised (Y/N)', width: 14 },
+    { header: 'New/Rebuy', width: 12 },
+    { header: 'No of Cartons', width: 14 },
+    { header: 'No of Pieces', width: 14 },
+    { header: 'Compliant? (Y/N)', width: 16 },
+    { header: 'P/O', width: 14 },
+    { header: 'SKU', width: 14 },
+    { header: 'Confirm 2 size 8 production samples have been sent & approved by Buying', width: 30 },
+  ]
+
+  ws.columns = cols.map(c => ({ width: c.width }))
+
+  // Row 1 — title
+  ws.addRow(['PLT Booking Form *All fields must be completed for a booking date to be confirmed*'])
+  ws.mergeCells(1, 1, 1, cols.length)
+  const titleCell = ws.getCell('A1')
+  titleCell.font = arial(11, true, 'FFFFFFFF')
+  titleCell.fill = titleFill
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+  titleCell.border = border
+  ws.getRow(1).height = 22
+
+  // Row 2 — column headers
+  ws.addRow(cols.map(c => c.header))
+  ws.getRow(2).height = 30
+  for (let c = 1; c <= cols.length; c++) {
+    const cell = ws.getRow(2).getCell(c)
+    cell.font = arial(9, true)
+    cell.fill = headerFill
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cell.border = border
+  }
+
+  // Data rows
+  for (const o of orders) {
+    const cartonsInput = document.querySelector(`[data-cartons="${o.id}"]`)
+    const cartons = parseInt(cartonsInput?.value) || ''
+    const isReady = o.stage === 'Ready'
+    const deliveryDate = (asap || isReady) ? 'ASAP' : formatDateUk(dateVal)
+
+    ws.addRow([
+      'Denovo Sourcing',
+      deliveryDate,
+      'denovogb@gmail.com',
+      'JACKS',
+      'N',
+      'REBUY',
+      cartons,
+      o.qty || '',
+      'Y',
+      o.po || '',
+      (o.style || '').toUpperCase(),
+      'Y',
+    ])
+    const rn = ws.rowCount
+    ws.getRow(rn).height = 18
+    for (let c = 1; c <= cols.length; c++) {
+      const cell = ws.getRow(rn).getCell(c)
+      cell.font = arial(9)
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = border
+    }
+    // Left-align text fields
+    ws.getRow(rn).getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
+    ws.getRow(rn).getCell(3).alignment = { horizontal: 'left', vertical: 'middle' }
+  }
+
+  const buffer = await wb.xlsx.writeBuffer()
+  return new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}
+
+function formatDateUk(isoDate) {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+// ── Excel docket generation (ExcelJS) ────────────────────────────────────────
+async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
+  const wb = new ExcelJS.Workbook()
+  const thin = { style: 'thin', color: { argb: 'FF000000' } }
+  const border = { top: thin, bottom: thin, left: thin, right: thin }
+  const grayFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E5E5' } }
+  const tnrBold = (size) => ({ name: 'Times New Roman', bold: true, size })
+  const tnr = (size) => ({ name: 'Times New Roman', bold: false, size })
 
   for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes } of rows) {
     const skuDisplay = Object.entries(colourSkuMap).map(([c, s]) => s ? `${c}: ${s}` : `${c}: (blank)`).join(' | ')
     const displaySizes = sizes.slice(0, 13)
-    const tableWidth = Math.max(2, displaySizes.length + 1)
+    const ncols = displaySizes.length + 1  // col A + size cols
 
     const ws = wb.addWorksheet(String(styleNo || 'Sheet').slice(0, 31))
     ws.pageSetup.orientation = 'landscape'
+    ws.pageSetup.fitToPage = true
     ws.pageSetup.fitToWidth = 1
     ws.pageSetup.fitToHeight = 0
-    ws.pageSetup.margins = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0, footer: 0 }
 
     ws.columns = [
       { width: 20 },
-      { width: 45 },
-      ...displaySizes.map(() => ({ width: 15 })),
+      { width: 15 },
+      ...displaySizes.slice(1).map(() => ({ width: 13 })),
     ]
 
-    // ── Title row ─────────────────────────────────────────────────────────────
-    const titleRow = ws.addRow([`DOCKET SHEET #${docketNumber}`])
-    titleRow.height = 40
-    ws.mergeCells(titleRow.number, 1, titleRow.number, tableWidth)
-    const titleCell = titleRow.getCell(1)
-    titleCell.font = { name: 'Times New Roman', bold: true, size: 18 }
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-    for (let c = 1; c <= tableWidth; c++) applyBorder(titleRow.getCell(c))
+    // Row 1 — Title (merged)
+    ws.addRow([`DOCKET SHEET #${docketNumber}`])
+    ws.mergeCells(1, 1, 1, ncols)
+    const t = ws.getCell('A1')
+    t.font = tnrBold(18)
+    t.alignment = { horizontal: 'center', vertical: 'middle' }
+    t.border = border
+    ws.getRow(1).height = 20
 
-    ws.addRow([]) // blank
+    // Row 2 — blank
+    ws.addRow([])
 
-    // ── Metadata ──────────────────────────────────────────────────────────────
+    // Rows 3–10 — metadata
     const meta = [
       ['DATE:', dateOrdered],
       ['EX-FACTORY DATE:', exFactory],
@@ -1339,82 +1590,83 @@ async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactor
       ['STYLE NO.:', styleNo],
       ['SKU:', skuDisplay],
       ['DESCRIPTION:', description],
-      ['SUPPLIER:', 'Denovo'],
+      ['SUPPLIER:', 'Denovo Sourcing Limited'],
       ['FABRICATION:', fabrication],
     ]
     for (const [label, value] of meta) {
-      const row = ws.addRow([label, String(value || '')])
-      row.height = 26
-      const lc = row.getCell(1)
-      const vc = row.getCell(2)
-      lc.font = { name: 'Times New Roman', bold: true, size: 12 }
-      lc.alignment = { horizontal: 'left', vertical: 'middle' }
-      vc.font = { name: 'Times New Roman', bold: false, size: 12 }
-      vc.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
-      applyBorder(lc); applyBorder(vc)
+      const rn = ws.rowCount + 1
+      ws.addRow([label, String(value || '')])
+      ws.getRow(rn).height = 25.5
+      const lc = ws.getRow(rn).getCell(1)
+      const vc = ws.getRow(rn).getCell(2)
+      lc.font = tnrBold(12); lc.alignment = { horizontal: 'left', vertical: 'middle' }; lc.border = border
+      vc.font = tnr(12); vc.alignment = { horizontal: 'left', vertical: 'top' }; vc.border = border
     }
 
-    ws.addRow([]) // blank before table
+    // Row 11 — blank
+    ws.addRow([])
 
-    // ── SIZE header ───────────────────────────────────────────────────────────
-    const sizeRow = ws.addRow(['SIZE', ...displaySizes])
-    sizeRow.height = 40
-    sizeRow.eachCell({ includeEmpty: true }, (cell, col) => {
-      if (col > tableWidth) return
-      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      applyGray(cell)
-    })
+    // Size header row
+    const shrn = ws.rowCount + 1
+    ws.addRow(['SIZE', ...displaySizes])
+    ws.getRow(shrn).height = 39.75
+    for (let c = 1; c <= ncols; c++) {
+      const cell = ws.getRow(shrn).getCell(c)
+      cell.font = tnrBold(12); cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill = grayFill; cell.border = border
+    }
 
-    // ── Colour / qty rows ─────────────────────────────────────────────────────
+    // Colour / qty rows
     for (const [colour, qtyMap] of Object.entries(sizeTable)) {
-      const qtyRow = ws.addRow([colour, ...displaySizes.map(s => qtyMap[s] || 0)])
-      qtyRow.height = 30
-      qtyRow.getCell(1).font = { name: 'Times New Roman', bold: true, size: 12 }
-      qtyRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
-      applyBorder(qtyRow.getCell(1))
-      displaySizes.forEach((_, i) => {
-        const c = qtyRow.getCell(i + 2)
-        c.font = { name: 'Times New Roman', bold: false, size: 12 }
-        c.alignment = { horizontal: 'center', vertical: 'middle' }
-        applyBorder(c)
-      })
+      const rn = ws.rowCount + 1
+      ws.addRow([colour, ...displaySizes.map(s => qtyMap[s] || 0)])
+      ws.getRow(rn).height = 30
+      ws.getRow(rn).getCell(1).font = tnrBold(12)
+      ws.getRow(rn).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+      ws.getRow(rn).getCell(1).border = border
+      for (let c = 2; c <= ncols; c++) {
+        const cell = ws.getRow(rn).getCell(c)
+        cell.font = { name: 'Calibri', bold: false, size: 11 }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = border
+      }
     }
 
-    // ── Cut row ───────────────────────────────────────────────────────────────
-    const cutRow = ws.addRow(['Cut', ...displaySizes.map(() => '')])
-    cutRow.height = 40
-    cutRow.eachCell({ includeEmpty: true }, (cell, col) => {
-      if (col > tableWidth) return
-      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      applyGray(cell)
-    })
+    // Cut row
+    const crn = ws.rowCount + 1
+    ws.addRow(['Cut', ...displaySizes.map(() => '')])
+    ws.getRow(crn).height = 39.75
+    for (let c = 1; c <= ncols; c++) {
+      const cell = ws.getRow(crn).getCell(c)
+      cell.fill = grayFill; cell.border = border
+      if (c === 1) { cell.font = tnrBold(12); cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+    }
 
-    ws.addRow([]) // blank
+    // Blank row
+    ws.addRow([])
 
-    // ── Packed Qty row ────────────────────────────────────────────────────────
-    const packedRow = ws.addRow(['Packed Qty', ...displaySizes.map(() => '')])
-    packedRow.height = 40
-    packedRow.eachCell({ includeEmpty: true }, (cell, col) => {
-      if (col > tableWidth) return
-      cell.font = { name: 'Times New Roman', bold: true, size: 12 }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      applyGray(cell)
-    })
+    // Packed Qty row
+    const prn = ws.rowCount + 1
+    ws.addRow(['Packed Qty', ...displaySizes.map(() => '')])
+    ws.getRow(prn).height = 39.75
+    for (let c = 1; c <= ncols; c++) {
+      const cell = ws.getRow(prn).getCell(c)
+      cell.fill = grayFill; cell.border = border
+      if (c === 1) { cell.font = tnrBold(12); cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+    }
 
-    ws.addRow([]) // blank
-    ws.addRow([]) // blank
+    // Blank rows
+    ws.addRow([])
+    ws.addRow([])
 
-    // ── Total row (merged) ────────────────────────────────────────────────────
+    // Total row (merged)
+    const trn = ws.rowCount + 1
     const totalParts = Object.entries(colourTotals).map(([c, q]) => `${c} ${q}`).join(' | ')
-    const totalRow = ws.addRow([`TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`])
-    totalRow.height = 34
-    ws.mergeCells(totalRow.number, 1, totalRow.number, tableWidth)
-    const tc = totalRow.getCell(1)
-    tc.font = { name: 'Times New Roman', bold: true, size: 12 }
-    tc.alignment = { horizontal: 'center', vertical: 'middle' }
-    for (let c = 1; c <= tableWidth; c++) applyBorder(totalRow.getCell(c))
+    ws.addRow([`TOTAL UNITS: ${totalParts} | TOTAL ${totalUnits}`])
+    ws.mergeCells(trn, 1, trn, ncols)
+    ws.getRow(trn).height = 33.75
+    const tc = ws.getRow(trn).getCell(1)
+    tc.font = tnrBold(12); tc.alignment = { horizontal: 'center', vertical: 'middle' }; tc.border = border
   }
 
   const buffer = await wb.xlsx.writeBuffer()
