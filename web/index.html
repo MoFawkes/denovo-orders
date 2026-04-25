@@ -158,6 +158,10 @@
         <span class="material-symbols-outlined" style="font-size:20px;">local_shipping</span>
         <span class="sidebar-label">Booking</span>
       </button>
+      <button id="nav-stickers" onclick="showView('stickers')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+        <span class="material-symbols-outlined" style="font-size:20px;">label</span>
+        <span class="sidebar-label">Stickers</span>
+      </button>
     </div>
     <div class="px-3 pb-4">
       <button id="sign-out-btn" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full">
@@ -215,6 +219,7 @@
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
         <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
+        <button id="tab-stickers-mobile" onclick="showView('stickers')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Stickers</button>
       </div>
     </div>
 
@@ -459,6 +464,49 @@
   </div>
 </div>
 
+<!-- ── Stickers Screen ────────────────────────────────────────────────────── -->
+<div id="stickers-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
+  <div class="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface">
+      <span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span>
+    </button>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Box Stickers</h2>
+  </div>
+
+  <div class="flex-1 overflow-auto p-6 md:p-10">
+    <div class="max-w-2xl mx-auto space-y-6">
+
+      <!-- Upload packing list -->
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
+        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block">Upload Packing List (.xlsx)</label>
+        <input id="sticker-file" type="file" accept=".xlsx" onchange="onStickerFileChange(this)" class="block w-full text-sm text-on-surface-variant file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-bold file:bg-surface-container file:text-on-surface cursor-pointer"/>
+      </div>
+
+      <!-- Parsed preview -->
+      <div id="sticker-preview" class="hidden bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Parsed Details</h3>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div><span class="text-on-surface-variant">PO</span><div id="sp-po" class="font-semibold text-on-surface mt-0.5"></div></div>
+          <div><span class="text-on-surface-variant">SKU</span><div id="sp-sku" class="font-semibold text-on-surface mt-0.5"></div></div>
+          <div><span class="text-on-surface-variant">Booking Ref</span><div id="sp-ref" class="font-semibold text-on-surface mt-0.5"></div></div>
+          <div><span class="text-on-surface-variant">Colour</span><div id="sp-colour" class="font-semibold text-on-surface mt-0.5"></div></div>
+          <div><span class="text-on-surface-variant">Total Cartons</span><div id="sp-cartons" class="font-semibold text-on-surface mt-0.5"></div></div>
+          <div><span class="text-on-surface-variant">Total Pcs</span><div id="sp-pcs" class="font-semibold text-on-surface mt-0.5"></div></div>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div id="sticker-error" class="hidden text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-4 py-3"></div>
+
+      <!-- Generate -->
+      <button id="stickers-btn" onclick="generateStickers()" disabled class="w-full h-12 bg-primary text-on-primary text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+        Download Box Stickers
+      </button>
+
+    </div>
+  </div>
+</div>
+
 <!-- ── Booking Screen ─────────────────────────────────────────────────────── -->
 <div id="booking-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
   <div class="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
@@ -565,9 +613,11 @@ async function showDashboard(user) {
   document.getElementById('nav-reports').style.display = isManager ? '' : 'none'
   document.getElementById('nav-import').style.display = isManager ? '' : 'none'
   document.getElementById('nav-booking').style.display = isManager ? '' : 'none'
+  document.getElementById('nav-stickers').style.display = isManager ? '' : 'none'
   document.getElementById('tab-reports-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-import-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-booking-mobile').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-stickers-mobile').style.display = isManager ? '' : 'none'
 
   await loadOrders()
   subscribeRealtime()
@@ -1024,11 +1074,13 @@ function toggleSidebar() {
   const spacer = document.getElementById('sidebar-spacer')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
+  const stickersScreen = document.getElementById('stickers-screen')
   if (sidebarCollapsed) {
     sidebar.style.width = '48px'
     if (spacer) spacer.style.width = '48px'
     if (importScreen) importScreen.style.left = '48px'
     if (bookingScreen) bookingScreen.style.left = '48px'
+    if (stickersScreen) stickersScreen.style.left = '48px'
     labels.forEach(el => el.classList.add('hidden'))
     title.classList.add('hidden')
     icon.textContent = 'menu'
@@ -1037,6 +1089,7 @@ function toggleSidebar() {
     if (spacer) spacer.style.width = '224px'
     if (importScreen) importScreen.style.left = '224px'
     if (bookingScreen) bookingScreen.style.left = '224px'
+    if (stickersScreen) stickersScreen.style.left = '224px'
     labels.forEach(el => el.classList.remove('hidden'))
     title.classList.remove('hidden')
     icon.textContent = 'menu_open'
@@ -1053,10 +1106,12 @@ function showView(view) {
   const reportsScreen = document.getElementById('reports-screen')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
+  const stickersScreen = document.getElementById('stickers-screen')
 
   reportsScreen.classList.add('hidden')
   importScreen.classList.add('hidden')
   bookingScreen.classList.add('hidden')
+  stickersScreen.classList.add('hidden')
 
   const navActive = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
   const navIdle = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
@@ -1067,9 +1122,11 @@ function showView(view) {
   document.getElementById('nav-reports').className = navIdle
   document.getElementById('nav-import').className = navIdle
   document.getElementById('nav-booking').className = navIdle
+  document.getElementById('nav-stickers').className = navIdle
   document.getElementById('tab-reports-mobile').className = tabIdle
   document.getElementById('tab-import-mobile').className = tabIdle
   document.getElementById('tab-booking-mobile').className = tabIdle
+  document.getElementById('tab-stickers-mobile').className = tabIdle
 
   if (view === 'reports') {
     reportsScreen.classList.remove('hidden')
@@ -1086,6 +1143,10 @@ function showView(view) {
     renderBookingOrders()
     document.getElementById('nav-booking').className = navActive
     document.getElementById('tab-booking-mobile').className = tabActive
+  } else if (view === 'stickers') {
+    stickersScreen.classList.remove('hidden')
+    document.getElementById('nav-stickers').className = navActive
+    document.getElementById('tab-stickers-mobile').className = tabActive
   } else {
     document.getElementById('nav-orders').className = navActive
   }
@@ -1470,6 +1531,7 @@ function renderBookingOrders() {
       <div class="flex-shrink-0">
         <input type="number" min="1" placeholder="Ctns" data-cartons="${o.id}"
           class="w-16 h-8 bg-surface-container border-none rounded px-2 text-xs text-center focus:ring-1 focus:ring-primary"
+          value="${Math.round((o.qty || 0) / 25) || ''}"
           onclick="event.stopPropagation()" onchange="event.stopPropagation()"/>
       </div>
     </label>`
@@ -1575,7 +1637,7 @@ async function buildBookingWorkbook(orders, dateVal, asap) {
   // Data rows
   for (const o of orders) {
     const cartonsInput = document.querySelector(`[data-cartons="${o.id}"]`)
-    const cartons = parseInt(cartonsInput?.value) || ''
+    const cartons = parseInt(cartonsInput?.value) || Math.round((o.qty || 0) / 25) || ''
     const isReady = o.stage === 'Ready'
     const deliveryDate = (asap || isReady) ? 'ASAP' : formatDateUk(dateVal)
 
@@ -1614,6 +1676,168 @@ function formatDateUk(isoDate) {
   if (!isoDate) return ''
   const [y, m, d] = isoDate.split('-')
   return `${d}/${m}/${y}`
+}
+
+// ── Box Stickers ─────────────────────────────────────────────────────────────
+
+let stickerData = null
+
+async function onStickerFileChange(input) {
+  const file = input.files[0]
+  const errorEl = document.getElementById('sticker-error')
+  const previewEl = document.getElementById('sticker-preview')
+  const btn = document.getElementById('stickers-btn')
+  errorEl.classList.add('hidden')
+  previewEl.classList.add('hidden')
+  btn.disabled = true
+  stickerData = null
+  if (!file) return
+  try {
+    const buf = await file.arrayBuffer()
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(buf)
+    const ws = wb.worksheets[0]
+
+    const po = ws.getCell('B10').value
+    const sku = ws.getCell('B11').value
+    const bookingRef = ws.getCell('F5').value
+    let colour = ''
+    // find colour: scan col A rows 15+ until we hit a non-empty non-size value
+    for (let r = 15; r <= 38; r++) {
+      const v = ws.getCell(r, 1).value
+      if (v && typeof v === 'string' && v.trim()) { colour = v.trim(); break }
+    }
+    if (!colour) colour = 'BLACK'
+
+    const cartons = []
+    let totalPcs = 0
+    for (let r = 15; r <= 38; r++) {
+      const size = ws.getCell(r, 2).value
+      const qtyPerBox = ws.getCell(r, 3).value
+      const numBoxes = ws.getCell(r, 4).value
+      if (size == null || qtyPerBox == null || numBoxes == null || numBoxes === 0) continue
+      const n = parseInt(numBoxes) || 0
+      const q = parseInt(qtyPerBox) || 0
+      for (let b = 0; b < n; b++) cartons.push({ size: String(size), qty: q })
+      totalPcs += n * q
+    }
+
+    if (!po || !sku || cartons.length === 0) throw new Error('Could not parse packing list — check file format.')
+
+    stickerData = { po: String(po), sku: String(sku), bookingRef: bookingRef || '', colour, cartons, totalPcs }
+
+    document.getElementById('sp-po').textContent = stickerData.po
+    document.getElementById('sp-sku').textContent = stickerData.sku
+    document.getElementById('sp-ref').textContent = stickerData.bookingRef || '—'
+    document.getElementById('sp-colour').textContent = stickerData.colour
+    document.getElementById('sp-cartons').textContent = stickerData.cartons.length
+    document.getElementById('sp-pcs').textContent = stickerData.totalPcs
+    previewEl.classList.remove('hidden')
+    btn.disabled = false
+  } catch (e) {
+    errorEl.textContent = e.message || 'Failed to read file.'
+    errorEl.classList.remove('hidden')
+  }
+}
+
+async function generateStickers() {
+  if (!stickerData) return
+  const btn = document.getElementById('stickers-btn')
+  btn.disabled = true
+  btn.textContent = 'Generating…'
+  try {
+    await buildStickerWorkbook(stickerData)
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Download Box Stickers'
+  }
+}
+
+async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('Stickers')
+
+  const thin = { style: 'thin', color: { argb: 'FF000000' } }
+  const border = { top: thin, bottom: thin, left: thin, right: thin }
+  const bold14 = { name: 'Arial', size: 14, bold: true }
+  const center = { horizontal: 'center', vertical: 'middle', wrapText: true }
+
+  // Column widths (A=1..S=19)
+  const colWidths = [12.63,13,13,11.13,12.63,13,13,2.13,13,13,13,10.75,13,13,13,1.75,13,13,13]
+  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w })
+
+  function sc(row, col, val, mergeSpan) {
+    if (mergeSpan > 1) ws.mergeCells(row, col, row, col + mergeSpan - 1)
+    const cell = ws.getCell(row, col)
+    cell.value = val
+    cell.font = bold14
+    cell.alignment = center
+    cell.border = border
+    return cell
+  }
+
+  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty) {
+    const r = rowStart, c = colStart
+    sc(r,   c, 'SUPPLIER: DENOVO SOURCING', 3)
+    sc(r+1, c, 'PO',          1); sc(r+1, c+1, po,           2)
+    sc(r+2, c, 'SKU',         1); sc(r+2, c+1, sku,          2)
+    sc(r+3, c, 'Booking Ref', 1); sc(r+3, c+1, bookingRef,   2)
+    sc(r+4, c, 'SIZE',        1); sc(r+4, c+1, size,         2)
+    sc(r+5, c, 'COLOUR',      1); sc(r+5, c+1, colour,       2)
+    sc(r+6, c, 'QTY',         1); sc(r+6, c+1, qty,          2)
+    sc(r+7, c, 'CARTON NO.',  1); sc(r+7, c+1, cartonNum, 1); sc(r+7, c+2, `OF ${totalCartons}`, 1)
+    // spacer rows 9-11
+    ws.mergeCells(r+8, c, r+10, c+2)
+    ws.getCell(r+8, c).border = border
+    sc(r+11, c, 'Customer', 1); sc(r+11, c+1, 'PLT', 2)
+  }
+
+  // Page layout: top band rows 1-12 (4 stickers), bottom band rows 15-26 (5 stickers)
+  // 9 stickers per page, rows per page = 29
+  const ROWS_PER_PAGE = 29
+  const TOP_COLS = [1, 5, 9, 13]
+  const BOT_COLS = [1, 5, 9, 13, 17]
+  const totalCartons = cartons.length
+
+  cartons.forEach(({ size, qty }, i) => {
+    const page = Math.floor(i / 9)
+    const pos = i % 9
+    const pageOffset = page * ROWS_PER_PAGE
+    let rowStart, colStart
+    if (pos < 4) {
+      rowStart = pageOffset + 1
+      colStart = TOP_COLS[pos]
+    } else {
+      rowStart = pageOffset + 15
+      colStart = BOT_COLS[pos - 4]
+    }
+    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty)
+  })
+
+  // Row heights for each page
+  const pages = Math.ceil(totalCartons / 9)
+  for (let p = 0; p < pages; p++) {
+    const o = p * ROWS_PER_PAGE
+    for (let r = 1; r <= 10; r++) ws.getRow(o + r).height = 30
+    ws.getRow(o + 11).height = 1.5
+    ws.getRow(o + 12).height = 30
+    ws.getRow(o + 13).height = 19.5
+    ws.getRow(o + 14).height = 19.5
+    for (let r = 15; r <= 22; r++) ws.getRow(o + r).height = 30
+    ws.getRow(o + 23).height = 30
+    ws.getRow(o + 24).height = 26.25
+    ws.getRow(o + 25).height = 1.5
+    ws.getRow(o + 26).height = 30
+  }
+
+  const buf = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `BOX_STICKERS_${po}_${sku}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Excel docket generation (ExcelJS) ────────────────────────────────────────
