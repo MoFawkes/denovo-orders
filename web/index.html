@@ -1797,12 +1797,12 @@ async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
   // 9 stickers per page, rows per page = 29
   const ROWS_PER_PAGE = 29
   const TOP_COLS = [1, 5, 9, 13]
-  const BOT_COLS = [1, 5, 9, 13, 17]
+  const BOT_COLS = [1, 5, 9, 13]
   const totalCartons = cartons.length
 
   cartons.forEach(({ size, qty }, i) => {
-    const page = Math.floor(i / 9)
-    const pos = i % 9
+    const page = Math.floor(i / 8)
+    const pos = i % 8
     const pageOffset = page * ROWS_PER_PAGE
     let rowStart, colStart
     if (pos < 4) {
