@@ -736,8 +736,9 @@ function parseExFactory(val) {
 function getVisible() {
   const base = currentTab === 'active'
     ? allOrders.filter(o => o.stage !== 'Completed')
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     : allOrders.filter(o => o.stage === 'Completed')
-        .sort((a, b) => parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory))
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   if (!searchQuery) return base
   const q = searchQuery.toLowerCase()
   return base.filter(o =>
