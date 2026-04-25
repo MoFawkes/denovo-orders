@@ -1761,7 +1761,7 @@ async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
   const thick = { style: 'thick', color: { argb: 'FF000000' } }
   const border = { top: thick, bottom: thick, left: thick, right: thick }
   const bold14 = { name: 'Arial', size: 14, bold: true }
-  const center = { horizontal: 'center', vertical: 'middle' }
+  const center = { horizontal: 'center', vertical: 'middle', wrapText: true }
 
   // Column widths (A=1..S=19)
   const colWidths = [12.63,13,13,11.13,12.63,13,13,2.13,13,13,13,10.75,13,13,13,1.75,13,13,13]
