@@ -1639,8 +1639,7 @@ async function buildBookingWorkbook(orders, dateVal, asap) {
   for (const o of orders) {
     const cartonsInput = document.querySelector(`[data-cartons="${o.id}"]`)
     const cartons = parseInt(cartonsInput?.value) || Math.round((o.qty || 0) / 25) || ''
-    const isReady = o.stage === 'Ready'
-    const deliveryDate = (asap || isReady) ? 'ASAP' : formatDateUk(dateVal)
+    const deliveryDate = asap ? 'ASAP' : formatDateUk(dateVal)
 
     ws.addRow([
       'Denovo Sourcing',
