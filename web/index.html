@@ -196,6 +196,10 @@
         <span id="kpi-active" class="font-bold text-on-surface">0</span> active &nbsp;·&nbsp;
         <span id="kpi-ready" class="font-bold text-green-600">0</span> ready &nbsp;·&nbsp;
         <span id="kpi-completed" class="font-bold text-on-surface-variant">0</span> completed
+        &nbsp;·&nbsp;
+        <button onclick="printActiveOrders()" class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-container hover:bg-primary-container rounded text-xs font-bold uppercase tracking-wider text-on-surface transition-all">
+        <span class="material-symbols-outlined" style="font-size:15px;">print</span> Print
+        </button>
       </div>
     </header>
 
@@ -598,6 +602,72 @@ function subscribeRealtime() {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
+function printActiveOrders() {
+  const active = allOrders.filter(o => o.stage !== 'Completed')
+
+  const stageColors = {
+    Cutting: { bg: 'rgba(254,137,131,0.2)', color: '#9f403d' },
+    Production: { bg: 'rgba(230,126,34,0.15)', color: '#E67E22' },
+    Packing: { bg: 'rgba(208,236,255,0.4)', color: '#486272' },
+    Ready: { bg: 'rgba(39,174,96,0.15)', color: '#27AE60' },
+  }
+
+  const rows = active.map(o => {
+    const sc = stageColors[o.stage] || { bg: '#eee', color: '#333' }
+    return `<tr>
+      <td>${o.po || '—'}</td>
+      <td>${o.description || '—'}</td>
+      <td>${o.style_no || '—'}</td>
+      <td>${o.style || '—'}</td>
+      <td>${o.colour || '—'}</td>
+      <td style="text-align:right;">${o.qty ?? '—'}</td>
+      <td>${o.ex_factory || '—'}</td>
+      <td><span style="background:${sc.bg};color:${sc.color};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;">${o.stage || '—'}</span></td>
+      <td style="color:#888;font-size:11px;">${o.notes || '—'}</td>
+    </tr>`
+  }).join('')
+
+  const win = window.open('', '_blank')
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>Active Orders — Denovo Apparel</title>
+    <style>
+      @page { size: A4 landscape; margin: 12mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Inter', sans-serif; font-size: 12px; color: #111; }
+      .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0e0e0e; padding-bottom: 10px; margin-bottom: 14px; }
+      .header-left .eyebrow { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #576062; margin-bottom: 3px; }
+      .header-left .title { font-size: 20px; font-weight: 900; color: #0e0e0e; }
+      .header-right { font-size: 10px; color: #888; text-align: right; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      thead tr { background: #0e0e0e; color: #fff; }
+      thead th { padding: 7px 8px; text-align: left; font-size: 9px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; white-space: nowrap; }
+      tbody tr:nth-child(even) { background: #f6f3f2; }
+      tbody td { padding: 7px 8px; border-bottom: 1px solid #e5e5e5; vertical-align: middle; }
+    </style>
+  </head><body>
+    <div class="header">
+      <div class="header-left">
+        <div class="eyebrow">Denovo Apparel Ltd</div>
+        <div class="title">Active Orders</div>
+      </div>
+      <div class="header-right">
+        Printed: ${new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })}<br>
+        ${active.length} active orders
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>PO</th><th>Description</th><th>Style No</th><th>SKU</th>
+          <th>Colour</th><th>Qty</th><th>Ex Factory</th><th>Stage</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}<\/script>
+  </body></html>`)
+  win.document.close()
+}
 function stageClass(s) {
   return { Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Completed:'stage-completed' }[s] || 'stage-production'
 }
