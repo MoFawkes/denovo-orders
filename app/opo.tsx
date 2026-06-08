@@ -70,7 +70,6 @@ function getStageRank(stage: string | null): number {
 
 function parseExFactory(val: string | null): number {
   if (!val) return 0
-  // Dates stored as YYYY-DD-MM (e.g. 2026-12-01 = 12th Jan)
   const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (m) {
     const d = new Date(`${m[1]}-${m[3]}-${m[2]}`)
@@ -80,7 +79,6 @@ function parseExFactory(val: string | null): number {
 }
 
 function sortOrders(a: Order, b: Order) {
-  // Completed orders: newest ex-factory date first
   if (a.stage === 'Completed' && b.stage === 'Completed') {
     return parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory)
   }
@@ -97,11 +95,9 @@ function sortOrders(a: Order, b: Order) {
 function normaliseUrl(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return ''
-
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return trimmed
   }
-
   return `https://${trimmed}`
 }
 
@@ -145,6 +141,17 @@ function getStageAccent(stage: string | null) {
       return colors.success
     default:
       return colors.borderStrong
+  }
+}
+
+function stageColor(stage: string | null): string {
+  switch (stage) {
+    case 'Cutting': return '#c0392b'
+    case 'Production': return '#e67e22'
+    case 'Packing': return '#2980b9'
+    case 'Ready': return '#27ae60'
+    case 'Completed': return '#1e8449'
+    default: return '#7f8c8d'
   }
 }
 
@@ -212,38 +219,32 @@ export default function OpoScreen() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newOrder = payload.new as Order
-
             setOrders((prev) => {
               const exists = prev.some((order) => order.id === newOrder.id)
               if (exists) return prev
               return [...prev, newOrder].sort(sortOrders)
             })
-
             return
           }
 
           if (payload.eventType === 'UPDATE') {
             const updatedOrder = payload.new as Order
-
             setOrders((prev) =>
               prev
                 .map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
                 .sort(sortOrders)
             )
-
             setSelectedOrder((prev) => {
               if (!prev || prev.id !== updatedOrder.id) return prev
               setOrderNotes(updatedOrder.notes ?? '')
               setPackingListEditValue(updatedOrder.packing_list_url ?? '')
               return updatedOrder
             })
-
             return
           }
 
           if (payload.eventType === 'DELETE') {
             const deletedOrder = payload.old as Order
-
             setOrders((prev) => prev.filter((order) => order.id !== deletedOrder.id))
             setSelectedOrder((prev) =>
               prev && prev.id === deletedOrder.id ? null : prev
@@ -291,9 +292,7 @@ export default function OpoScreen() {
 
   const filteredOrders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-
     if (!query) return baseVisibleOrders
-
     return baseVisibleOrders.filter((order) => {
       const searchableFields = [
         order.po,
@@ -305,7 +304,6 @@ export default function OpoScreen() {
         order.company,
         order.notes,
       ]
-
       return searchableFields.some((field) =>
         String(field || '').toLowerCase().includes(query)
       )
@@ -321,7 +319,6 @@ export default function OpoScreen() {
     if (!params.orderId || !orders.length || selectedOrder || hasHandledInitialParam.current) {
       return
     }
-
     const matchingOrder = orders.find((order) => order.id === params.orderId)
     if (matchingOrder) {
       hasHandledInitialParam.current = true
@@ -334,6 +331,82 @@ export default function OpoScreen() {
     setSelectedOrder(order)
     setOrderNotes(order.notes ?? '')
     setPackingListEditValue(order.packing_list_url ?? '')
+  }
+
+  function handlePrint() {
+    if (typeof window === 'undefined') return
+
+    const printStyles = `
+      @media print {
+        body > * { display: none !important; }
+        #denovo-print-table { display: block !important; }
+        @page { size: A4 landscape; margin: 15mm; }
+      }
+    `
+
+    const styleTag = document.createElement('style')
+    styleTag.innerHTML = printStyles
+    document.head.appendChild(styleTag)
+
+    const div = document.createElement('div')
+    div.id = 'denovo-print-table'
+    div.style.display = 'none'
+
+    const title = `Denovo Apparel — Active Orders (${new Date().toLocaleDateString('en-GB')})`
+
+    const rows = activeOrders.map((order) => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.po || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.description || order.style || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.style_no || order.style || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.colour || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${order.qty ?? '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.ex_factory || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">
+          <span style="background:${stageColor(order.stage)};color:#fff;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;">
+            ${order.stage || '-'}
+          </span>
+        </td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:11px;">${order.notes || '—'}</td>
+      </tr>
+    `).join('')
+
+    div.innerHTML = `
+      <div style="font-family:sans-serif;padding:0;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;border-bottom:2px solid #002d6e;padding-bottom:10px;">
+          <div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#002d6e;margin-bottom:4px;">Denovo Apparel Ltd</div>
+            <div style="font-size:18px;font-weight:900;color:#111;">Active Orders</div>
+          </div>
+          <div style="font-size:11px;color:#6b7280;">Printed: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} &nbsp;·&nbsp; ${activeOrders.length} orders</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;color:#111;">
+          <thead>
+            <tr style="background:#002d6e;color:#fff;">
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">PO</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Description</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Style</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Colour</th>
+              <th style="padding:9px 8px;text-align:right;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Qty</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Ex Factory</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Stage</th>
+              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `
+
+    document.body.appendChild(div)
+    window.print()
+
+    setTimeout(() => {
+      document.body.removeChild(div)
+      document.head.removeChild(styleTag)
+    }, 1500)
   }
 
   async function updateOrderStage(
@@ -563,7 +636,6 @@ export default function OpoScreen() {
       Alert.alert('No docket linked', 'This order does not have a docket URL yet.')
       return
     }
-
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
@@ -580,7 +652,6 @@ export default function OpoScreen() {
       )
       return
     }
-
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
@@ -652,7 +723,6 @@ export default function OpoScreen() {
                 {item.description || item.style || 'Untitled order'}
               </Text>
             </View>
-
             <StatusChip status={toChipStatus(item.stage)} />
           </View>
 
@@ -730,242 +800,241 @@ export default function OpoScreen() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-            <TouchableOpacity onPress={closeOrderDetail} style={styles.backButton}>
-              <MaterialIcons name="arrow-back" size={18} color={colors.primary} />
-              <Text style={styles.backButtonText}>Back to orders</Text>
-            </TouchableOpacity>
-
-          <View style={styles.detailHero}>
-            <View style={[styles.detailHeroTop, isCompact && styles.stackRow]}>
-              <View style={styles.detailHeroTextBlock}>
-                <Text style={styles.detailEyebrow}>PO {selectedOrder.po || '-'}</Text>
-                <Text style={styles.detailTitle}>
-                  {selectedOrder.description || selectedOrder.style || 'Untitled order'}
-                </Text>
-              </View>
-              <StatusChip status={toChipStatus(selectedOrder.stage)} />
-            </View>
-
-            <View style={styles.detailMetaGrid}>
-              <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
-                <Text style={styles.detailMetaLabel}>Style</Text>
-                <Text style={styles.detailMetaValue}>
-                  {selectedOrder.style_no || selectedOrder.style || '-'}
-                </Text>
-              </View>
-              <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
-                <Text style={styles.detailMetaLabel}>Colour</Text>
-                <Text style={styles.detailMetaValue}>{selectedOrder.colour || '-'}</Text>
-              </View>
-              <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
-                <Text style={styles.detailMetaLabel}>Quantity</Text>
-                <Text style={styles.detailMetaValue}>{selectedOrder.qty ?? '-'}</Text>
-              </View>
-              <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
-                <Text style={styles.detailMetaLabel}>Ex Factory</Text>
-                <Text style={styles.detailMetaValue}>{selectedOrder.ex_factory || '-'}</Text>
-              </View>
-            </View>
-          </View>
-
-          {selectedOrder.image_url ? (
-            <Image
-              source={{ uri: selectedOrder.image_url }}
-              style={styles.detailImage}
-              resizeMode="cover"
-            />
-          ) : null}
-
-          <View style={styles.detailPanel}>
-            <Text style={styles.detailPanelTitle}>Order Overview</Text>
-            <Text style={styles.detailDescription}>
-              {selectedOrder.description || 'No description available.'}
-            </Text>
-
-            <View style={[styles.inlineMetaRow, isCompact && styles.stackRow]}>
-              <View style={styles.inlineMetaItem}>
-                <Text style={styles.inlineMetaLabel}>Fabric</Text>
-                <Text style={styles.inlineMetaValue}>{selectedOrder.fabric || '-'}</Text>
-              </View>
-              <View style={styles.inlineMetaItem}>
-                <Text style={styles.inlineMetaLabel}>Invoice</Text>
-                <Text style={styles.inlineMetaValue}>{selectedOrder.invoice_no || '-'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={styles.primaryActionButton}
-                onPress={() => openDocket(selectedOrder.docket_url)}
-              >
-                <MaterialIcons name="description" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryActionText}>
-                  Open Docket {selectedOrder.docket ? `#${selectedOrder.docket}` : ''}
-                </Text>
+              <TouchableOpacity onPress={closeOrderDetail} style={styles.backButton}>
+                <MaterialIcons name="arrow-back" size={18} color={colors.primary} />
+                <Text style={styles.backButtonText}>Back to orders</Text>
               </TouchableOpacity>
 
-              {selectedOrder.stage === 'Completed' && !!selectedOrder.packing_list_url ? (
-                <TouchableOpacity
-                  style={styles.lightActionButton}
-                  onPress={() => openPackingList(selectedOrder.packing_list_url)}
-                >
-                  <Text style={styles.lightActionText}>Open Packing List</Text>
-                </TouchableOpacity>
+              <View style={styles.detailHero}>
+                <View style={[styles.detailHeroTop, isCompact && styles.stackRow]}>
+                  <View style={styles.detailHeroTextBlock}>
+                    <Text style={styles.detailEyebrow}>PO {selectedOrder.po || '-'}</Text>
+                    <Text style={styles.detailTitle}>
+                      {selectedOrder.description || selectedOrder.style || 'Untitled order'}
+                    </Text>
+                  </View>
+                  <StatusChip status={toChipStatus(selectedOrder.stage)} />
+                </View>
+
+                <View style={styles.detailMetaGrid}>
+                  <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
+                    <Text style={styles.detailMetaLabel}>Style</Text>
+                    <Text style={styles.detailMetaValue}>
+                      {selectedOrder.style_no || selectedOrder.style || '-'}
+                    </Text>
+                  </View>
+                  <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
+                    <Text style={styles.detailMetaLabel}>Colour</Text>
+                    <Text style={styles.detailMetaValue}>{selectedOrder.colour || '-'}</Text>
+                  </View>
+                  <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
+                    <Text style={styles.detailMetaLabel}>Quantity</Text>
+                    <Text style={styles.detailMetaValue}>{selectedOrder.qty ?? '-'}</Text>
+                  </View>
+                  <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
+                    <Text style={styles.detailMetaLabel}>Ex Factory</Text>
+                    <Text style={styles.detailMetaValue}>{selectedOrder.ex_factory || '-'}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {selectedOrder.image_url ? (
+                <Image
+                  source={{ uri: selectedOrder.image_url }}
+                  style={styles.detailImage}
+                  resizeMode="cover"
+                />
               ) : null}
-            </View>
-          </View>
 
-          {selectedOrder.stage === 'Completed' ? (
-            <View style={styles.formCard}>
-              <Text style={styles.formCardTitle}>Packing List Link</Text>
-              <Text style={styles.formCardSubtitle}>
-                Keep the final packing link up to date for downstream teams.
-              </Text>
+              <View style={styles.detailPanel}>
+                <Text style={styles.detailPanelTitle}>Order Overview</Text>
+                <Text style={styles.detailDescription}>
+                  {selectedOrder.description || 'No description available.'}
+                </Text>
 
-              <TextInput
-                style={styles.singleLineInput}
-                value={packingListEditValue}
-                onChangeText={setPackingListEditValue}
-                placeholder="Paste packing list link"
-                placeholderTextColor={colors.textSoft}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                editable={!savingPackingList}
-              />
+                <View style={[styles.inlineMetaRow, isCompact && styles.stackRow]}>
+                  <View style={styles.inlineMetaItem}>
+                    <Text style={styles.inlineMetaLabel}>Fabric</Text>
+                    <Text style={styles.inlineMetaValue}>{selectedOrder.fabric || '-'}</Text>
+                  </View>
+                  <View style={styles.inlineMetaItem}>
+                    <Text style={styles.inlineMetaLabel}>Invoice</Text>
+                    <Text style={styles.inlineMetaValue}>{selectedOrder.invoice_no || '-'}</Text>
+                  </View>
+                </View>
 
-              <View style={styles.formActionRow}>
-                {!!selectedOrder.packing_list_url && (
+                <View style={styles.actionRow}>
                   <TouchableOpacity
-                    style={styles.lightActionButton}
-                    onPress={() => openPackingList(selectedOrder.packing_list_url)}
+                    style={styles.primaryActionButton}
+                    onPress={() => openDocket(selectedOrder.docket_url)}
                   >
-                    <Text style={styles.lightActionText}>Open Link</Text>
+                    <MaterialIcons name="description" size={18} color="#FFFFFF" />
+                    <Text style={styles.primaryActionText}>
+                      Open Docket {selectedOrder.docket ? `#${selectedOrder.docket}` : ''}
+                    </Text>
                   </TouchableOpacity>
-                )}
 
-                <TouchableOpacity
-                  style={[
-                    styles.primaryCompactButton,
-                    (!packingListChanged || savingPackingList) && styles.buttonDisabled,
-                  ]}
-                  onPress={savePackingListUrl}
-                  disabled={!packingListChanged || savingPackingList}
-                >
-                  <Text style={styles.primaryCompactButtonText}>
-                    {savingPackingList ? 'Saving...' : 'Save Packing List'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
-
-          <View style={styles.formCard}>
-            <Text style={styles.formCardTitle}>Order Notes</Text>
-            <Text style={styles.formCardSubtitle}>
-              Shared updates for trims, fabric arrivals, urgency, or packing context.
-            </Text>
-
-            <TextInput
-              style={styles.notesInput}
-              multiline
-              value={orderNotes}
-              onChangeText={setOrderNotes}
-              placeholder="Write notes here..."
-              placeholderTextColor={colors.textSoft}
-              textAlignVertical="top"
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.primaryCompactButton,
-                (!notesChanged || savingNotes) && styles.buttonDisabled,
-              ]}
-              onPress={saveOrderNotes}
-              disabled={!notesChanged || savingNotes}
-            >
-              <Text style={styles.primaryCompactButtonText}>
-                {savingNotes ? 'Saving...' : 'Save Notes'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
-            <View style={styles.formCard}>
-              <Text style={styles.formCardTitle}>Complete Order</Text>
-              <Text style={styles.formCardSubtitle}>
-                Add the packing list before moving this order into completed.
-              </Text>
-
-              <TextInput
-                style={styles.singleLineInput}
-                value={packingListInput}
-                onChangeText={setPackingListInput}
-                placeholder="Paste packing list link"
-                placeholderTextColor={colors.textSoft}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                editable={!completeLoading}
-              />
-
-              <View style={styles.formActionRow}>
-                <TouchableOpacity
-                  style={styles.lightActionButton}
-                  onPress={() => {
-                    if (completeLoading) return
-                    setShowCompletePrompt(false)
-                    setPendingCompleteOrderId(null)
-                    setPackingListInput('')
-                  }}
-                >
-                  <Text style={styles.lightActionText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.primaryCompactButton,
-                    completeLoading && styles.buttonDisabled,
-                  ]}
-                  onPress={handleConfirmCompleteInline}
-                  disabled={completeLoading}
-                >
-                  <Text style={styles.primaryCompactButtonText}>
-                    {completeLoading ? 'Completing...' : 'Complete Order'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
-
-            <View style={styles.stageSection}>
-              <Text style={styles.stageSectionLabel}>Move Order To</Text>
-              <View style={styles.stageButtons}>
-                {STAGES.map((stage) => {
-                  const isCurrentStage = selectedOrder.stage === stage
-
-                  return (
+                  {selectedOrder.stage === 'Completed' && !!selectedOrder.packing_list_url ? (
                     <TouchableOpacity
-                      key={stage}
-                      style={[
-                        styles.stageButton,
-                        isCurrentStage && styles.currentStageButton,
-                      ]}
-                      onPress={() => handleStagePress(selectedOrder, stage)}
+                      style={styles.lightActionButton}
+                      onPress={() => openPackingList(selectedOrder.packing_list_url)}
                     >
-                      <Text
-                        style={[
-                          styles.stageButtonText,
-                          isCurrentStage && styles.currentStageButtonText,
-                        ]}
+                      <Text style={styles.lightActionText}>Open Packing List</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {selectedOrder.stage === 'Completed' ? (
+                <View style={styles.formCard}>
+                  <Text style={styles.formCardTitle}>Packing List Link</Text>
+                  <Text style={styles.formCardSubtitle}>
+                    Keep the final packing link up to date for downstream teams.
+                  </Text>
+
+                  <TextInput
+                    style={styles.singleLineInput}
+                    value={packingListEditValue}
+                    onChangeText={setPackingListEditValue}
+                    placeholder="Paste packing list link"
+                    placeholderTextColor={colors.textSoft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    editable={!savingPackingList}
+                  />
+
+                  <View style={styles.formActionRow}>
+                    {!!selectedOrder.packing_list_url && (
+                      <TouchableOpacity
+                        style={styles.lightActionButton}
+                        onPress={() => openPackingList(selectedOrder.packing_list_url)}
                       >
-                        {isCurrentStage ? `Current: ${stage}` : stage}
+                        <Text style={styles.lightActionText}>Open Link</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryCompactButton,
+                        (!packingListChanged || savingPackingList) && styles.buttonDisabled,
+                      ]}
+                      onPress={savePackingListUrl}
+                      disabled={!packingListChanged || savingPackingList}
+                    >
+                      <Text style={styles.primaryCompactButtonText}>
+                        {savingPackingList ? 'Saving...' : 'Save Packing List'}
                       </Text>
                     </TouchableOpacity>
-                  )
-                })}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.formCard}>
+                <Text style={styles.formCardTitle}>Order Notes</Text>
+                <Text style={styles.formCardSubtitle}>
+                  Shared updates for trims, fabric arrivals, urgency, or packing context.
+                </Text>
+
+                <TextInput
+                  style={styles.notesInput}
+                  multiline
+                  value={orderNotes}
+                  onChangeText={setOrderNotes}
+                  placeholder="Write notes here..."
+                  placeholderTextColor={colors.textSoft}
+                  textAlignVertical="top"
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.primaryCompactButton,
+                    (!notesChanged || savingNotes) && styles.buttonDisabled,
+                  ]}
+                  onPress={saveOrderNotes}
+                  disabled={!notesChanged || savingNotes}
+                >
+                  <Text style={styles.primaryCompactButtonText}>
+                    {savingNotes ? 'Saving...' : 'Save Notes'}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            </View>
+
+              {showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
+                <View style={styles.formCard}>
+                  <Text style={styles.formCardTitle}>Complete Order</Text>
+                  <Text style={styles.formCardSubtitle}>
+                    Add the packing list before moving this order into completed.
+                  </Text>
+
+                  <TextInput
+                    style={styles.singleLineInput}
+                    value={packingListInput}
+                    onChangeText={setPackingListInput}
+                    placeholder="Paste packing list link"
+                    placeholderTextColor={colors.textSoft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    editable={!completeLoading}
+                  />
+
+                  <View style={styles.formActionRow}>
+                    <TouchableOpacity
+                      style={styles.lightActionButton}
+                      onPress={() => {
+                        if (completeLoading) return
+                        setShowCompletePrompt(false)
+                        setPendingCompleteOrderId(null)
+                        setPackingListInput('')
+                      }}
+                    >
+                      <Text style={styles.lightActionText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryCompactButton,
+                        completeLoading && styles.buttonDisabled,
+                      ]}
+                      onPress={handleConfirmCompleteInline}
+                      disabled={completeLoading}
+                    >
+                      <Text style={styles.primaryCompactButtonText}>
+                        {completeLoading ? 'Completing...' : 'Complete Order'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.stageSection}>
+                <Text style={styles.stageSectionLabel}>Move Order To</Text>
+                <View style={styles.stageButtons}>
+                  {STAGES.map((stage) => {
+                    const isCurrentStage = selectedOrder.stage === stage
+                    return (
+                      <TouchableOpacity
+                        key={stage}
+                        style={[
+                          styles.stageButton,
+                          isCurrentStage && styles.currentStageButton,
+                        ]}
+                        onPress={() => handleStagePress(selectedOrder, stage)}
+                      >
+                        <Text
+                          style={[
+                            styles.stageButtonText,
+                            isCurrentStage && styles.currentStageButtonText,
+                          ]}
+                        >
+                          {isCurrentStage ? `Current: ${stage}` : stage}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </View>
             </ScrollView>
             <BottomTabBar />
           </View>
@@ -986,17 +1055,6 @@ export default function OpoScreen() {
     { label: 'Docket', flex: 0.8 },
   ]
 
-  function stageColor(stage: string | null): string {
-    switch (stage) {
-      case 'Cutting': return '#c0392b'
-      case 'Production': return '#e67e22'
-      case 'Packing': return '#2980b9'
-      case 'Ready': return '#27ae60'
-      case 'Completed': return '#1e8449'
-      default: return '#7f8c8d'
-    }
-  }
-
   const listHeader = (
     <View>
       <View style={[styles.heroTopRow, isCompact && styles.stackRow]}>
@@ -1010,12 +1068,20 @@ export default function OpoScreen() {
             </Text>
           )}
         </View>
-        <TouchableOpacity
-          style={[styles.signOutButton, isCompact && styles.compactButtonAlign]}
-          onPress={signOut}
-        >
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {isDesktop && (
+            <TouchableOpacity style={styles.printButton} onPress={handlePrint}>
+              <MaterialIcons name="print" size={16} color={colors.primaryDeep} />
+              <Text style={styles.printButtonText}>Print Sheet</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.signOutButton, isCompact && styles.compactButtonAlign]}
+            onPress={signOut}
+          >
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.rolePill}>
@@ -1089,7 +1155,6 @@ export default function OpoScreen() {
           {listHeader}
 
           <View style={styles.tableWrapper}>
-            {/* Table header */}
             <View style={styles.tableHeaderRow}>
               {TABLE_COLS.map((col) => (
                 <Text key={col.label} style={[styles.tableHeaderCell, { flex: col.flex }]}>
@@ -1098,7 +1163,6 @@ export default function OpoScreen() {
               ))}
             </View>
 
-            {/* Table rows */}
             {filteredOrders.length === 0 ? emptyComponent : filteredOrders.map((item, index) => (
               <TouchableOpacity
                 key={item.id}
@@ -1224,6 +1288,29 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textMuted,
     maxWidth: 520,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  printButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 999,
+  },
+  printButtonText: {
+    color: colors.primaryDeep,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   signOutButton: {
     backgroundColor: colors.primaryDeep,
