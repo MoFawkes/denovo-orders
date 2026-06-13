@@ -1112,65 +1112,6 @@ document.getElementById('search-input-mobile').addEventListener('input', e => { 
 
 // ── Util ──────────────────────────────────────────────────────────────────────
 
-function printActiveOrders() {
-  const active = allOrders
-    .filter(o => o.stage !== 'Completed')
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-
-  const stageColor = { Cutting:'#c0524f', Production:'#c07020', Packing:'#4a7a8a', Ready:'#27AE60' }
-  const stageBg = { Cutting:'#fee8e7', Production:'#fdf0e0', Packing:'#e0f0f8', Ready:'#e0f5e9' }
-
-  const rows = active.map(o => `
-    <tr>
-      <td>${o.po||'—'}</td>
-      <td>${o.description||'—'}</td>
-      <td>${o.style_no||'—'}</td>
-      <td>${o.style||'—'}</td>
-      <td>${o.colour||'—'}</td>
-      <td style="text-align:right;">${o.qty??'—'}</td>
-      <td>${o.ex_factory||'—'}</td>
-      <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:${stageColor[o.stage]||'#555'};background:${stageBg[o.stage]||'#eee'}">${o.stage||'—'}</span></td>
-      <td class="notes">${o.notes||''}</td>
-    </tr>`).join('')
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Active Orders — Denovo</title>
-<style>
-  @page { size: A4 landscape; margin: 12mm; }
-  * { box-sizing: border-box; }
-  body { font-family: 'Inter', Arial, sans-serif; font-size: 10px; color: #222; margin: 0; }
-  h1 { font-size: 14px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 2px; }
-  .meta { font-size: 9px; color: #888; margin-bottom: 10px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f0eded; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #666; padding: 5px 6px; text-align: left; border-bottom: 1.5px solid #d0d0d0; }
-  td { padding: 5px 6px; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
-  tr:last-child td { border-bottom: none; }
-  tr:nth-child(even) td { background: #fafafa; }
-  .notes { color: #777; font-style: italic; }
-  td:nth-child(6) { text-align: right; }
-</style>
-</head>
-<body>
-<h1>Denovo Orders — Active</h1>
-<div class="meta">Printed ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · ${active.length} orders</div>
-<table>
-<thead><tr>
-  <th>PO</th><th>Description</th><th>Style No</th><th>SKU</th><th>Colour</th><th>Qty</th><th>Ex Factory</th><th>Stage</th><th>Notes</th>
-</tr></thead>
-<tbody>${rows}</tbody>
-</table>
-</body>
-</html>`
-
-  const w = window.open('', '_blank')
-  w.document.write(html)
-  w.document.close()
-  w.onload = () => w.print()
-}
-
 function openUrl(url) {
   if (!url) return
   window.open(url.startsWith('http') ? url : `https://${url}`, '_blank', 'noopener')
