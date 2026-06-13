@@ -91,6 +91,11 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
   html.dark ::-webkit-scrollbar-thumb { background: #3a3a3d; }
+  .order-tooltip { position: absolute; z-index: 100; background: var(--c-surface-lowest); border: 1px solid var(--c-border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 10px; width: 180px; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+  html.dark .order-tooltip { box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .order-tooltip img { width: 100%; border-radius: 6px; object-fit: cover; margin-bottom: 8px; display: block; }
+  .order-tooltip .tip-sku { font-size: 11px; font-weight: 700; color: var(--c-primary); }
+  .order-tooltip .tip-qty { font-size: 10px; color: var(--c-text-dim); margin-top: 2px; }
 </style>
 <script>
   if (localStorage.getItem('darkMode') === '1') document.documentElement.classList.add('dark')
@@ -332,6 +337,13 @@
     <h3 id="drawer-po" class="text-base font-bold text-on-surface flex-1">—</h3>
   </div>
   <div class="flex-1 overflow-y-auto p-4" id="drawer-content"></div>
+</div>
+
+<!-- Hover tooltip -->
+<div id="order-tooltip" class="order-tooltip hidden">
+  <img id="tip-img" src="" alt="" />
+  <div class="tip-sku" id="tip-sku"></div>
+  <div class="tip-qty" id="tip-qty"></div>
 </div>
 
 <!-- Image fullscreen overlay -->
@@ -837,7 +849,9 @@ function renderOrders() {
       const sel = o.id === selectedOrderId
       return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
         style="grid-template-columns:90px 1fr 80px 110px 100px 70px 110px 120px 1fr 70px;"
-        onclick="selectOrder('${o.id}')">
+        onclick="selectOrder('${o.id}')"
+        onmouseenter="showOrderTooltip(event,'${o.id}')"
+        onmouseleave="hideOrderTooltip()">
         <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
         <div class="flex items-center gap-1 pr-3 min-w-0 group/desc">
           <span id="desc-${o.id}" class="text-xs text-on-surface truncate">${o.description||'—'}</span>
@@ -1111,6 +1125,38 @@ document.getElementById('search-input').addEventListener('input', e => { searchQ
 document.getElementById('search-input-mobile').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 
 // ── Util ──────────────────────────────────────────────────────────────────────
+
+function showOrderTooltip(e, id) {
+  const o = allOrders.find(o => o.id === id)
+  if (!o) return
+  const tip = document.getElementById('order-tooltip')
+  const img = document.getElementById('tip-img')
+  const sku = document.getElementById('tip-sku')
+  const qty = document.getElementById('tip-qty')
+  if (o.image_url) { img.src = o.image_url; img.classList.remove('hidden') }
+  else img.classList.add('hidden')
+  sku.textContent = o.style || o.style_no || '—'
+  qty.textContent = `Qty: ${o.qty ?? '—'}`
+  tip.classList.remove('hidden')
+  tip.style.opacity = '1'
+  positionTooltip(e, tip)
+}
+
+function positionTooltip(e, tip) {
+  const margin = 12
+  let x = e.clientX + margin
+  let y = e.clientY + margin
+  if (x + 180 > window.innerWidth) x = e.clientX - 180 - margin
+  if (y + tip.offsetHeight > window.innerHeight) y = e.clientY - tip.offsetHeight - margin
+  tip.style.left = x + 'px'
+  tip.style.top = y + 'px'
+}
+
+function hideOrderTooltip() {
+  const tip = document.getElementById('order-tooltip')
+  tip.style.opacity = '0'
+  tip.classList.add('hidden')
+}
 
 function openUrl(url) {
   if (!url) return
