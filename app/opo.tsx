@@ -17,6 +17,7 @@ import {
 } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
+import DotsLoader from '../components/DotsLoader'
 import ScreenContainer from '../components/layout/ScreenContainer'
 import StatusChip from '../components/StatusChip'
 import BottomTabBar from '../components/navigation/BottomTabBar'
@@ -848,7 +849,7 @@ export default function OpoScreen() {
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <DotsLoader />
       </View>
     )
   }
