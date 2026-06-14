@@ -340,7 +340,13 @@ export default function OpoScreen() {
       @media print {
         body > * { display: none !important; }
         #denovo-print-table { display: block !important; }
-        @page { size: A4 landscape; margin: 15mm; }
+        @page { size: A4 landscape; margin: 12mm; }
+      }
+      #denovo-print-table {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      #denovo-print-table .zebra-row:nth-child(even) td {
+        background-color: #f9fafb;
       }
     `
 
@@ -352,48 +358,65 @@ export default function OpoScreen() {
     div.id = 'denovo-print-table'
     div.style.display = 'none'
 
-    const title = `Denovo Apparel — Active Orders (${new Date().toLocaleDateString('en-GB')})`
+    function stageBadge(stage: string | null): string {
+      switch (stage) {
+        case 'Cutting':    return 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;'
+        case 'Production': return 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;'
+        case 'Packing':    return 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;'
+        case 'Ready':      return 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+        case 'Completed':  return 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+        default:           return 'background:#f3f4f6;color:#374151;border:1px solid #d1d5db;'
+      }
+    }
 
-    const rows = activeOrders.map((order) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.po || '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.description || order.style || '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.style_no || order.style || '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.colour || '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${order.qty ?? '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${order.ex_factory || '-'}</td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">
-          <span style="background:${stageColor(order.stage)};color:#fff;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;">
+    const rows = activeOrders.map((order, i) => `
+      <tr class="zebra-row">
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:11px;">${order.po || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.description || order.style || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.style_no || order.style || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.colour || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${order.qty != null ? order.qty.toLocaleString() : '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.ex_factory || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;">
+          <span style="${stageBadge(order.stage)}padding:2px 8px;border-radius:999px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">
             ${order.stage || '-'}
           </span>
         </td>
-        <td style="padding:8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:11px;">${order.notes || '—'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:11px;font-style:italic;">${order.notes || '—'}</td>
       </tr>
     `).join('')
 
+    const printDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()
+
     div.innerHTML = `
-      <div style="font-family:sans-serif;padding:0;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;border-bottom:2px solid #002d6e;padding-bottom:10px;">
-          <div>
-            <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#002d6e;margin-bottom:4px;">Denovo Apparel Ltd</div>
-            <div style="font-size:18px;font-weight:900;color:#111;">Active Orders</div>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:0;color:#111;">
+        <header style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:14px;margin-bottom:18px;border-bottom:2px solid #002d6e;">
+          <div style="display:flex;align-items:flex-start;gap:12px;">
+            <div style="width:5px;height:56px;background:#002d6e;flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#002d6e;margin-bottom:4px;">Denovo Apparel Ltd</div>
+              <div style="font-size:22px;font-weight:800;color:#001945;line-height:1.1;">Active Orders</div>
+            </div>
           </div>
-          <div style="font-size:11px;color:#6b7280;">Printed: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} &nbsp;·&nbsp; ${activeOrders.length} orders</div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;color:#111;">
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:#374151;margin-bottom:3px;">Internal Production Document</div>
+            <div style="font-size:9px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#6b7280;">${printDate} &nbsp;·&nbsp; ${activeOrders.length} TOTAL ORDERS</div>
+          </div>
+        </header>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr style="background:#002d6e;color:#fff;">
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">PO</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Description</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Style</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Colour</th>
-              <th style="padding:9px 8px;text-align:right;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Qty</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Ex Factory</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Stage</th>
-              <th style="padding:9px 8px;text-align:left;font-size:10px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;">Notes</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">PO No.</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Description</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Style No</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Colour</th>
+              <th style="padding:8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Qty</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Ex Factory</th>
+              <th style="padding:8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Stage</th>
+              <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Notes</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody style="color:#111;">
             ${rows}
           </tbody>
         </table>
