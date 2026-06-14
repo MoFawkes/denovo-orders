@@ -191,6 +191,7 @@ export default function OpoScreen() {
   const [searchQuery, setSearchQuery] = useState('')
   const [orderNotes, setOrderNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const listRef = useRef<FlatList<Order>>(null)
   const scrollOffsetRef = useRef(0)
@@ -667,6 +668,40 @@ export default function OpoScreen() {
     }
   }
 
+  async function handleImageUpload(file: File) {
+    if (!selectedOrder) return
+    try {
+      setUploadingImage(true)
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `orders/${selectedOrder.id}/image_${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('order-images')
+        .upload(path, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('order-images')
+        .getPublicUrl(path)
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ image_url: publicUrl, updated_by: user?.id ?? null })
+        .eq('id', selectedOrder.id)
+
+      if (updateError) throw updateError
+
+      const updatedOrder: Order = { ...selectedOrder, image_url: publicUrl }
+      setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updatedOrder : o)))
+      setSelectedOrder(updatedOrder)
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload image.')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   async function openDocket(url: string | null) {
     if (!url) {
       Alert.alert('No docket linked', 'This order does not have a docket URL yet.')
@@ -874,13 +909,47 @@ export default function OpoScreen() {
                 </View>
               </View>
 
-              {selectedOrder.image_url ? (
-                <Image
-                  source={{ uri: selectedOrder.image_url }}
-                  style={styles.detailImage}
-                  resizeMode="cover"
-                />
-              ) : null}
+              <View style={styles.detailImageWrapper}>
+                {selectedOrder.image_url ? (
+                  <Image
+                    source={{ uri: selectedOrder.image_url }}
+                    style={styles.detailImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.detailImagePlaceholder}>
+                    <MaterialIcons name="image" size={32} color={colors.textMuted} />
+                    <Text style={styles.detailImagePlaceholderText}>No image available</Text>
+                  </View>
+                )}
+                {Platform.OS === 'web' && (
+                  <TouchableOpacity
+                    style={styles.imageUploadOverlay}
+                    onPress={() => {
+                      const input = document.createElement('input')
+                      input.type = 'file'
+                      input.accept = 'image/*'
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0]
+                        if (file) handleImageUpload(file)
+                      }
+                      input.click()
+                    }}
+                    disabled={uploadingImage}
+                  >
+                    {uploadingImage ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <MaterialIcons name="upload" size={14} color="#fff" />
+                        <Text style={styles.imageUploadOverlayText}>
+                          {selectedOrder.image_url ? 'Change' : 'Upload image'}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
 
               <View style={styles.detailPanel}>
                 <Text style={styles.detailPanelTitle}>Order Overview</Text>
@@ -1624,11 +1693,48 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  detailImageWrapper: {
+    width: '100%',
+    marginTop: spacing.lg,
+    position: 'relative',
+  },
   detailImage: {
     width: '100%',
     height: 260,
     borderRadius: radius.lg,
-    marginTop: spacing.lg,
+  },
+  detailImagePlaceholder: {
+    width: '100%',
+    height: 140,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  detailImagePlaceholderText: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  imageUploadOverlay: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    right: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+  },
+  imageUploadOverlayText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   detailPanel: {
     marginTop: spacing.lg,
