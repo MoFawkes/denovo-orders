@@ -340,10 +340,11 @@ export default function OpoScreen() {
       @media print {
         body > * { display: none !important; }
         #denovo-print-table { display: block !important; }
-        @page { size: A4 landscape; margin: 12mm; }
+        @page { size: A4 landscape; margin: 0; }
       }
       #denovo-print-table {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        transform-origin: top left;
       }
       #denovo-print-table .zebra-row:nth-child(even) td {
         background-color: #f9fafb;
@@ -424,6 +425,26 @@ export default function OpoScreen() {
     `
 
     document.body.appendChild(div)
+
+    // Scale content to fit one A4 landscape page (277mm wide, 190mm tall after padding)
+    const A4_W = 1122 // 297mm at 96dpi
+    const A4_H = 794  // 210mm at 96dpi
+    const PADDING = 40
+    const inner = div.firstElementChild as HTMLElement
+    if (inner) {
+      const contentW = inner.scrollWidth
+      const contentH = inner.scrollHeight
+      const scaleX = (A4_W - PADDING * 2) / contentW
+      const scaleY = (A4_H - PADDING * 2) / contentH
+      const scale = Math.min(scaleX, scaleY, 1)
+      inner.style.transform = `scale(${scale})`
+      inner.style.transformOrigin = 'top left'
+      inner.style.width = `${contentW}px`
+      div.style.padding = `${PADDING}px`
+      div.style.boxSizing = 'border-box'
+      div.style.width = `${A4_W}px`
+    }
+
     window.print()
 
     setTimeout(() => {
