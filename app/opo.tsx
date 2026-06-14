@@ -910,21 +910,16 @@ export default function OpoScreen() {
               </View>
 
               <View style={styles.detailImageWrapper}>
-                {selectedOrder.image_url ? (
+                {selectedOrder.image_url && (
                   <Image
                     source={{ uri: selectedOrder.image_url }}
                     style={styles.detailImage}
                     resizeMode="cover"
                   />
-                ) : (
-                  <View style={styles.detailImagePlaceholder}>
-                    <MaterialIcons name="image" size={32} color={colors.textMuted} />
-                    <Text style={styles.detailImagePlaceholderText}>No image available</Text>
-                  </View>
                 )}
                 {Platform.OS === 'web' && (
                   <TouchableOpacity
-                    style={styles.imageUploadOverlay}
+                    style={styles.imageUploadButton}
                     onPress={() => {
                       const input = document.createElement('input')
                       input.type = 'file'
@@ -938,13 +933,11 @@ export default function OpoScreen() {
                     disabled={uploadingImage}
                   >
                     {uploadingImage ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color={colors.primaryDeep} />
                     ) : (
                       <>
-                        <MaterialIcons name="upload" size={14} color="#fff" />
-                        <Text style={styles.imageUploadOverlayText}>
-                          {selectedOrder.image_url ? 'Change' : 'Upload image'}
-                        </Text>
+                        <MaterialIcons name="upload" size={14} color={colors.primaryDeep} />
+                        <Text style={styles.imageUploadButtonText}>Upload image</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -1703,38 +1696,22 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: radius.lg,
   },
-  detailImagePlaceholder: {
-    width: '100%',
-    height: 140,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  detailImagePlaceholderText: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  imageUploadOverlay: {
-    position: 'absolute',
-    bottom: spacing.sm,
-    right: spacing.sm,
+  imageUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 5,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.primaryDeep,
   },
-  imageUploadOverlayText: {
-    color: '#fff',
-    fontSize: 11,
+  imageUploadButtonText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: colors.primaryDeep,
   },
   detailPanel: {
     marginTop: spacing.lg,
