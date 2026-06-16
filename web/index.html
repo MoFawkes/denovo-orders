@@ -1881,30 +1881,39 @@ async function onStickerFileChange(input) {
     const po = ws.getCell('B10').value
     const sku = ws.getCell('B11').value
     const bookingRef = ws.getCell('F5').value
-    let colour = ''
-    // find colour: scan col A rows 15+ until we hit a non-empty non-size value
-    for (let r = 15; r <= 38; r++) {
-      const v = ws.getCell(r, 1).value
-      if (v && typeof v === 'string' && v.trim()) { colour = v.trim(); break }
-    }
-    if (!colour) colour = 'BLACK'
 
-    const cartons = []
+    // Split combined SKU (e.g. "CNQ6176/CNQ6177") into per-colour parts
+    const skuParts = String(sku).split('/')
+
+    // Parse colour sections — col A starts a new section when non-empty
+    const sections = []
     let totalPcs = 0
     for (let r = 15; r <= 38; r++) {
+      const colA = ws.getCell(r, 1).value
+      if (colA && typeof colA === 'string' && colA.trim()) {
+        const idx = sections.length
+        sections.push({ colour: colA.trim(), sku: skuParts[idx] || String(sku), cartons: [] })
+      }
       const size = ws.getCell(r, 2).value
       const qtyPerBox = ws.getCell(r, 3).value
       const numBoxes = ws.getCell(r, 4).value
       if (size == null || qtyPerBox == null || numBoxes == null || numBoxes === 0) continue
       const n = parseInt(numBoxes) || 0
       const q = parseInt(qtyPerBox) || 0
-      for (let b = 0; b < n; b++) cartons.push({ size: String(size), qty: q })
+      if (sections.length === 0) sections.push({ colour: 'BLACK', sku: String(sku), cartons: [] })
+      for (let b = 0; b < n; b++) sections[sections.length - 1].cartons.push({ size: String(size), qty: q })
       totalPcs += n * q
     }
 
+    // Flatten cartons, each carrying its own colour and sku
+    const cartons = sections.flatMap(({ colour, sku: s, cartons: c }) =>
+      c.map(carton => ({ ...carton, colour, sku: s }))
+    )
+
     if (!po || !sku || cartons.length === 0) throw new Error('Could not parse packing list — check file format.')
 
-    stickerData = { po: String(po), sku: String(sku), bookingRef: bookingRef || '', colour, cartons, totalPcs }
+    const allColours = sections.map(s => s.colour).join(' / ')
+    stickerData = { po: String(po), sku: String(sku), bookingRef: bookingRef || '', colour: allColours, cartons, totalPcs }
 
     document.getElementById('sp-po').textContent = stickerData.po
     document.getElementById('sp-sku').textContent = stickerData.sku
@@ -1933,7 +1942,7 @@ async function generateStickers() {
   }
 }
 
-async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
+async function buildStickerWorkbook({ po, sku, bookingRef, cartons }) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Stickers')
 
@@ -1956,15 +1965,15 @@ async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
     return cell
   }
 
-  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty) {
+  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty, cartonColour, cartonSku) {
     const r = rowStart, c = colStart
     sc(r,   c, 'SUPPLIER: DENOVO SOURCING', 3)
-    sc(r+1, c, 'PO',          1); sc(r+1, c+1, po,           2)
-    sc(r+2, c, 'SKU',         1); sc(r+2, c+1, sku,          2)
-    sc(r+3, c, 'Booking Ref', 1); sc(r+3, c+1, bookingRef,   2)
-    sc(r+4, c, 'SIZE',        1); sc(r+4, c+1, size,         2)
-    sc(r+5, c, 'COLOUR',      1); sc(r+5, c+1, colour,       2)
-    sc(r+6, c, 'QTY',         1); sc(r+6, c+1, qty,          2)
+    sc(r+1, c, 'PO',          1); sc(r+1, c+1, po,             2)
+    sc(r+2, c, 'SKU',         1); sc(r+2, c+1, cartonSku,      2)
+    sc(r+3, c, 'Booking Ref', 1); sc(r+3, c+1, bookingRef,     2)
+    sc(r+4, c, 'SIZE',        1); sc(r+4, c+1, size,           2)
+    sc(r+5, c, 'COLOUR',      1); sc(r+5, c+1, cartonColour,   2)
+    sc(r+6, c, 'QTY',         1); sc(r+6, c+1, qty,            2)
     sc(r+7, c, 'CARTON NO.',  1); sc(r+7, c+1, cartonNum, 1); sc(r+7, c+2, `OF ${totalCartons}`, 1)
     // spacer rows 9-11
     ws.mergeCells(r+8, c, r+10, c+2)
@@ -1978,7 +1987,7 @@ async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
   const BOT_COLS = [1, 5]
   const totalCartons = cartons.length
 
-  cartons.forEach(({ size, qty }, i) => {
+  cartons.forEach(({ size, qty, colour, sku: cartonSku }, i) => {
     const page = Math.floor(i / 4)
     const pos = i % 4
     const pageOffset = page * ROWS_PER_PAGE
@@ -1990,7 +1999,7 @@ async function buildStickerWorkbook({ po, sku, bookingRef, colour, cartons }) {
       rowStart = pageOffset + 15
       colStart = BOT_COLS[pos - 2]
     }
-    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty)
+    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty, colour, cartonSku)
   })
 
   // fitToWidth:1 scales columns to fill A4 width; row heights calculated to fill A4 height at that scale
