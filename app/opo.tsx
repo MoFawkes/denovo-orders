@@ -205,6 +205,7 @@ export default function OpoScreen() {
   const hasHandledInitialParam = useRef(false)
 
   const { signOut, role, user } = useAuth()
+  const canEdit = role === 'manager' || role === 'admin'
 
   useEffect(() => {
     loadOrders()
@@ -918,7 +919,7 @@ export default function OpoScreen() {
                     resizeMode="cover"
                   />
                 )}
-                {Platform.OS === 'web' && (
+                {Platform.OS === 'web' && canEdit && (
                   <TouchableOpacity
                     style={styles.imageUploadButton}
                     onPress={() => {
@@ -991,17 +992,19 @@ export default function OpoScreen() {
                     Keep the final packing link up to date for downstream teams.
                   </Text>
 
-                  <TextInput
-                    style={styles.singleLineInput}
-                    value={packingListEditValue}
-                    onChangeText={setPackingListEditValue}
-                    placeholder="Paste packing list link"
-                    placeholderTextColor={colors.textSoft}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    editable={!savingPackingList}
-                  />
+                  {canEdit ? (
+                    <TextInput
+                      style={styles.singleLineInput}
+                      value={packingListEditValue}
+                      onChangeText={setPackingListEditValue}
+                      placeholder="Paste packing list link"
+                      placeholderTextColor={colors.textSoft}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                      editable={!savingPackingList}
+                    />
+                  ) : null}
 
                   <View style={styles.formActionRow}>
                     {!!selectedOrder.packing_list_url && (
@@ -1013,18 +1016,20 @@ export default function OpoScreen() {
                       </TouchableOpacity>
                     )}
 
-                    <TouchableOpacity
-                      style={[
-                        styles.primaryCompactButton,
-                        (!packingListChanged || savingPackingList) && styles.buttonDisabled,
-                      ]}
-                      onPress={savePackingListUrl}
-                      disabled={!packingListChanged || savingPackingList}
-                    >
-                      <Text style={styles.primaryCompactButtonText}>
-                        {savingPackingList ? 'Saving...' : 'Save Packing List'}
-                      </Text>
-                    </TouchableOpacity>
+                    {canEdit && (
+                      <TouchableOpacity
+                        style={[
+                          styles.primaryCompactButton,
+                          (!packingListChanged || savingPackingList) && styles.buttonDisabled,
+                        ]}
+                        onPress={savePackingListUrl}
+                        disabled={!packingListChanged || savingPackingList}
+                      >
+                        <Text style={styles.primaryCompactButtonText}>
+                          {savingPackingList ? 'Saving...' : 'Save Packing List'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ) : null}
@@ -1035,31 +1040,41 @@ export default function OpoScreen() {
                   Shared updates for trims, fabric arrivals, urgency, or packing context.
                 </Text>
 
-                <TextInput
-                  style={styles.notesInput}
-                  multiline
-                  value={orderNotes}
-                  onChangeText={setOrderNotes}
-                  placeholder="Write notes here..."
-                  placeholderTextColor={colors.textSoft}
-                  textAlignVertical="top"
-                />
+                {canEdit ? (
+                  <>
+                    <TextInput
+                      style={styles.notesInput}
+                      multiline
+                      value={orderNotes}
+                      onChangeText={setOrderNotes}
+                      placeholder="Write notes here..."
+                      placeholderTextColor={colors.textSoft}
+                      textAlignVertical="top"
+                    />
 
-                <TouchableOpacity
-                  style={[
-                    styles.primaryCompactButton,
-                    (!notesChanged || savingNotes) && styles.buttonDisabled,
-                  ]}
-                  onPress={saveOrderNotes}
-                  disabled={!notesChanged || savingNotes}
-                >
-                  <Text style={styles.primaryCompactButtonText}>
-                    {savingNotes ? 'Saving...' : 'Save Notes'}
-                  </Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryCompactButton,
+                        (!notesChanged || savingNotes) && styles.buttonDisabled,
+                      ]}
+                      onPress={saveOrderNotes}
+                      disabled={!notesChanged || savingNotes}
+                    >
+                      <Text style={styles.primaryCompactButtonText}>
+                        {savingNotes ? 'Saving...' : 'Save Notes'}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.readOnlyNotesBox}>
+                    <Text style={styles.readOnlyNotesText}>
+                      {orderNotes.trim() || 'No notes for this order.'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
-              {showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
+              {canEdit && showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
                 <View style={styles.formCard}>
                   <Text style={styles.formCardTitle}>Complete Order</Text>
                   <Text style={styles.formCardSubtitle}>
@@ -1107,33 +1122,62 @@ export default function OpoScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.stageSection}>
-                <Text style={styles.stageSectionLabel}>Move Order To</Text>
-                <View style={styles.stageButtons}>
-                  {STAGES.map((stage) => {
-                    const isCurrentStage = selectedOrder.stage === stage
-                    return (
-                      <TouchableOpacity
-                        key={stage}
-                        style={[
-                          styles.stageButton,
-                          isCurrentStage && styles.currentStageButton,
-                        ]}
-                        onPress={() => handleStagePress(selectedOrder, stage)}
-                      >
-                        <Text
+              {canEdit ? (
+                <View style={styles.stageSection}>
+                  <Text style={styles.stageSectionLabel}>Move Order To</Text>
+                  <View style={styles.stageButtons}>
+                    {STAGES.map((stage) => {
+                      const isCurrentStage = selectedOrder.stage === stage
+                      return (
+                        <TouchableOpacity
+                          key={stage}
                           style={[
-                            styles.stageButtonText,
-                            isCurrentStage && styles.currentStageButtonText,
+                            styles.stageButton,
+                            isCurrentStage && styles.currentStageButton,
+                          ]}
+                          onPress={() => handleStagePress(selectedOrder, stage)}
+                        >
+                          <Text
+                            style={[
+                              styles.stageButtonText,
+                              isCurrentStage && styles.currentStageButtonText,
+                            ]}
+                          >
+                            {isCurrentStage ? `Current: ${stage}` : stage}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.stageSection}>
+                  <Text style={styles.stageSectionLabel}>Current Stage</Text>
+                  <View style={styles.stageButtons}>
+                    {STAGES.map((stage) => {
+                      const isCurrentStage = selectedOrder.stage === stage
+                      return (
+                        <View
+                          key={stage}
+                          style={[
+                            styles.stageButton,
+                            isCurrentStage && styles.currentStageButton,
                           ]}
                         >
-                          {isCurrentStage ? `Current: ${stage}` : stage}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
+                          <Text
+                            style={[
+                              styles.stageButtonText,
+                              isCurrentStage && styles.currentStageButtonText,
+                            ]}
+                          >
+                            {isCurrentStage ? `Current: ${stage}` : stage}
+                          </Text>
+                        </View>
+                      )
+                    })}
+                  </View>
                 </View>
-              </View>
+              )}
             </ScrollView>
             <BottomTabBar />
           </View>
@@ -1853,6 +1897,20 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  readOnlyNotesBox: {
+    minHeight: 80,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  readOnlyNotesText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
   },
   stageSection: {
     marginTop: spacing.xl,
