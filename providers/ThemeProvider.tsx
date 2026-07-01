@@ -6,6 +6,7 @@ type ThemePreference = 'light' | 'dark' | 'system'
 type ResolvedTheme = 'light' | 'dark'
 
 type ThemeColors = {
+  // Legacy tokens (main-menu, nav)
   background: string
   card: string
   cardSoft: string
@@ -19,6 +20,22 @@ type ThemeColors = {
   blackButton: string
   blackButtonText: string
   danger: string
+  // Extended tokens (opo, settings, production-summary)
+  surface: string
+  surfaceMuted: string
+  surfaceStrong: string
+  textSoft: string
+  primaryDeep: string
+  primaryTint: string
+  success: string
+  successTint: string
+  warning: string
+  warningTint: string
+  info: string
+  infoTint: string
+  dangerTint: string
+  borderSubtle: string
+  borderStrong: string
 }
 
 type ThemeContextValue = {
@@ -32,19 +49,34 @@ type ThemeContextValue = {
 const STORAGE_KEY = 'app_theme_preference'
 
 const lightColors: ThemeColors = {
-  background: '#ffffff',
+  background: '#F4FAFF',
   card: '#f4f6f8',
   cardSoft: '#fafafa',
   input: '#ffffff',
   border: '#dcdfe4',
-  text: '#111111',
-  textMuted: '#666666',
-  primary: '#111111',
+  text: '#111D23',
+  textMuted: '#5F6B76',
+  textSoft: '#7B8794',
+  primary: '#005EB8',
   primaryText: '#ffffff',
+  primaryDeep: '#00478D',
+  primaryTint: '#D6E3FF',
   chipText: '#ffffff',
   blackButton: '#111111',
   blackButtonText: '#ffffff',
-  danger: '#e74c3c',
+  surface: '#FFFFFF',
+  surfaceMuted: '#E9F6FD',
+  surfaceStrong: '#DDEAF2',
+  success: '#1B6D24',
+  successTint: '#DDF6D9',
+  warning: '#B86C00',
+  warningTint: '#FFE7CF',
+  danger: '#BA1A1A',
+  dangerTint: '#FFDAD6',
+  info: '#0F7A9A',
+  infoTint: '#D9F3FB',
+  borderSubtle: '#D7E4EC',
+  borderStrong: '#C2D4E0',
 }
 
 const darkColors: ThemeColors = {
@@ -53,14 +85,29 @@ const darkColors: ThemeColors = {
   cardSoft: '#141922',
   input: '#10151d',
   border: '#2a3140',
-  text: '#ffffff',
+  text: '#E8EDF2',
   textMuted: '#a0a8b8',
-  primary: '#2563eb',
+  textSoft: '#7B8794',
+  primary: '#4D9FE8',
   primaryText: '#ffffff',
+  primaryDeep: '#90C4F8',
+  primaryTint: '#0D2A44',
   chipText: '#ffffff',
   blackButton: '#1f2937',
   blackButtonText: '#ffffff',
+  surface: '#1a1f29',
+  surfaceMuted: '#141922',
+  surfaceStrong: '#222836',
+  success: '#4CAF72',
+  successTint: '#0D2A17',
+  warning: '#F0A030',
+  warningTint: '#2A1800',
   danger: '#ef4444',
+  dangerTint: '#2A0A0A',
+  info: '#38BCD8',
+  infoTint: '#052030',
+  borderSubtle: '#2a3140',
+  borderStrong: '#3a4560',
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
@@ -80,7 +127,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setPreferenceState(stored)
       }
     } catch (error) {
-      console.log('Failed to load theme preference:', error)
+      console.error('[ThemeProvider] load preference:', error)
     }
   }
 
@@ -89,7 +136,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setPreferenceState(value)
       await SecureStore.setItemAsync(STORAGE_KEY, value)
     } catch (error) {
-      console.log('Failed to save theme preference:', error)
+      console.error('[ThemeProvider] save preference:', error)
     }
   }
 
