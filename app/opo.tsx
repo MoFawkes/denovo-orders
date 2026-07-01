@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
   ScrollView,
+  RefreshControl,
   Image,
   useWindowDimensions,
   KeyboardAvoidingView,
@@ -178,6 +179,10 @@ function MetricCard({
   )
 }
 
+// Persists search and tab state across navigation (component remounts)
+let _savedSearchQuery = ''
+let _savedTab: TabType = 'active'
+
 export default function OpoScreen() {
   const [packingListEditValue, setPackingListEditValue] = useState('')
   const [savingPackingList, setSavingPackingList] = useState(false)
@@ -187,12 +192,23 @@ export default function OpoScreen() {
   const [pendingCompleteOrderId, setPendingCompleteOrderId] = useState<string | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [selectedTab, setSelectedTab] = useState<TabType>('active')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTab, setSelectedTab] = useState<TabType>(_savedTab)
+  const [searchQuery, setSearchQuery] = useState(_savedSearchQuery)
   const [orderNotes, setOrderNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+
+  function updateSearchQuery(q: string) {
+    _savedSearchQuery = q
+    setSearchQuery(q)
+  }
+
+  function updateSelectedTab(tab: TabType) {
+    _savedTab = tab
+    setSelectedTab(tab)
+  }
 
   const listRef = useRef<FlatList<Order>>(null)
   const scrollOffsetRef = useRef(0)
@@ -205,6 +221,7 @@ export default function OpoScreen() {
   const hasHandledInitialParam = useRef(false)
 
   const { signOut, role, user } = useAuth()
+  const canEdit = role === 'manager' || role === 'admin'
 
   useEffect(() => {
     loadOrders()
@@ -261,8 +278,12 @@ export default function OpoScreen() {
     }
   }, [])
 
-  async function loadOrders() {
-    setLoading(true)
+  async function loadOrders(isRefresh = false) {
+    if (isRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
 
     const { data, error } = await supabase
       .from('orders')
@@ -270,13 +291,17 @@ export default function OpoScreen() {
       .order('po', { ascending: true })
 
     if (error) {
-      console.log('Load orders error:', error)
+      console.error('Load orders error:', error)
       Alert.alert('Error', 'Could not load orders.')
     } else {
       setOrders((data as Order[]) || [])
     }
 
-    setLoading(false)
+    if (isRefresh) {
+      setRefreshing(false)
+    } else {
+      setLoading(false)
+    }
   }
 
   const activeOrders = useMemo(
@@ -481,7 +506,7 @@ export default function OpoScreen() {
     })
 
     if (eventError) {
-      console.log('Order event insert error:', eventError)
+      console.error('Order event insert error:', eventError)
     }
   }
 
@@ -515,7 +540,7 @@ export default function OpoScreen() {
 
       if (newStage === 'Completed') {
         setSelectedOrder(null)
-        setSelectedTab('completed')
+        updateSelectedTab('completed')
         setOrderNotes('')
         setShowCompletePrompt(false)
         setPendingCompleteOrderId(null)
@@ -523,7 +548,7 @@ export default function OpoScreen() {
         Alert.alert('Success', 'Order moved to Completed Orders.')
       }
     } catch (error) {
-      console.log('Update stage error:', error)
+      console.error('Update stage error:', error)
       setOrders(previousOrders)
 
       if (selectedOrder?.id === order.id) {
@@ -575,7 +600,7 @@ export default function OpoScreen() {
       setPendingCompleteOrderId(null)
       setPackingListInput('')
     } catch (error) {
-      console.log('Complete order error:', error)
+      console.error('Complete order error:', error)
       Alert.alert('Error', 'Could not complete order.')
     } finally {
       setCompleteLoading(false)
@@ -615,7 +640,7 @@ export default function OpoScreen() {
       setSelectedOrder(updatedOrder)
       Alert.alert('Saved', 'Order notes updated.')
     } catch (error: any) {
-      console.log('Save notes error:', error)
+      console.error('Save notes error:', error)
       Alert.alert('Error', error?.message || 'Could not save notes.')
     } finally {
       setSavingNotes(false)
@@ -662,7 +687,7 @@ export default function OpoScreen() {
 
       Alert.alert('Saved', 'Packing list link updated.')
     } catch (error: any) {
-      console.log('Save packing list error:', error)
+      console.error('Save packing list error:', error)
       Alert.alert('Error', error?.message || 'Could not save packing list link.')
     } finally {
       setSavingPackingList(false)
@@ -711,7 +736,7 @@ export default function OpoScreen() {
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
-      console.log('Open docket error:', error)
+      console.error('Open docket error:', error)
       Alert.alert('Invalid link', 'Could not open docket link.')
     }
   }
@@ -727,7 +752,7 @@ export default function OpoScreen() {
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
-      console.log('Open packing list error:', error)
+      console.error('Open packing list error:', error)
       Alert.alert('Invalid link', 'Could not open packing list link.')
     }
   }
@@ -918,7 +943,7 @@ export default function OpoScreen() {
                     resizeMode="cover"
                   />
                 )}
-                {Platform.OS === 'web' && (
+                {Platform.OS === 'web' && canEdit && (
                   <TouchableOpacity
                     style={styles.imageUploadButton}
                     onPress={() => {
@@ -991,17 +1016,19 @@ export default function OpoScreen() {
                     Keep the final packing link up to date for downstream teams.
                   </Text>
 
-                  <TextInput
-                    style={styles.singleLineInput}
-                    value={packingListEditValue}
-                    onChangeText={setPackingListEditValue}
-                    placeholder="Paste packing list link"
-                    placeholderTextColor={colors.textSoft}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    editable={!savingPackingList}
-                  />
+                  {canEdit ? (
+                    <TextInput
+                      style={styles.singleLineInput}
+                      value={packingListEditValue}
+                      onChangeText={setPackingListEditValue}
+                      placeholder="Paste packing list link"
+                      placeholderTextColor={colors.textSoft}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                      editable={!savingPackingList}
+                    />
+                  ) : null}
 
                   <View style={styles.formActionRow}>
                     {!!selectedOrder.packing_list_url && (
@@ -1013,18 +1040,20 @@ export default function OpoScreen() {
                       </TouchableOpacity>
                     )}
 
-                    <TouchableOpacity
-                      style={[
-                        styles.primaryCompactButton,
-                        (!packingListChanged || savingPackingList) && styles.buttonDisabled,
-                      ]}
-                      onPress={savePackingListUrl}
-                      disabled={!packingListChanged || savingPackingList}
-                    >
-                      <Text style={styles.primaryCompactButtonText}>
-                        {savingPackingList ? 'Saving...' : 'Save Packing List'}
-                      </Text>
-                    </TouchableOpacity>
+                    {canEdit && (
+                      <TouchableOpacity
+                        style={[
+                          styles.primaryCompactButton,
+                          (!packingListChanged || savingPackingList) && styles.buttonDisabled,
+                        ]}
+                        onPress={savePackingListUrl}
+                        disabled={!packingListChanged || savingPackingList}
+                      >
+                        <Text style={styles.primaryCompactButtonText}>
+                          {savingPackingList ? 'Saving...' : 'Save Packing List'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ) : null}
@@ -1035,31 +1064,41 @@ export default function OpoScreen() {
                   Shared updates for trims, fabric arrivals, urgency, or packing context.
                 </Text>
 
-                <TextInput
-                  style={styles.notesInput}
-                  multiline
-                  value={orderNotes}
-                  onChangeText={setOrderNotes}
-                  placeholder="Write notes here..."
-                  placeholderTextColor={colors.textSoft}
-                  textAlignVertical="top"
-                />
+                {canEdit ? (
+                  <>
+                    <TextInput
+                      style={styles.notesInput}
+                      multiline
+                      value={orderNotes}
+                      onChangeText={setOrderNotes}
+                      placeholder="Write notes here..."
+                      placeholderTextColor={colors.textSoft}
+                      textAlignVertical="top"
+                    />
 
-                <TouchableOpacity
-                  style={[
-                    styles.primaryCompactButton,
-                    (!notesChanged || savingNotes) && styles.buttonDisabled,
-                  ]}
-                  onPress={saveOrderNotes}
-                  disabled={!notesChanged || savingNotes}
-                >
-                  <Text style={styles.primaryCompactButtonText}>
-                    {savingNotes ? 'Saving...' : 'Save Notes'}
-                  </Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryCompactButton,
+                        (!notesChanged || savingNotes) && styles.buttonDisabled,
+                      ]}
+                      onPress={saveOrderNotes}
+                      disabled={!notesChanged || savingNotes}
+                    >
+                      <Text style={styles.primaryCompactButtonText}>
+                        {savingNotes ? 'Saving...' : 'Save Notes'}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.readOnlyNotesBox}>
+                    <Text style={styles.readOnlyNotesText}>
+                      {orderNotes.trim() || 'No notes for this order.'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
-              {showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
+              {canEdit && showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
                 <View style={styles.formCard}>
                   <Text style={styles.formCardTitle}>Complete Order</Text>
                   <Text style={styles.formCardSubtitle}>
@@ -1107,33 +1146,62 @@ export default function OpoScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.stageSection}>
-                <Text style={styles.stageSectionLabel}>Move Order To</Text>
-                <View style={styles.stageButtons}>
-                  {STAGES.map((stage) => {
-                    const isCurrentStage = selectedOrder.stage === stage
-                    return (
-                      <TouchableOpacity
-                        key={stage}
-                        style={[
-                          styles.stageButton,
-                          isCurrentStage && styles.currentStageButton,
-                        ]}
-                        onPress={() => handleStagePress(selectedOrder, stage)}
-                      >
-                        <Text
+              {canEdit ? (
+                <View style={styles.stageSection}>
+                  <Text style={styles.stageSectionLabel}>Move Order To</Text>
+                  <View style={styles.stageButtons}>
+                    {STAGES.map((stage) => {
+                      const isCurrentStage = selectedOrder.stage === stage
+                      return (
+                        <TouchableOpacity
+                          key={stage}
                           style={[
-                            styles.stageButtonText,
-                            isCurrentStage && styles.currentStageButtonText,
+                            styles.stageButton,
+                            isCurrentStage && styles.currentStageButton,
+                          ]}
+                          onPress={() => handleStagePress(selectedOrder, stage)}
+                        >
+                          <Text
+                            style={[
+                              styles.stageButtonText,
+                              isCurrentStage && styles.currentStageButtonText,
+                            ]}
+                          >
+                            {isCurrentStage ? `Current: ${stage}` : stage}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.stageSection}>
+                  <Text style={styles.stageSectionLabel}>Current Stage</Text>
+                  <View style={styles.stageButtons}>
+                    {STAGES.map((stage) => {
+                      const isCurrentStage = selectedOrder.stage === stage
+                      return (
+                        <View
+                          key={stage}
+                          style={[
+                            styles.stageButton,
+                            isCurrentStage && styles.currentStageButton,
                           ]}
                         >
-                          {isCurrentStage ? `Current: ${stage}` : stage}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
+                          <Text
+                            style={[
+                              styles.stageButtonText,
+                              isCurrentStage && styles.currentStageButtonText,
+                            ]}
+                          >
+                            {isCurrentStage ? `Current: ${stage}` : stage}
+                          </Text>
+                        </View>
+                      )
+                    })}
+                  </View>
                 </View>
-              </View>
+              )}
             </ScrollView>
             <BottomTabBar />
           </View>
@@ -1201,7 +1269,7 @@ export default function OpoScreen() {
           placeholder="Search PO, SKU, description, colour, notes..."
           placeholderTextColor={colors.textSoft}
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={updateSearchQuery}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
@@ -1211,7 +1279,7 @@ export default function OpoScreen() {
       <View style={[styles.tabsRow, isNarrow && styles.stackRow]}>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'active' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('active')}
+          onPress={() => updateSelectedTab('active')}
         >
           <Text style={[styles.tabButtonText, selectedTab === 'active' && styles.tabButtonTextActive]}>
             Active ({activeOrders.length})
@@ -1219,7 +1287,7 @@ export default function OpoScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'completed' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('completed')}
+          onPress={() => updateSelectedTab('completed')}
         >
           <Text style={[styles.tabButtonText, selectedTab === 'completed' && styles.tabButtonTextActive]}>
             Completed ({completedOrders.length})
@@ -1250,6 +1318,14 @@ export default function OpoScreen() {
         <ScrollView
           contentContainerStyle={styles.desktopContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadOrders(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         >
           {listHeader}
 
@@ -1325,6 +1401,14 @@ export default function OpoScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadOrders(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           onScroll={(event) => {
             scrollOffsetRef.current = event.nativeEvent.contentOffset.y
           }}
@@ -1853,6 +1937,20 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  readOnlyNotesBox: {
+    minHeight: 80,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  readOnlyNotesText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
   },
   stageSection: {
     marginTop: spacing.xl,

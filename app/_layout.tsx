@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { Stack, usePathname, useRouter } from 'expo-router'
 import { ThemeProvider, useAppTheme } from '../providers/ThemeProvider'
 import { AuthProvider, useAuth } from '../providers/AuthProvider'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 
 function RootNavigator() {
   const { theme } = useAppTheme()
@@ -52,11 +53,15 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <RootNavigator />
-      </ThemeProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ThemeProvider>
+          <ErrorBoundary fallbackMessage="A screen crashed. Tap 'Try again' to recover.">
+            <RootNavigator />
+          </ErrorBoundary>
+        </ThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 
