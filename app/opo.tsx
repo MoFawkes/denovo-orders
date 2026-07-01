@@ -178,6 +178,10 @@ function MetricCard({
   )
 }
 
+// Persists search and tab state across navigation (component remounts)
+let _savedSearchQuery = ''
+let _savedTab: TabType = 'active'
+
 export default function OpoScreen() {
   const [packingListEditValue, setPackingListEditValue] = useState('')
   const [savingPackingList, setSavingPackingList] = useState(false)
@@ -188,11 +192,21 @@ export default function OpoScreen() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [selectedTab, setSelectedTab] = useState<TabType>('active')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTab, setSelectedTab] = useState<TabType>(_savedTab)
+  const [searchQuery, setSearchQuery] = useState(_savedSearchQuery)
   const [orderNotes, setOrderNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+
+  function updateSearchQuery(q: string) {
+    _savedSearchQuery = q
+    setSearchQuery(q)
+  }
+
+  function updateSelectedTab(tab: TabType) {
+    _savedTab = tab
+    setSelectedTab(tab)
+  }
 
   const listRef = useRef<FlatList<Order>>(null)
   const scrollOffsetRef = useRef(0)
@@ -516,7 +530,7 @@ export default function OpoScreen() {
 
       if (newStage === 'Completed') {
         setSelectedOrder(null)
-        setSelectedTab('completed')
+        updateSelectedTab('completed')
         setOrderNotes('')
         setShowCompletePrompt(false)
         setPendingCompleteOrderId(null)
@@ -1245,7 +1259,7 @@ export default function OpoScreen() {
           placeholder="Search PO, SKU, description, colour, notes..."
           placeholderTextColor={colors.textSoft}
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={updateSearchQuery}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
@@ -1255,7 +1269,7 @@ export default function OpoScreen() {
       <View style={[styles.tabsRow, isNarrow && styles.stackRow]}>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'active' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('active')}
+          onPress={() => updateSelectedTab('active')}
         >
           <Text style={[styles.tabButtonText, selectedTab === 'active' && styles.tabButtonTextActive]}>
             Active ({activeOrders.length})
@@ -1263,7 +1277,7 @@ export default function OpoScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'completed' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('completed')}
+          onPress={() => updateSelectedTab('completed')}
         >
           <Text style={[styles.tabButtonText, selectedTab === 'completed' && styles.tabButtonTextActive]}>
             Completed ({completedOrders.length})
