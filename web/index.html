@@ -753,6 +753,7 @@ function printActiveOrders() {
   const active = allOrders.filter(o => o.stage !== 'Completed')
 
   const stageColors = {
+    Pending: { bg: 'rgba(148,163,184,0.2)', color: '#475569' },
     Cutting: { bg: 'rgba(254,137,131,0.2)', color: '#9f403d' },
     Production: { bg: 'rgba(230,126,34,0.15)', color: '#E67E22' },
     Packing: { bg: 'rgba(208,236,255,0.4)', color: '#486272' },
@@ -1662,7 +1663,7 @@ function renderBookingOrders() {
     return
   }
 
-  const stageOrder = ['Ready', 'Packing', 'Production', 'Cutting']
+  const stageOrder = ['Ready', 'Packing', 'Production', 'Cutting', 'Pending']
   const groups = {}
   stageOrder.forEach(s => groups[s] = [])
   active.forEach(o => { if (groups[o.stage]) groups[o.stage].push(o) })
