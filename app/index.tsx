@@ -22,10 +22,14 @@ function getStageRank(stage: Order['stage']) {
       return 3
     case 'Cutting':
       return 4
-    case 'Completed':
+    case 'Pending':
       return 5
+    case 'Completed':
+      return 6
+    case 'Cancelled':
+      return 7
     default:
-      return 99
+      return 5
   }
 }
 
@@ -53,7 +57,7 @@ export default function IndexScreen() {
   }
 
   const activeOrders = useMemo(
-    () => orders.filter((order) => order.stage !== 'Completed'),
+    () => orders.filter((order) => order.stage !== 'Completed' && order.stage !== 'Cancelled'),
     [orders]
   )
 
