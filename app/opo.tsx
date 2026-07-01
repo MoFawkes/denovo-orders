@@ -19,6 +19,7 @@ import {
 import { useLocalSearchParams } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { OrderListSkeleton } from '../components/OrderCardSkeleton'
+import ColourSwatch from '../components/ColourSwatch'
 import ScreenContainer from '../components/layout/ScreenContainer'
 import StatusChip from '../components/StatusChip'
 import BottomTabBar from '../components/navigation/BottomTabBar'
@@ -830,7 +831,10 @@ export default function OpoScreen() {
             </View>
             <View style={styles.orderInfoItem}>
               <Text style={styles.orderInfoLabel}>Colour</Text>
-              <Text style={styles.orderInfoValue}>{item.colour || '-'}</Text>
+              <View style={styles.colourValueRow}>
+                {!!item.colour && <ColourSwatch colour={item.colour} />}
+                <Text style={styles.orderInfoValue}>{item.colour || '-'}</Text>
+              </View>
             </View>
             <View style={styles.orderInfoItem}>
               <Text style={styles.orderInfoLabel}>Quantity</Text>
@@ -937,7 +941,10 @@ export default function OpoScreen() {
                   </View>
                   <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
                     <Text style={styles.detailMetaLabel}>Colour</Text>
-                    <Text style={styles.detailMetaValue}>{selectedOrder.colour || '-'}</Text>
+                    <View style={styles.colourValueRow}>
+                      {!!selectedOrder.colour && <ColourSwatch colour={selectedOrder.colour} size={16} />}
+                      <Text style={styles.detailMetaValue}>{selectedOrder.colour || '-'}</Text>
+                    </View>
                   </View>
                   <View style={[styles.detailMetaCard, isCompact && styles.fullWidthCard]}>
                     <Text style={styles.detailMetaLabel}>Quantity</Text>
@@ -1369,9 +1376,12 @@ export default function OpoScreen() {
                 <Text style={[styles.tableCell, { flex: TABLE_COLS[2].flex }]} numberOfLines={1}>
                   {item.style_no || item.style || '-'}
                 </Text>
-                <Text style={[styles.tableCell, { flex: TABLE_COLS[3].flex }]} numberOfLines={1}>
-                  {item.colour || '-'}
-                </Text>
+                <View style={[styles.colourValueRow, { flex: TABLE_COLS[3].flex }]}>
+                  {!!item.colour && <ColourSwatch colour={item.colour} size={12} />}
+                  <Text style={styles.tableCell} numberOfLines={1}>
+                    {item.colour || '-'}
+                  </Text>
+                </View>
                 <Text style={[styles.tableCell, { flex: TABLE_COLS[4].flex }]} numberOfLines={1}>
                   {item.qty ?? '-'}
                 </Text>
@@ -1452,6 +1462,11 @@ const styles = StyleSheet.create({
   },
   compactButtonAlign: {
     alignSelf: 'flex-start',
+  },
+  colourValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   skeletonHeroTitle: {
     width: '60%',
