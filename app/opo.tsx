@@ -18,7 +18,7 @@ import {
 } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
-import DotsLoader from '../components/DotsLoader'
+import { OrderListSkeleton } from '../components/OrderCardSkeleton'
 import ScreenContainer from '../components/layout/ScreenContainer'
 import StatusChip from '../components/StatusChip'
 import BottomTabBar from '../components/navigation/BottomTabBar'
@@ -873,9 +873,24 @@ export default function OpoScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingScreen}>
-        <DotsLoader />
-      </View>
+      <ScreenContainer>
+        <View style={styles.screen}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+          >
+            <View style={styles.skeletonHeroTitle} />
+            <View style={styles.skeletonMetricsRow}>
+              <View style={styles.skeletonMetricCard} />
+              <View style={styles.skeletonMetricCard} />
+              <View style={styles.skeletonMetricCard} />
+            </View>
+            <View style={styles.skeletonSearchBar} />
+            <OrderListSkeleton />
+          </ScrollView>
+          <BottomTabBar />
+        </View>
+      </ScreenContainer>
     )
   }
 
@@ -1438,11 +1453,29 @@ const styles = StyleSheet.create({
   compactButtonAlign: {
     alignSelf: 'flex-start',
   },
-  loadingScreen: {
+  skeletonHeroTitle: {
+    width: '60%',
+    height: 34,
+    borderRadius: radius.md,
+    backgroundColor: colors.borderSubtle,
+    marginBottom: spacing.xl,
+  },
+  skeletonMetricsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  skeletonMetricCard: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
+    height: 90,
+    borderRadius: radius.lg,
+    backgroundColor: colors.borderSubtle,
+  },
+  skeletonSearchBar: {
+    height: 56,
+    borderRadius: radius.lg,
+    backgroundColor: colors.borderSubtle,
+    marginBottom: spacing.xl,
   },
   listContent: {
     paddingBottom: spacing.md,
