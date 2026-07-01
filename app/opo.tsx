@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
   ScrollView,
+  RefreshControl,
   Image,
   useWindowDimensions,
   KeyboardAvoidingView,
@@ -191,6 +192,7 @@ export default function OpoScreen() {
   const [pendingCompleteOrderId, setPendingCompleteOrderId] = useState<string | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [selectedTab, setSelectedTab] = useState<TabType>(_savedTab)
   const [searchQuery, setSearchQuery] = useState(_savedSearchQuery)
@@ -276,8 +278,12 @@ export default function OpoScreen() {
     }
   }, [])
 
-  async function loadOrders() {
-    setLoading(true)
+  async function loadOrders(isRefresh = false) {
+    if (isRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
 
     const { data, error } = await supabase
       .from('orders')
@@ -291,7 +297,11 @@ export default function OpoScreen() {
       setOrders((data as Order[]) || [])
     }
 
-    setLoading(false)
+    if (isRefresh) {
+      setRefreshing(false)
+    } else {
+      setLoading(false)
+    }
   }
 
   const activeOrders = useMemo(
@@ -1308,6 +1318,14 @@ export default function OpoScreen() {
         <ScrollView
           contentContainerStyle={styles.desktopContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadOrders(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         >
           {listHeader}
 
@@ -1383,6 +1401,14 @@ export default function OpoScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadOrders(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           onScroll={(event) => {
             scrollOffsetRef.current = event.nativeEvent.contentOffset.y
           }}
