@@ -271,7 +271,7 @@ export default function OpoScreen() {
       .order('po', { ascending: true })
 
     if (error) {
-      console.log('Load orders error:', error)
+      console.error('Load orders error:', error)
       Alert.alert('Error', 'Could not load orders.')
     } else {
       setOrders((data as Order[]) || [])
@@ -482,7 +482,7 @@ export default function OpoScreen() {
     })
 
     if (eventError) {
-      console.log('Order event insert error:', eventError)
+      console.error('Order event insert error:', eventError)
     }
   }
 
@@ -524,7 +524,7 @@ export default function OpoScreen() {
         Alert.alert('Success', 'Order moved to Completed Orders.')
       }
     } catch (error) {
-      console.log('Update stage error:', error)
+      console.error('Update stage error:', error)
       setOrders(previousOrders)
 
       if (selectedOrder?.id === order.id) {
@@ -576,7 +576,7 @@ export default function OpoScreen() {
       setPendingCompleteOrderId(null)
       setPackingListInput('')
     } catch (error) {
-      console.log('Complete order error:', error)
+      console.error('Complete order error:', error)
       Alert.alert('Error', 'Could not complete order.')
     } finally {
       setCompleteLoading(false)
@@ -616,7 +616,7 @@ export default function OpoScreen() {
       setSelectedOrder(updatedOrder)
       Alert.alert('Saved', 'Order notes updated.')
     } catch (error: any) {
-      console.log('Save notes error:', error)
+      console.error('Save notes error:', error)
       Alert.alert('Error', error?.message || 'Could not save notes.')
     } finally {
       setSavingNotes(false)
@@ -663,7 +663,7 @@ export default function OpoScreen() {
 
       Alert.alert('Saved', 'Packing list link updated.')
     } catch (error: any) {
-      console.log('Save packing list error:', error)
+      console.error('Save packing list error:', error)
       Alert.alert('Error', error?.message || 'Could not save packing list link.')
     } finally {
       setSavingPackingList(false)
@@ -712,7 +712,7 @@ export default function OpoScreen() {
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
-      console.log('Open docket error:', error)
+      console.error('Open docket error:', error)
       Alert.alert('Invalid link', 'Could not open docket link.')
     }
   }
@@ -728,7 +728,7 @@ export default function OpoScreen() {
     try {
       await Linking.openURL(url.trim())
     } catch (error) {
-      console.log('Open packing list error:', error)
+      console.error('Open packing list error:', error)
       Alert.alert('Invalid link', 'Could not open packing list link.')
     }
   }

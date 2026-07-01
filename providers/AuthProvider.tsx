@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .single()
 
     if (error) {
-      console.log('Load profile error:', error)
+      console.error('[AuthProvider] load profile:', error)
       setRole(null)
       return
     }
