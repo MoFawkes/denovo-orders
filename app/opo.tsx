@@ -415,6 +415,7 @@ export default function OpoScreen() {
 
     function stageBadge(stage: string | null): string {
       switch (stage) {
+        case 'Pending':    return 'background:#e5e7eb;color:#374151;border:1px solid #d1d5db;'
         case 'Cutting':    return 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;'
         case 'Production': return 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;'
         case 'Packing':    return 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;'
