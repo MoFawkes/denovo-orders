@@ -1,9 +1,11 @@
 export type OrderStage =
+  | 'Pending'
   | 'Cutting'
   | 'Production'
   | 'Packing'
   | 'Ready'
   | 'Completed'
+  | 'Cancelled'
 
 export type Order = {
   id: string

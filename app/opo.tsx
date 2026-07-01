@@ -50,9 +50,12 @@ type Order = {
   updated_by?: string | null
 }
 
-const STAGES = ['Cutting', 'Production', 'Packing', 'Ready', 'Completed'] as const
+const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Completed'] as const
 type Stage = (typeof STAGES)[number]
-type TabType = 'active' | 'completed'
+const CANCELLED = 'Cancelled'
+type OrderStatus = Stage | typeof CANCELLED
+const DEFAULT_STAGE: Stage = 'Pending'
+type TabType = 'active' | 'completed' | 'cancelled'
 
 function getStageRank(stage: string | null): number {
   switch (stage) {
@@ -64,10 +67,14 @@ function getStageRank(stage: string | null): number {
       return 3
     case 'Cutting':
       return 4
-    case 'Completed':
+    case 'Pending':
       return 5
+    case 'Completed':
+      return 6
+    case 'Cancelled':
+      return 7
     default:
-      return 99
+      return 5
   }
 }
 
@@ -115,6 +122,8 @@ function isValidUrl(value: string) {
 
 function toChipStatus(stage: string | null) {
   switch (stage) {
+    case 'Pending':
+      return 'PENDING'
     case 'Cutting':
       return 'CUTTING'
     case 'Production':
@@ -125,13 +134,17 @@ function toChipStatus(stage: string | null) {
       return 'READY'
     case 'Completed':
       return 'COMPLETED'
+    case 'Cancelled':
+      return 'CANCELLED'
     default:
-      return 'PRODUCTION'
+      return 'PENDING'
   }
 }
 
 function getStageAccent(stage: string | null) {
   switch (stage) {
+    case 'Pending':
+      return colors.textSoft
     case 'Cutting':
       return colors.warning
     case 'Production':
@@ -142,18 +155,22 @@ function getStageAccent(stage: string | null) {
       return colors.success
     case 'Completed':
       return colors.success
+    case 'Cancelled':
+      return colors.danger
     default:
-      return colors.borderStrong
+      return colors.textSoft
   }
 }
 
 function stageColor(stage: string | null): string {
   switch (stage) {
+    case 'Pending': return '#7f8c8d'
     case 'Cutting': return '#c0392b'
     case 'Production': return '#e67e22'
     case 'Packing': return '#2980b9'
     case 'Ready': return '#27ae60'
     case 'Completed': return '#1e8449'
+    case 'Cancelled': return '#4a4a4a'
     default: return '#7f8c8d'
   }
 }
@@ -306,7 +323,7 @@ export default function OpoScreen() {
   }
 
   const activeOrders = useMemo(
-    () => orders.filter((order) => order.stage !== 'Completed'),
+    () => orders.filter((order) => order.stage !== 'Completed' && order.stage !== 'Cancelled'),
     [orders]
   )
 
@@ -315,8 +332,17 @@ export default function OpoScreen() {
     [orders]
   )
 
+  const cancelledOrders = useMemo(
+    () => orders.filter((order) => order.stage === 'Cancelled'),
+    [orders]
+  )
+
   const baseVisibleOrders =
-    selectedTab === 'active' ? activeOrders : completedOrders
+    selectedTab === 'active'
+      ? activeOrders
+      : selectedTab === 'completed'
+        ? completedOrders
+        : cancelledOrders
 
   const filteredOrders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -476,7 +502,7 @@ export default function OpoScreen() {
   async function updateOrderStage(
     orderId: string,
     currentStage: string | null,
-    nextStage: Stage,
+    nextStage: OrderStatus,
     packingListUrl?: string
   ) {
     const updatePayload: Record<string, unknown> = {
@@ -511,7 +537,7 @@ export default function OpoScreen() {
     }
   }
 
-  async function updateStage(order: Order, newStage: Stage, packingListUrl?: string) {
+  async function updateStage(order: Order, newStage: OrderStatus, packingListUrl?: string) {
     const previousOrders = [...orders]
     const previousStage = order.stage
 
@@ -548,6 +574,12 @@ export default function OpoScreen() {
         setPackingListInput('')
         Alert.alert('Success', 'Order moved to Completed Orders.')
       }
+
+      if (newStage === CANCELLED) {
+        setSelectedOrder(null)
+        updateSelectedTab('cancelled')
+        Alert.alert('Order Cancelled', 'The order has been moved to Cancelled Orders.')
+      }
     } catch (error) {
       console.error('Update stage error:', error)
       setOrders(previousOrders)
@@ -575,6 +607,21 @@ export default function OpoScreen() {
     setPendingCompleteOrderId(null)
     setPackingListInput('')
     updateStage(order, newStage)
+  }
+
+  function handleCancelOrder(order: Order) {
+    Alert.alert(
+      'Cancel Order',
+      `Are you sure you want to cancel PO ${order.po || 'this order'}? This can be reversed later by moving it to another stage.`,
+      [
+        { text: 'Keep Order', style: 'cancel' },
+        {
+          text: 'Cancel Order',
+          style: 'destructive',
+          onPress: () => updateStage(order, CANCELLED),
+        },
+      ]
+    )
   }
 
   async function handleConfirmCompleteInline() {
@@ -1224,6 +1271,18 @@ export default function OpoScreen() {
                   </View>
                 </View>
               )}
+
+              {canEdit &&
+              selectedOrder.stage !== 'Completed' &&
+              selectedOrder.stage !== 'Cancelled' ? (
+                <TouchableOpacity
+                  style={styles.cancelOrderButton}
+                  onPress={() => handleCancelOrder(selectedOrder)}
+                >
+                  <MaterialIcons name="cancel" size={16} color={colors.danger} />
+                  <Text style={styles.cancelOrderButtonText}>Cancel Order</Text>
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
             <BottomTabBar />
           </View>
@@ -1315,6 +1374,14 @@ export default function OpoScreen() {
             Completed ({completedOrders.length})
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, selectedTab === 'cancelled' && styles.tabButtonActive]}
+          onPress={() => updateSelectedTab('cancelled')}
+        >
+          <Text style={[styles.tabButtonText, selectedTab === 'cancelled' && styles.tabButtonTextActive]}>
+            Cancelled ({cancelledOrders.length})
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   )
@@ -1329,7 +1396,9 @@ export default function OpoScreen() {
           ? 'Try a different search term or clear the current filter.'
           : selectedTab === 'active'
             ? 'There are no active orders in the pipeline right now.'
-            : 'No completed orders have been recorded yet.'}
+            : selectedTab === 'completed'
+              ? 'No completed orders have been recorded yet.'
+              : 'No cancelled orders on record.'}
       </Text>
     </View>
   )
@@ -1462,6 +1531,24 @@ const styles = StyleSheet.create({
   },
   compactButtonAlign: {
     alignSelf: 'flex-start',
+  },
+  cancelOrderButton: {
+    marginTop: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: 999,
+    paddingVertical: spacing.md,
+  },
+  cancelOrderButtonText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   colourValueRow: {
     flexDirection: 'row',

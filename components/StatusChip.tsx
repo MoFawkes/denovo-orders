@@ -2,15 +2,22 @@ import { View, Text, StyleSheet } from 'react-native'
 import { colors, spacing } from '../theme/tokens'
 
 type Status =
+  | 'PENDING'
   | 'CUTTING'
   | 'PRODUCTION'
   | 'PACKING'
   | 'READY'
   | 'COMPLETED'
+  | 'CANCELLED'
 
 export default function StatusChip({ status }: { status: Status }) {
   const getTone = () => {
     switch (status) {
+      case 'PENDING':
+        return {
+          backgroundColor: colors.surfaceStrong,
+          textColor: colors.textMuted,
+        }
       case 'CUTTING':
         return {
           backgroundColor: colors.infoTint,
@@ -35,6 +42,11 @@ export default function StatusChip({ status }: { status: Status }) {
         return {
           backgroundColor: colors.successTint,
           textColor: colors.success,
+        }
+      case 'CANCELLED':
+        return {
+          backgroundColor: colors.dangerTint,
+          textColor: colors.danger,
         }
       default:
         return {
