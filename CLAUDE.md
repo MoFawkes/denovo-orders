@@ -30,7 +30,8 @@ both.
 ## Order stage lifecycle
 
 `Pending` (default for new orders) → `Cutting` → `Production` → `Packing` →
-`Ready` → `Completed`, plus `Cancelled` (terminal, reachable from any
+`Ready` → `Booked` (dark blue; pinned to the top of active lists until
+completed) → `Completed`, plus `Cancelled` (terminal, reachable from any
 non-completed stage, reversible).
 
 Enforced by DB check constraint `stage_check` and `DEFAULT 'Pending'`

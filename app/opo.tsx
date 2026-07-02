@@ -50,7 +50,7 @@ type Order = {
   updated_by?: string | null
 }
 
-const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Completed'] as const
+const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Booked', 'Completed'] as const
 type Stage = (typeof STAGES)[number]
 const CANCELLED = 'Cancelled'
 type OrderStatus = Stage | typeof CANCELLED
@@ -58,6 +58,8 @@ type TabType = 'active' | 'completed' | 'cancelled'
 
 function getStageRank(stage: string | null): number {
   switch (stage) {
+    case 'Booked':
+      return 0
     case 'Ready':
       return 1
     case 'Packing':
@@ -131,6 +133,8 @@ function toChipStatus(stage: string | null) {
       return 'PACKING'
     case 'Ready':
       return 'READY'
+    case 'Booked':
+      return 'BOOKED'
     case 'Completed':
       return 'COMPLETED'
     case 'Cancelled':
@@ -152,6 +156,8 @@ function getStageAccent(stage: string | null) {
       return colors.info
     case 'Ready':
       return colors.success
+    case 'Booked':
+      return colors.primaryDeep
     case 'Completed':
       return colors.success
     case 'Cancelled':
@@ -168,6 +174,7 @@ function stageColor(stage: string | null): string {
     case 'Production': return '#e67e22'
     case 'Packing': return '#2980b9'
     case 'Ready': return '#27ae60'
+    case 'Booked': return '#1e3a8a'
     case 'Completed': return '#1e8449'
     case 'Cancelled': return '#4a4a4a'
     default: return '#7f8c8d'
@@ -419,6 +426,7 @@ export default function OpoScreen() {
         case 'Production': return 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;'
         case 'Packing':    return 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;'
         case 'Ready':      return 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+        case 'Booked':     return 'background:#1e3a8a;color:#ffffff;border:1px solid #1e3a8a;'
         case 'Completed':  return 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
         default:           return 'background:#f3f4f6;color:#374151;border:1px solid #d1d5db;'
       }

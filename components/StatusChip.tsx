@@ -7,6 +7,7 @@ type Status =
   | 'PRODUCTION'
   | 'PACKING'
   | 'READY'
+  | 'BOOKED'
   | 'COMPLETED'
   | 'CANCELLED'
 
@@ -37,6 +38,11 @@ export default function StatusChip({ status }: { status: Status }) {
         return {
           backgroundColor: colors.surfaceStrong,
           textColor: colors.primaryDeep,
+        }
+      case 'BOOKED':
+        return {
+          backgroundColor: '#1e3a8a',
+          textColor: '#FFFFFF',
         }
       case 'COMPLETED':
         return {

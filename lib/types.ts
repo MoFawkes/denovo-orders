@@ -4,6 +4,7 @@ export type OrderStage =
   | 'Production'
   | 'Packing'
   | 'Ready'
+  | 'Booked'
   | 'Completed'
   | 'Cancelled'
 

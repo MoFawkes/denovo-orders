@@ -76,6 +76,7 @@
   .stage-production { color: #c07020; background-color: rgba(230,126,34,0.13); }
   .stage-packing    { color: #4a7a8a; background-color: rgba(208,236,255,0.15); }
   .stage-ready      { color: #27AE60; background-color: rgba(39,174,96,0.13); }
+  .stage-booked     { color: #ffffff; background-color: #1e3a8a; }
   .stage-completed  { color: #888; background-color: rgba(180,180,180,0.15); }
   .stage-cancelled  { color: #b3352e; background-color: rgba(179,53,46,0.10); }
   html.dark .stage-pending    { color: #94a3b8; background-color: rgba(148,163,184,0.12); }
@@ -83,6 +84,7 @@
   html.dark .stage-production { color: #f0a050; background-color: rgba(230,126,34,0.12); }
   html.dark .stage-packing    { color: #7ab8cc; background-color: rgba(122,184,204,0.12); }
   html.dark .stage-ready      { color: #4fc87a; background-color: rgba(79,200,122,0.12); }
+  html.dark .stage-booked     { color: #dbeafe; background-color: #1e3a8a; }
   html.dark .stage-completed  { color: #9a9a9d; background-color: rgba(154,154,157,0.12); }
   html.dark .stage-cancelled  { color: #f2b8b5; background-color: rgba(242,184,181,0.10); }
   #panel { transition: transform 0.2s ease; }
@@ -288,18 +290,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:block flex-1 overflow-auto bg-surface-container-lowest">
         <div class="min-w-[900px]">
-          <div class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20" style="grid-template-columns:90px 1fr 80px 110px 100px 70px 110px 120px 1fr 70px;">
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">PO</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Description</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Style No</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">SKU</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Colour</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Qty</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Ex Factory</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Stage</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Notes</span>
-            <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Docket</span>
-          </div>
+          <div id="orders-header" class="grid px-4 py-3 bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant/20"></div>
           <div id="orders-body">
             <div class="flex items-center justify-center py-16 text-sm text-on-surface-variant">
               <span class="material-symbols-outlined animate-spin mr-2" style="font-size:20px;">progress_activity</span> Loading orders...
@@ -775,6 +766,7 @@ function printActiveOrders() {
     Production: { bg: 'rgba(230,126,34,0.15)', color: '#E67E22' },
     Packing: { bg: 'rgba(208,236,255,0.4)', color: '#486272' },
     Ready: { bg: 'rgba(39,174,96,0.15)', color: '#27AE60' },
+    Booked: { bg: '#1e3a8a', color: '#ffffff' },
   }
 
   const rows = active.map(o => {
@@ -834,7 +826,7 @@ function printActiveOrders() {
   win.document.close()
 }
 function stageClass(s) {
-  return { Pending:'stage-pending', Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Completed:'stage-completed', Cancelled:'stage-cancelled' }[s] || 'stage-pending'
+  return { Pending:'stage-pending', Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Booked:'stage-booked', Completed:'stage-completed', Cancelled:'stage-cancelled' }[s] || 'stage-pending'
 }
 
 function parseExFactory(val) {
@@ -848,13 +840,79 @@ function parseExFactory(val) {
   return new Date(0)
 }
 
+// ── Column sorting ────────────────────────────────────────────────────────────
+// Default (no header clicked): Booked orders pinned to the top, then by
+// ex-factory date — ascending on Active, descending on Completed/Cancelled.
+// Clicking a header sorts by it (asc → desc → back to default).
+
+const TABLE_GRID = 'grid-template-columns:90px 1fr 80px 100px 95px 60px 100px 110px 70px 1fr 60px;'
+const SORT_COLS = [
+  ['po', 'PO'], ['description', 'Description'], ['style_no', 'Style No'], ['style', 'SKU'],
+  ['colour', 'Colour'], ['qty', 'Qty'], ['ex_factory', 'Ex Factory'], ['stage', 'Stage'],
+  ['sample_approved', 'Sample'], ['notes', 'Notes'], [null, 'Docket'],
+]
+let sortKey = null
+let sortDir = 1
+
+function stageSortRank(s) {
+  return { Pending: 0, Cutting: 1, Production: 2, Packing: 3, Ready: 4, Booked: 5, Completed: 6, Cancelled: 7 }[s] ?? 0
+}
+
+function compareOrders(a, b) {
+  if (!sortKey) {
+    const bookedDiff = (b.stage === 'Booked' ? 1 : 0) - (a.stage === 'Booked' ? 1 : 0)
+    if (bookedDiff) return bookedDiff
+    const diff = parseExFactory(a.ex_factory) - parseExFactory(b.ex_factory)
+    return currentTab === 'active' ? diff : -diff
+  }
+  let va, vb
+  switch (sortKey) {
+    case 'qty': va = Number(a.qty) || 0; vb = Number(b.qty) || 0; break
+    case 'ex_factory': va = parseExFactory(a.ex_factory).getTime(); vb = parseExFactory(b.ex_factory).getTime(); break
+    case 'stage': va = stageSortRank(a.stage); vb = stageSortRank(b.stage); break
+    case 'notes': va = (a.notes || '').trim() ? 1 : 0; vb = (b.notes || '').trim() ? 1 : 0; break
+    case 'sample_approved': va = a.sample_approved ? 1 : 0; vb = b.sample_approved ? 1 : 0; break
+    default: {
+      const sa = String(a[sortKey] || '').toLowerCase()
+      const sb2 = String(b[sortKey] || '').toLowerCase()
+      return sa.localeCompare(sb2, undefined, { numeric: true }) * sortDir
+    }
+  }
+  return (va - vb) * sortDir
+}
+
+function setSort(key) {
+  if (!key) return
+  if (sortKey === key) {
+    if (sortDir === 1) sortDir = -1
+    else { sortKey = null; sortDir = 1 }
+  } else {
+    sortKey = key
+    sortDir = 1
+  }
+  renderSortHeaders()
+  renderOrders()
+}
+
+function renderSortHeaders() {
+  const header = document.getElementById('orders-header')
+  if (!header) return
+  header.style.cssText = TABLE_GRID
+  header.innerHTML = SORT_COLS.map(([key, label]) => {
+    const active = key && sortKey === key
+    const arrow = active ? (sortDir === 1 ? ' ▲' : ' ▼') : ''
+    return `<span class="text-[10px] font-bold uppercase tracking-wider select-none ${key ? 'cursor-pointer hover:text-on-surface' : ''} ${active ? 'text-primary' : 'text-on-surface-variant'}"
+      ${key ? `onclick="setSort('${key}')" title="Sort by ${label}"` : ''}>${label}${arrow}</span>`
+  }).join('')
+}
+
 function getVisible() {
   const base = (currentTab === 'active'
     ? allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
     : currentTab === 'completed'
       ? allOrders.filter(o => o.stage === 'Completed')
       : allOrders.filter(o => o.stage === 'Cancelled')
-  ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  ).sort(compareOrders)
   if (!searchQuery) return base
   const q = searchQuery.toLowerCase()
   return base.filter(o =>
@@ -879,7 +937,7 @@ function renderOrders() {
     else body.innerHTML = visible.map(o => {
       const sel = o.id === selectedOrderId
       return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
-        style="grid-template-columns:90px 1fr 80px 110px 100px 70px 110px 120px 1fr 70px;"
+        style="${TABLE_GRID}"
         onclick="selectOrder('${o.id}')"
         onmouseenter="showOrderTooltip(event,'${o.id}')"
         onmouseleave="hideOrderTooltip()">
@@ -894,6 +952,7 @@ function renderOrders() {
         <span class="text-xs text-on-surface">${o.qty??'—'}</span>
         <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
         <div><span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span></div>
+        <span class="text-[10px] font-bold uppercase ${o.sample_approved ? 'text-green-600' : 'text-on-surface-variant/50'}">${o.sample_approved ? 'Yes' : 'No'}</span>
         <span class="text-xs text-on-surface-variant italic truncate pr-4">${o.notes||'—'}</span>
         <div>${o.docket_url
           ? `<button class="text-on-surface-variant hover:text-primary" onclick="event.stopPropagation();openPdf('${o.docket_url}','Docket – PO ${o.po||''}')"><span class="material-symbols-outlined" style="font-size:18px;">description</span></button>`
@@ -920,6 +979,7 @@ function renderOrders() {
             <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
             <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
             <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
+            <span class="text-xs ${o.sample_approved ? 'text-green-600 font-semibold' : 'text-on-surface-variant'}">Sample ${o.sample_approved ? 'Yes' : 'No'}</span>
           </div>
           ${o.notes ? `<p class="text-xs text-on-surface-variant italic mt-2 line-clamp-2">${o.notes}</p>` : ''}
         </div>
@@ -955,7 +1015,7 @@ function orderDetailHtml(o, idPrefix) {
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
       <select id="${idPrefix}-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
-        ${['Pending','Cutting','Production','Packing','Ready','Completed', ...(o.stage === 'Cancelled' ? ['Cancelled'] : [])].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
+        ${['Pending','Cutting','Production','Packing','Ready','Booked','Completed', ...(o.stage === 'Cancelled' ? ['Cancelled'] : [])].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-4">
@@ -964,6 +1024,10 @@ function orderDetailHtml(o, idPrefix) {
           <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">${l}</p>
           <p class="text-xs font-semibold text-on-surface">${v||'—'}</p>
         </div>`).join('')}
+    </div>
+    <div class="mb-4 flex items-center justify-between bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
+      <label class="text-xs font-medium text-on-surface-variant uppercase tracking-wider" for="${idPrefix}-sample">Sample Approved</label>
+      <input id="${idPrefix}-sample" type="checkbox" ${o.sample_approved ? 'checked' : ''} class="w-5 h-5 accent-primary cursor-pointer"/>
     </div>
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">CMT (£ per unit)</label>
@@ -1097,12 +1161,18 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
     const cmtRaw = cmtEl ? cmtEl.value.trim() : ''
     const newCmt = cmtRaw === '' ? null : parseFloat(cmtRaw)
 
+    const sampleEl = document.getElementById(`${prefix}-sample`)
+    const newSample = sampleEl ? sampleEl.checked : null
+
     const updatePayload = {
       stage: newStage,
       notes: notesEl.value.trim(),
       updated_by: user?.id ?? null,
     }
     if (cmtEl) updatePayload.cmt = newCmt
+    // Only send sample_approved when it changed, so saves keep working if the
+    // migration adding the column hasn't been applied yet
+    if (sampleEl && newSample !== !!oldOrder?.sample_approved) updatePayload.sample_approved = newSample
     if (packingListUrl !== null) updatePayload.packing_list_url = packingListUrl
 
     const { error } = await sb.from('orders').update(updatePayload).eq('id', orderId)
@@ -1134,7 +1204,7 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
     // Update local data immediately (realtime may lag)
     const idx = allOrders.findIndex(o => o.id === orderId)
     if (idx >= 0) {
-      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(cmtEl ? { cmt: newCmt } : {}), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
+      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(cmtEl ? { cmt: newCmt } : {}), ...(sampleEl ? { sample_approved: newSample } : {}), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
       renderOrders(); updateKpis()
     }
 
@@ -1241,6 +1311,7 @@ for (const t of ['active', 'completed', 'cancelled']) {
   document.getElementById(`tab-${t}`).addEventListener('click', () => setTab(t))
   document.getElementById(`tab-${t}-mobile`).addEventListener('click', () => setTab(t))
 }
+renderSortHeaders()
 document.getElementById('search-input').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 document.getElementById('search-input-mobile').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 
