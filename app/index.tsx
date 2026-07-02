@@ -14,6 +14,8 @@ import { colors, spacing, typography } from '../theme/tokens'
 
 function getStageRank(stage: Order['stage']) {
   switch (stage) {
+    case 'Booked':
+      return 0
     case 'Ready':
       return 1
     case 'Packing':
