@@ -41,9 +41,12 @@ booking flow in both frontends.
 
 ## Roles
 
-`profiles.role`: `packer` | `manager` | `admin`. The app gates editing UI
-behind `canEdit = manager || admin`; packers see read-only screens. This is
-UI-level only — real enforcement is Supabase RLS.
+`profiles.role`: `packer` | `manager` | `admin` | `designer`. The app gates
+editing UI behind `canEdit = manager || admin`; packers see read-only screens.
+On the website, managers/admins have full edit; designers (make buyer samples)
+can view everything, edit notes, and toggle Sample Approved — but not stages,
+CMT, or cancel; CMT/pricing is hidden from them. This is UI-level only — real
+enforcement is Supabase RLS.
 
 ## Gotchas
 
