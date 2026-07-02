@@ -79,6 +79,22 @@ function getStageRank(stage: string | null): number {
   }
 }
 
+// Distinct from getStageRank (a display sort order, highest-progress first) —
+// this is the forward production sequence packers are allowed to advance
+// through. Matches the packer stage-transition rule enforced in
+// supabase/migrations/20260702212619_packer_stage_and_designer_write_grants.sql.
+const PACKER_FORWARD_STAGES: Stage[] = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready']
+
+function canPackerAdvanceTo(currentStage: string | null, targetStage: Stage): boolean {
+  if (currentStage === 'Booked' || currentStage === 'Completed' || currentStage === CANCELLED) {
+    return false
+  }
+  const targetRank = PACKER_FORWARD_STAGES.indexOf(targetStage)
+  if (targetRank <= 0) return false // excludes 'Pending' and any stage outside the forward set
+  const currentRank = PACKER_FORWARD_STAGES.indexOf(currentStage as Stage)
+  return currentRank !== -1 && targetRank > currentRank
+}
+
 function parseExFactory(val: string | null): number {
   if (!val) return 0
   const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
@@ -246,6 +262,7 @@ export default function OpoScreen() {
 
   const { signOut, role, user } = useAuth()
   const canEdit = role === 'manager' || role === 'admin'
+  const canAdvanceStage = canEdit || role === 'packer'
 
   useEffect(() => {
     loadOrders()
@@ -1223,12 +1240,37 @@ export default function OpoScreen() {
                 </View>
               ) : null}
 
-              {canEdit ? (
+              {canAdvanceStage ? (
                 <View style={styles.stageSection}>
                   <Text style={styles.stageSectionLabel}>Move Order To</Text>
                   <View style={styles.stageButtons}>
                     {STAGES.map((stage) => {
                       const isCurrentStage = selectedOrder.stage === stage
+                      const isTappable =
+                        canEdit || canPackerAdvanceTo(selectedOrder.stage, stage)
+
+                      if (!isTappable) {
+                        return (
+                          <View
+                            key={stage}
+                            style={[
+                              styles.stageButton,
+                              isCurrentStage && styles.currentStageButton,
+                              styles.stageButtonDisabled,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.stageButtonText,
+                                isCurrentStage && styles.currentStageButtonText,
+                              ]}
+                            >
+                              {isCurrentStage ? `Current: ${stage}` : stage}
+                            </Text>
+                          </View>
+                        )
+                      }
+
                       return (
                         <TouchableOpacity
                           key={stage}
@@ -2119,6 +2161,9 @@ const styles = StyleSheet.create({
   currentStageButton: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  stageButtonDisabled: {
+    opacity: 0.4,
   },
   stageButtonText: {
     fontSize: 12,
