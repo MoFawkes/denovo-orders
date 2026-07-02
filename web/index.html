@@ -966,6 +966,12 @@ function orderDetailHtml(o, idPrefix) {
         </div>`).join('')}
     </div>
     <div class="mb-4">
+      <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">CMT (£ per unit)</label>
+      <input id="${idPrefix}-cmt" type="number" min="0" step="0.01" value="${o.cmt ?? ''}" placeholder="No CMT set — enter price"
+        class="w-full bg-surface-container-lowest border ${o.cmt == null ? 'border-amber-400' : 'border-outline-variant/30'} rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm"/>
+      <p class="text-[10px] text-on-surface-variant mt-1">Saved to style costings${o.style_no || o.style ? ` for ${o.style_no || o.style}` : ''} — future orders with this style get it automatically.</p>
+    </div>
+    <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Production Notes</label>
       <textarea id="${idPrefix}-notes" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary h-24 placeholder:italic resize-none" placeholder="Add notes here...">${o.notes||''}</textarea>
     </div>
@@ -1087,11 +1093,16 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
     const oldOrder = allOrders.find(o => o.id === orderId)
     const newStage = stageEl.value
 
+    const cmtEl = document.getElementById(`${prefix}-cmt`)
+    const cmtRaw = cmtEl ? cmtEl.value.trim() : ''
+    const newCmt = cmtRaw === '' ? null : parseFloat(cmtRaw)
+
     const updatePayload = {
       stage: newStage,
       notes: notesEl.value.trim(),
       updated_by: user?.id ?? null,
     }
+    if (cmtEl) updatePayload.cmt = newCmt
     if (packingListUrl !== null) updatePayload.packing_list_url = packingListUrl
 
     const { error } = await sb.from('orders').update(updatePayload).eq('id', orderId)
@@ -1115,10 +1126,15 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
       })
     }
 
+    // Propagate a newly set CMT to the style costings table + same-style orders
+    if (cmtEl && newCmt != null && newCmt !== oldOrder?.cmt) {
+      await propagateCmt(oldOrder, newCmt)
+    }
+
     // Update local data immediately (realtime may lag)
     const idx = allOrders.findIndex(o => o.id === orderId)
     if (idx >= 0) {
-      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
+      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(cmtEl ? { cmt: newCmt } : {}), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
       renderOrders(); updateKpis()
     }
 
@@ -1136,6 +1152,42 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
     errEl.classList.remove('hidden')
     btn.textContent = origText
     btn.disabled = false
+  }
+}
+
+// Persist a CMT price against the style so future imports auto-fill it,
+// and backfill existing same-style orders that have no CMT yet.
+async function propagateCmt(order, cmt) {
+  if (!order) return
+  try {
+    const costing = await lookupCosting(order.style, order.style_no)
+    if (costing) {
+      let q = sb.from('style_costings').update({ cmt })
+      if (costing.style_no) q = q.ilike('style_no', costing.style_no)
+      else if (order.style) q = q.ilike('style', order.style)
+      else q = null
+      if (q) await q
+    } else if (order.style || order.style_no) {
+      await sb.from('style_costings').insert({
+        style: order.style || null,
+        style_no: order.style_no || null,
+        cmt,
+      })
+    }
+
+    // Backfill other orders of the same style that have no CMT
+    let bq = sb.from('orders').update({ cmt }).is('cmt', null)
+    if (order.style_no) bq = bq.eq('style_no', order.style_no)
+    else if (order.style) bq = bq.eq('style', order.style)
+    else return
+    await bq
+
+    for (const o of allOrders) {
+      const sameStyle = order.style_no ? o.style_no === order.style_no : (order.style && o.style === order.style)
+      if (o.cmt == null && sameStyle) o.cmt = cmt
+    }
+  } catch (e) {
+    console.error('propagateCmt error:', e)
   }
 }
 
