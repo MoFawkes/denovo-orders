@@ -54,7 +54,6 @@ const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Complet
 type Stage = (typeof STAGES)[number]
 const CANCELLED = 'Cancelled'
 type OrderStatus = Stage | typeof CANCELLED
-const DEFAULT_STAGE: Stage = 'Pending'
 type TabType = 'active' | 'completed' | 'cancelled'
 
 function getStageRank(stage: string | null): number {
