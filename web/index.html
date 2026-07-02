@@ -416,6 +416,17 @@
         <!-- Manual inputs -->
         <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
           <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Labour Costs</h3>
+
+          <!-- Clock file drop zone -->
+          <div id="attlog-drop" class="mb-3 border-2 border-dashed border-outline-variant/40 rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-surface-container-low transition-all"
+            onclick="document.getElementById('attlog-file').click()">
+            <span class="material-symbols-outlined text-on-surface-variant" style="font-size:22px;">schedule</span>
+            <p class="text-xs font-semibold text-on-surface mt-1">Drop clock file (.dat) here or click to browse</p>
+            <p id="attlog-status" class="text-[11px] text-on-surface-variant mt-0.5">Auto-fills Hours Worked from time-clock punches in the selected week</p>
+          </div>
+          <input id="attlog-file" type="file" accept=".dat,.txt" class="hidden" onchange="if(this.files[0]) handleAttlogFile(this.files[0])"/>
+          <div id="attlog-breakdown" class="hidden mb-4"></div>
+
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-on-surface-variant">Hours Worked</label>
@@ -1367,6 +1378,7 @@ async function loadReport() {
 
   document.getElementById('report-results').classList.remove('hidden')
   document.getElementById('report-empty').classList.add('hidden')
+  recomputeAttlogHours()
 
   if (error || !events || events.length === 0) {
     document.getElementById('report-orders-list').innerHTML = ''
@@ -1446,6 +1458,144 @@ function updateSummary() {
     netEl.className = 'text-2xl font-extrabold'
   }
 }
+
+// ── Time-clock file (attlog.dat) → Hours Worked ──────────────────────────────
+// Format: one punch per line: <employee id> <YYYY-MM-DD HH:MM:SS> <device fields...>
+// Hours per employee per day: punches are paired in-out (excludes lunch breaks
+// when clocked); odd punch counts fall back to first-to-last and get flagged.
+
+let attlogPunches = null
+let attlogFileName = ''
+
+function handleAttlogFile(file) {
+  const reader = new FileReader()
+  reader.onload = () => {
+    const punches = []
+    for (const line of String(reader.result).split('\n')) {
+      const parts = line.trim().split(/\s+/)
+      if (parts.length < 3) continue
+      const m = (parts[1] + ' ' + parts[2]).match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/)
+      if (!m) continue
+      const ts = new Date(m[1] + 'T' + m[2])
+      if (isNaN(ts)) continue
+      punches.push({ emp: parts[0], ts, day: m[1] })
+    }
+    if (!punches.length) {
+      document.getElementById('attlog-status').textContent = '❌ No punch records found — is this a time-clock .dat export?'
+      return
+    }
+    punches.sort((a, b) => a.ts - b.ts)
+    attlogPunches = punches
+    attlogFileName = file.name
+    recomputeAttlogHours()
+  }
+  reader.readAsText(file)
+}
+
+function fmtHm(hours) {
+  const h = Math.floor(hours)
+  const m = Math.round((hours - h) * 60)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+function recomputeAttlogHours() {
+  if (!attlogPunches) return
+  const start = document.getElementById('report-week-start').value
+  const end = document.getElementById('report-week-end').value
+  const statusEl = document.getElementById('attlog-status')
+  const breakdownEl = document.getElementById('attlog-breakdown')
+
+  const firstDay = attlogPunches[0].day
+  const lastDay = attlogPunches[attlogPunches.length - 1].day
+  if (!start || !end) {
+    statusEl.textContent = `Loaded ${attlogFileName} (${firstDay} → ${lastDay}). Select a week and press Load Report.`
+    return
+  }
+
+  const inRange = attlogPunches.filter(p => p.day >= start && p.day <= end)
+  if (!inRange.length) {
+    statusEl.textContent = `⚠️ ${attlogFileName} has no punches between ${start} and ${end} (file covers ${firstDay} → ${lastDay})`
+    breakdownEl.classList.add('hidden')
+    return
+  }
+
+  const byEmp = {}
+  for (const p of inRange) {
+    (byEmp[p.emp] = byEmp[p.emp] || {})
+    ;(byEmp[p.emp][p.day] = byEmp[p.emp][p.day] || []).push(p.ts)
+  }
+
+  const employees = []
+  let grandTotal = 0
+  for (const emp of Object.keys(byEmp).sort((a, b) => Number(a) - Number(b))) {
+    let empHours = 0
+    const days = []
+    for (const day of Object.keys(byEmp[emp]).sort()) {
+      // De-dupe repeat scans within 60s
+      const times = []
+      for (const t of byEmp[emp][day]) {
+        if (!times.length || t - times[times.length - 1] > 60000) times.push(t)
+      }
+      let hours = 0
+      let flag = ''
+      if (times.length === 1) {
+        flag = 'single punch'
+      } else if (times.length % 2 === 0) {
+        for (let i = 0; i < times.length; i += 2) hours += (times[i + 1] - times[i]) / 3600000
+      } else {
+        hours = (times[times.length - 1] - times[0]) / 3600000
+        flag = 'odd punches'
+      }
+      empHours += hours
+      days.push({ day, in: times[0], out: times.length > 1 ? times[times.length - 1] : null, hours, flag })
+    }
+    grandTotal += empHours
+    employees.push({ emp, days, hours: empHours })
+  }
+
+  document.getElementById('report-hours').value = grandTotal.toFixed(2)
+  updateSummary()
+
+  const flagged = employees.reduce((n, e) => n + e.days.filter(d => d.flag).length, 0)
+  statusEl.textContent = `✓ ${attlogFileName}: ${employees.length} employees · ${fmtHm(grandTotal)} total for ${start} → ${end}` + (flagged ? ` · ⚠️ ${flagged} day(s) need checking` : '')
+
+  const t = (d) => d ? d.toTimeString().slice(0, 5) : '—'
+  breakdownEl.innerHTML = `
+    <div class="border border-outline-variant/20 rounded-lg overflow-hidden">
+      <div class="grid grid-cols-4 gap-2 px-3 py-2 bg-surface-container-low text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+        <span>Employee</span><span>Days</span><span>Hours</span><span></span>
+      </div>
+      ${employees.map(e => `
+        <details class="border-t border-outline-variant/10">
+          <summary class="grid grid-cols-4 gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-surface-container-low list-none">
+            <span class="font-semibold text-on-surface">#${e.emp}</span>
+            <span class="text-on-surface-variant">${e.days.length}</span>
+            <span class="font-semibold text-on-surface">${fmtHm(e.hours)}</span>
+            <span class="text-on-surface-variant text-right">${e.days.some(d => d.flag) ? '⚠️' : ''}</span>
+          </summary>
+          <div class="px-3 pb-2">
+            ${e.days.map(d => `
+              <div class="grid grid-cols-4 gap-2 py-1 text-[11px] text-on-surface-variant border-t border-outline-variant/10">
+                <span>${d.day.slice(5)}</span>
+                <span>${t(d.in)} – ${t(d.out)}</span>
+                <span>${d.flag === 'single punch' ? '—' : fmtHm(d.hours)}</span>
+                <span class="text-right">${d.flag ? `⚠️ ${d.flag}` : ''}</span>
+              </div>`).join('')}
+          </div>
+        </details>`).join('')}
+    </div>`
+  breakdownEl.classList.remove('hidden')
+}
+
+const attlogDrop = document.getElementById('attlog-drop')
+attlogDrop.addEventListener('dragover', e => { e.preventDefault(); attlogDrop.classList.add('border-primary') })
+attlogDrop.addEventListener('dragleave', () => attlogDrop.classList.remove('border-primary'))
+attlogDrop.addEventListener('drop', e => {
+  e.preventDefault()
+  attlogDrop.classList.remove('border-primary')
+  const f = e.dataTransfer.files && e.dataTransfer.files[0]
+  if (f) handleAttlogFile(f)
+})
 
 async function saveReport() {
   const start = document.getElementById('report-week-start').value
