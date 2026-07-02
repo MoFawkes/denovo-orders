@@ -71,16 +71,20 @@
   body { font-family: 'Inter', sans-serif; }
   .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
   .ghost-border-bottom { border-bottom: 1px solid rgba(178,178,177,0.15); }
+  .stage-pending    { color: #64748b; background-color: rgba(148,163,184,0.18); }
   .stage-cutting    { color: #c0524f; background-color: rgba(254,137,131,0.15); }
   .stage-production { color: #c07020; background-color: rgba(230,126,34,0.13); }
   .stage-packing    { color: #4a7a8a; background-color: rgba(208,236,255,0.15); }
   .stage-ready      { color: #27AE60; background-color: rgba(39,174,96,0.13); }
   .stage-completed  { color: #888; background-color: rgba(180,180,180,0.15); }
+  .stage-cancelled  { color: #b3352e; background-color: rgba(179,53,46,0.10); }
+  html.dark .stage-pending    { color: #94a3b8; background-color: rgba(148,163,184,0.12); }
   html.dark .stage-cutting    { color: #f08a87; background-color: rgba(254,137,131,0.12); }
   html.dark .stage-production { color: #f0a050; background-color: rgba(230,126,34,0.12); }
   html.dark .stage-packing    { color: #7ab8cc; background-color: rgba(122,184,204,0.12); }
   html.dark .stage-ready      { color: #4fc87a; background-color: rgba(79,200,122,0.12); }
   html.dark .stage-completed  { color: #9a9a9d; background-color: rgba(154,154,157,0.12); }
+  html.dark .stage-cancelled  { color: #f2b8b5; background-color: rgba(242,184,181,0.10); }
   #panel { transition: transform 0.2s ease; }
   .row-selected { background-color: rgba(219,228,230,0.4); border-left: 2px solid var(--c-primary); }
   html.dark .row-selected { background-color: rgba(30,51,55,0.5); }
@@ -247,6 +251,7 @@
         <nav class="flex gap-5 h-14 items-center">
           <button id="tab-active" class="text-xs font-bold uppercase tracking-widest text-on-surface border-b-2 border-primary h-14 flex items-center">Active <span id="tab-active-count" class="ml-1 text-on-surface-variant font-normal">(0)</span></button>
           <button id="tab-completed" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Completed <span id="tab-completed-count" class="ml-1 font-normal">(0)</span></button>
+          <button id="tab-cancelled" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Cancelled <span id="tab-cancelled-count" class="ml-1 font-normal">(0)</span></button>
         </nav>
       </div>
       <div class="hidden md:flex items-center gap-3 text-xs text-on-surface-variant">
@@ -269,6 +274,7 @@
       <div class="flex gap-2">
         <button id="tab-active-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white">Active <span id="tab-active-count-mobile" class="font-normal opacity-70">(0)</span></button>
         <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
+        <button id="tab-cancelled-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Cancelled <span id="tab-cancelled-count-mobile" class="font-normal">(0)</span></button>
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
         <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
@@ -750,7 +756,7 @@ function subscribeRealtime() {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 function printActiveOrders() {
-  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const active = allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
 
   const stageColors = {
     Pending: { bg: 'rgba(148,163,184,0.2)', color: '#475569' },
@@ -817,7 +823,7 @@ function printActiveOrders() {
   win.document.close()
 }
 function stageClass(s) {
-  return { Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Completed:'stage-completed' }[s] || 'stage-production'
+  return { Pending:'stage-pending', Cutting:'stage-cutting', Production:'stage-production', Packing:'stage-packing', Ready:'stage-ready', Completed:'stage-completed', Cancelled:'stage-cancelled' }[s] || 'stage-pending'
 }
 
 function parseExFactory(val) {
@@ -832,11 +838,12 @@ function parseExFactory(val) {
 }
 
 function getVisible() {
-  const base = currentTab === 'active'
-    ? allOrders.filter(o => o.stage !== 'Completed')
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    : allOrders.filter(o => o.stage === 'Completed')
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const base = (currentTab === 'active'
+    ? allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
+    : currentTab === 'completed'
+      ? allOrders.filter(o => o.stage === 'Completed')
+      : allOrders.filter(o => o.stage === 'Cancelled')
+  ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   if (!searchQuery) return base
   const q = searchQuery.toLowerCase()
   return base.filter(o =>
@@ -848,7 +855,7 @@ function getVisible() {
 function emptyHtml() {
   return `<div class="flex flex-col items-center justify-center py-20 text-sm text-on-surface-variant gap-2">
     <span class="material-symbols-outlined opacity-30" style="font-size:36px;">inbox</span>
-    <span>${searchQuery ? 'No matching orders' : currentTab === 'active' ? 'No active orders' : 'No completed orders'}</span>
+    <span>${searchQuery ? 'No matching orders' : currentTab === 'active' ? 'No active orders' : currentTab === 'completed' ? 'No completed orders' : 'No cancelled orders'}</span>
   </div>`
 }
 
@@ -910,16 +917,19 @@ function renderOrders() {
 }
 
 function updateKpis() {
-  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const active = allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
   const completed = allOrders.filter(o => o.stage === 'Completed')
+  const cancelled = allOrders.filter(o => o.stage === 'Cancelled')
   const ready = active.filter(o => o.stage === 'Ready')
   document.getElementById('kpi-active').textContent = active.length
   document.getElementById('kpi-ready').textContent = ready.length
   document.getElementById('kpi-completed').textContent = completed.length
   document.getElementById('tab-active-count').textContent = `(${active.length})`
   document.getElementById('tab-completed-count').textContent = `(${completed.length})`
+  document.getElementById('tab-cancelled-count').textContent = `(${cancelled.length})`
   document.getElementById('tab-active-count-mobile').textContent = `(${active.length})`
   document.getElementById('tab-completed-count-mobile').textContent = `(${completed.length})`
+  document.getElementById('tab-cancelled-count-mobile').textContent = `(${cancelled.length})`
 }
 
 // ── Order detail content (shared between panel + drawer) ──────────────────────
@@ -934,7 +944,7 @@ function orderDetailHtml(o, idPrefix) {
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
       <select id="${idPrefix}-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
-        ${['Cutting','Production','Packing','Ready','Completed'].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
+        ${['Pending','Cutting','Production','Packing','Ready','Completed', ...(o.stage === 'Cancelled' ? ['Cancelled'] : [])].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-4">
@@ -953,6 +963,7 @@ function orderDetailHtml(o, idPrefix) {
       <button onclick="saveOrder('${o.id}','${idPrefix}')" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">Update Order</button>
       ${o.docket_url ? `<button onclick="openPdf('${o.docket_url}','Docket – PO ${o.po||''}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Docket</button>` : ''}
       ${o.packing_list_url ? `<button onclick="openUrl('${o.packing_list_url}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Packing List</button>` : ''}
+      ${o.stage !== 'Completed' && o.stage !== 'Cancelled' ? `<button onclick="cancelOrder('${o.id}')" class="w-full bg-transparent border border-red-300 text-red-600 py-2.5 rounded font-bold text-xs hover:bg-red-50 dark:hover:bg-red-950/30 transition-all uppercase">Cancel Order</button>` : ''}
     </div>`
 }
 
@@ -1117,23 +1128,56 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
   }
 }
 
+async function cancelOrder(orderId) {
+  const o = allOrders.find(x => x.id === orderId)
+  if (!o) return
+  if (!confirm(`Cancel PO ${o.po || 'this order'}? It will move to the Cancelled tab. You can reverse this later by setting a new stage.`)) return
+
+  try {
+    const { data: { user } } = await sb.auth.getUser()
+
+    const { error } = await sb.from('orders')
+      .update({ stage: 'Cancelled', updated_by: user?.id ?? null })
+      .eq('id', orderId)
+
+    if (error) {
+      console.error('cancelOrder error:', error)
+      alert('Could not cancel order: ' + error.message)
+      return
+    }
+
+    await sb.from('order_events').insert({
+      order_id: orderId,
+      old_stage: o.stage,
+      new_stage: 'Cancelled',
+      changed_by: user?.id ?? null,
+    })
+
+    const idx = allOrders.findIndex(x => x.id === orderId)
+    if (idx >= 0) allOrders[idx] = { ...allOrders[idx], stage: 'Cancelled' }
+    closePanel(); closeMobileDrawer()
+    renderOrders(); updateKpis()
+  } catch (e) {
+    console.error('cancelOrder exception:', e)
+    alert('Unexpected error: ' + e.message)
+  }
+}
+
 // ── Tabs & Search ─────────────────────────────────────────────────────────────
 
 function setTab(tab) {
   currentTab = tab
-  // Desktop tabs
-  document.getElementById('tab-active').className = `text-xs font-bold uppercase tracking-widest h-14 flex items-center border-b-2 ${tab==='active' ? 'text-on-surface border-primary' : 'text-on-surface-variant border-transparent'}`
-  document.getElementById('tab-completed').className = `text-xs font-bold uppercase tracking-widest h-14 flex items-center border-b-2 ${tab==='completed' ? 'text-on-surface border-primary' : 'text-on-surface-variant border-transparent'}`
-  // Mobile tabs
-  document.getElementById('tab-active-mobile').className = `flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${tab==='active' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`
-  document.getElementById('tab-completed-mobile').className = `flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${tab==='completed' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`
+  for (const t of ['active', 'completed', 'cancelled']) {
+    document.getElementById(`tab-${t}`).className = `text-xs font-bold uppercase tracking-widest h-14 flex items-center border-b-2 ${tab===t ? 'text-on-surface border-primary' : 'text-on-surface-variant border-transparent'}`
+    document.getElementById(`tab-${t}-mobile`).className = `flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${tab===t ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`
+  }
   renderOrders()
 }
 
-document.getElementById('tab-active').addEventListener('click', () => setTab('active'))
-document.getElementById('tab-completed').addEventListener('click', () => setTab('completed'))
-document.getElementById('tab-active-mobile').addEventListener('click', () => setTab('active'))
-document.getElementById('tab-completed-mobile').addEventListener('click', () => setTab('completed'))
+for (const t of ['active', 'completed', 'cancelled']) {
+  document.getElementById(`tab-${t}`).addEventListener('click', () => setTab(t))
+  document.getElementById(`tab-${t}-mobile`).addEventListener('click', () => setTab(t))
+}
 document.getElementById('search-input').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 document.getElementById('search-input-mobile').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderOrders() })
 
@@ -1656,7 +1700,7 @@ function toggleBookingAsap() {
 }
 
 function renderBookingOrders() {
-  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const active = allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
   const list = document.getElementById('booking-orders-list')
   if (!active.length) {
     list.innerHTML = '<p class="text-xs text-on-surface-variant p-5">No active orders found.</p>'
@@ -1727,7 +1771,7 @@ function onBookingCbChange(cb) {
 }
 
 function toggleSelectAllBooking() {
-  const active = allOrders.filter(o => o.stage !== 'Completed')
+  const active = allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
   const allChecked = active.every(o => bookingSelected.has(o.id))
   if (allChecked) {
     active.forEach(o => bookingSelected.delete(o.id))
