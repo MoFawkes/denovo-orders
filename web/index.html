@@ -1461,11 +1461,68 @@ function updateSummary() {
 
 // ── Time-clock file (attlog.dat) → Hours Worked ──────────────────────────────
 // Format: one punch per line: <employee id> <YYYY-MM-DD HH:MM:SS> <device fields...>
-// Hours per employee per day: punches are paired in-out (excludes lunch breaks
-// when clocked); odd punch counts fall back to first-to-last and get flagged.
+// Calculation rules:
+//   • Work start capped to 08:00 — earlier clockings are treated as 08:00
+//   • All clockings rounded to the nearest 15 minutes
+//   • Duplicate punches within 5 minutes of each other are merged
+//   • 2 clockings (in/out only): fixed break schedule deducted where the shift
+//     spans it — 10:00–10:15 (15m), 13:00–13:30 (30m), 16:00–16:15 (15m)
+//   • 4+ clockings (employee clocked breaks): paired into work segments
+//     (1st in/2nd out/3rd in/4th out…); fixed breaks also deducted within segments
+//   • Odd clockings: best-effort pairing (first = in, last = out, interior
+//     paired as breaks, one leftover ignored), flagged 'Odd clockings - check'
+//   • Single clocking: hours cannot be calculated, flagged
+//   • Break shown with * = actual clocked breaks used; red when over 60 minutes
+//   • Days with odd clockings are shown in orange
+
+const FIXED_BREAKS = [[600, 615], [780, 810], [960, 975]] // minutes since midnight
 
 let attlogPunches = null
 let attlogFileName = ''
+
+function computeAttlogDay(rawTimes) {
+  // Merge duplicate punches within 5 minutes (keep the first)
+  const merged = []
+  for (const t of rawTimes) {
+    if (!merged.length || (t - merged[merged.length - 1]) > 5 * 60000) merged.push(t)
+  }
+  // Cap to 08:00, round to nearest 15 minutes (minutes since midnight)
+  let clocks = merged.map(t => {
+    let m = t.getHours() * 60 + t.getMinutes() + t.getSeconds() / 60
+    if (m < 480) m = 480
+    return Math.round(m / 15) * 15
+  })
+  clocks = clocks.filter((m, i) => i === 0 || m !== clocks[i - 1])
+
+  const n = clocks.length
+  if (n === 1) return { inM: clocks[0], outM: null, worked: 0, breakM: null, star: false, flag: 'Single clocking - check' }
+
+  const overlap = (a, b) => FIXED_BREAKS.reduce((s, [ws, we]) => s + Math.max(0, Math.min(b, we) - Math.max(a, ws)), 0)
+
+  // First punch = in, last = out; interior punches pair as break-out/break-in.
+  // Odd counts leave one interior punch unused (best effort).
+  const segments = []
+  let cur = clocks[0]
+  let i = 1
+  while (i + 1 <= n - 1) {
+    segments.push([cur, clocks[i]])
+    cur = clocks[i + 1]
+    i += 2
+  }
+  segments.push([cur, clocks[n - 1]])
+
+  let workedMins = 0
+  for (const [a, b] of segments) workedMins += (b - a) - overlap(a, b)
+
+  return {
+    inM: clocks[0],
+    outM: clocks[n - 1],
+    worked: workedMins / 60,
+    breakM: (clocks[n - 1] - clocks[0]) - workedMins,
+    star: n >= 4,
+    flag: n % 2 === 1 ? 'Odd clockings - check' : '',
+  }
+}
 
 function handleAttlogFile(file) {
   const reader = new FileReader()
@@ -1531,23 +1588,9 @@ function recomputeAttlogHours() {
     let empHours = 0
     const days = []
     for (const day of Object.keys(byEmp[emp]).sort()) {
-      // De-dupe repeat scans within 60s
-      const times = []
-      for (const t of byEmp[emp][day]) {
-        if (!times.length || t - times[times.length - 1] > 60000) times.push(t)
-      }
-      let hours = 0
-      let flag = ''
-      if (times.length === 1) {
-        flag = 'single punch'
-      } else if (times.length % 2 === 0) {
-        for (let i = 0; i < times.length; i += 2) hours += (times[i + 1] - times[i]) / 3600000
-      } else {
-        hours = (times[times.length - 1] - times[0]) / 3600000
-        flag = 'odd punches'
-      }
-      empHours += hours
-      days.push({ day, in: times[0], out: times.length > 1 ? times[times.length - 1] : null, hours, flag })
+      const r = computeAttlogDay(byEmp[emp][day])
+      empHours += r.worked
+      days.push({ day, ...r })
     }
     grandTotal += empHours
     employees.push({ emp, days, hours: empHours })
@@ -1559,7 +1602,12 @@ function recomputeAttlogHours() {
   const flagged = employees.reduce((n, e) => n + e.days.filter(d => d.flag).length, 0)
   statusEl.textContent = `✓ ${attlogFileName}: ${employees.length} employees · ${fmtHm(grandTotal)} total for ${start} → ${end}` + (flagged ? ` · ⚠️ ${flagged} day(s) need checking` : '')
 
-  const t = (d) => d ? d.toTimeString().slice(0, 5) : '—'
+  const t = (m) => m != null ? `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}` : '—'
+  const breakCell = (d) => {
+    if (d.breakM == null) return '—'
+    const cls = d.breakM > 60 ? 'text-red-600 font-semibold' : ''
+    return `<span class="${cls}">${d.breakM}m${d.star ? '*' : ''}</span>`
+  }
   breakdownEl.innerHTML = `
     <div class="border border-outline-variant/20 rounded-lg overflow-hidden">
       <div class="grid grid-cols-4 gap-2 px-3 py-2 bg-surface-container-low text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
@@ -1574,16 +1622,21 @@ function recomputeAttlogHours() {
             <span class="text-on-surface-variant text-right">${e.days.some(d => d.flag) ? '⚠️' : ''}</span>
           </summary>
           <div class="px-3 pb-2">
+            <div class="grid grid-cols-5 gap-2 py-1 text-[9px] font-bold uppercase tracking-widest text-on-surface-variant">
+              <span>Date</span><span>In – Out</span><span>Break</span><span>Hours</span><span></span>
+            </div>
             ${e.days.map(d => `
-              <div class="grid grid-cols-4 gap-2 py-1 text-[11px] text-on-surface-variant border-t border-outline-variant/10">
+              <div class="grid grid-cols-5 gap-2 py-1 text-[11px] border-t border-outline-variant/10 ${d.flag === 'Odd clockings - check' ? 'text-orange-600' : 'text-on-surface-variant'}">
                 <span>${d.day.slice(5)}</span>
-                <span>${t(d.in)} – ${t(d.out)}</span>
-                <span>${d.flag === 'single punch' ? '—' : fmtHm(d.hours)}</span>
+                <span>${t(d.inM)} – ${t(d.outM)}</span>
+                <span>${breakCell(d)}</span>
+                <span>${d.outM == null ? '—' : fmtHm(d.worked)}</span>
                 <span class="text-right">${d.flag ? `⚠️ ${d.flag}` : ''}</span>
               </div>`).join('')}
           </div>
         </details>`).join('')}
-    </div>`
+    </div>
+    <p class="text-[10px] text-on-surface-variant mt-1.5">Clockings rounded to 15 min, start capped at 08:00. Break * = employee-clocked breaks; otherwise the fixed schedule (10:00–10:15, 13:00–13:30, 16:00–16:15) is deducted where the shift spans it.</p>`
   breakdownEl.classList.remove('hidden')
 }
 
