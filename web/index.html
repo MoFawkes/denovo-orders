@@ -254,6 +254,7 @@
           <button id="tab-active" class="text-xs font-bold uppercase tracking-widest text-on-surface border-b-2 border-primary h-14 flex items-center">Active <span id="tab-active-count" class="ml-1 text-on-surface-variant font-normal">(0)</span></button>
           <button id="tab-completed" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Completed <span id="tab-completed-count" class="ml-1 font-normal">(0)</span></button>
           <button id="tab-cancelled" class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface h-14 flex items-center border-b-2 border-transparent transition-colors">Cancelled <span id="tab-cancelled-count" class="ml-1 font-normal">(0)</span></button>
+          <button id="samples-filter" onclick="toggleSamplesFilter()" class="text-[10px] font-bold uppercase tracking-widest self-center px-3 py-1.5 rounded-full border border-outline-variant/40 text-on-surface-variant hover:text-on-surface transition-colors" title="Active orders in Cutting/Production/Booked without an approved sample">Needs Sample <span id="samples-filter-count" class="font-normal">(0)</span></button>
         </nav>
       </div>
       <div class="hidden md:flex items-center gap-3 text-xs text-on-surface-variant">
@@ -277,6 +278,7 @@
         <button id="tab-active-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-inverse-surface text-white">Active <span id="tab-active-count-mobile" class="font-normal opacity-70">(0)</span></button>
         <button id="tab-completed-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Completed <span id="tab-completed-count-mobile" class="font-normal">(0)</span></button>
         <button id="tab-cancelled-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Cancelled <span id="tab-cancelled-count-mobile" class="font-normal">(0)</span></button>
+        <button id="samples-filter-mobile" onclick="toggleSamplesFilter()" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Needs Sample</button>
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
         <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
@@ -641,6 +643,10 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 let allOrders = []
 let selectedOrderId = null
 let currentTab = 'active'
+let currentRole = null
+let canEditOrders = false
+let canEditSamples = false
+let samplesFilter = false
 let searchQuery = ''
 let realtimeChannel = null
 
@@ -714,7 +720,11 @@ async function showDashboard(user) {
   document.getElementById('user-role').textContent = roleText
   document.getElementById('user-role-mobile').textContent = roleText
 
-  const isManager = profile?.role === 'manager'
+  currentRole = profile?.role || null
+  canEditOrders = currentRole === 'manager' || currentRole === 'admin'
+  canEditSamples = canEditOrders || currentRole === 'designer'
+
+  const isManager = canEditOrders
   document.getElementById('nav-reports').style.display = isManager ? '' : 'none'
   document.getElementById('nav-import').style.display = isManager ? '' : 'none'
   document.getElementById('nav-booking').style.display = isManager ? '' : 'none'
@@ -906,13 +916,28 @@ function renderSortHeaders() {
   }).join('')
 }
 
+function needsSample(o) {
+  return ['Cutting', 'Production', 'Booked'].includes(o.stage) && !o.sample_approved
+}
+
+function toggleSamplesFilter() {
+  samplesFilter = !samplesFilter
+  if (samplesFilter && currentTab !== 'active') setTab('active')
+  const btn = document.getElementById('samples-filter')
+  if (btn) btn.className = `text-[10px] font-bold uppercase tracking-widest self-center px-3 py-1.5 rounded-full border transition-colors ${samplesFilter ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant/40 text-on-surface-variant hover:text-on-surface'}`
+  const mbtn = document.getElementById('samples-filter-mobile')
+  if (mbtn) mbtn.className = `flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider ${samplesFilter ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`
+  renderOrders()
+}
+
 function getVisible() {
-  const base = (currentTab === 'active'
+  let base = (currentTab === 'active'
     ? allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
     : currentTab === 'completed'
       ? allOrders.filter(o => o.stage === 'Completed')
       : allOrders.filter(o => o.stage === 'Cancelled')
   ).sort(compareOrders)
+  if (samplesFilter && currentTab === 'active') base = base.filter(needsSample)
   if (!searchQuery) return base
   const q = searchQuery.toLowerCase()
   return base.filter(o =>
@@ -944,7 +969,7 @@ function renderOrders() {
         <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
         <div class="flex items-center gap-1 pr-3 min-w-0 group/desc">
           <span id="desc-${o.id}" class="text-xs text-on-surface truncate">${o.description||'—'}</span>
-          <button onclick="event.stopPropagation();editDescription('${o.id}')" class="opacity-0 group-hover/desc:opacity-100 flex-shrink-0 text-on-surface-variant hover:text-primary transition-opacity" title="Edit description"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>
+          ${canEditOrders ? `<button onclick="event.stopPropagation();editDescription('${o.id}')" class="opacity-0 group-hover/desc:opacity-100 flex-shrink-0 text-on-surface-variant hover:text-primary transition-opacity" title="Edit description"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>` : ''}
         </div>
         <span class="text-xs font-mono text-on-surface-variant truncate">${o.style_no||'—'}</span>
         <span class="text-xs font-mono text-primary truncate">${o.style||'—'}</span>
@@ -1001,6 +1026,8 @@ function updateKpis() {
   document.getElementById('tab-active-count-mobile').textContent = `(${active.length})`
   document.getElementById('tab-completed-count-mobile').textContent = `(${completed.length})`
   document.getElementById('tab-cancelled-count-mobile').textContent = `(${cancelled.length})`
+  const sampleCountEl = document.getElementById('samples-filter-count')
+  if (sampleCountEl) sampleCountEl.textContent = `(${allOrders.filter(needsSample).length})`
 }
 
 // ── Order detail content (shared between panel + drawer) ──────────────────────
@@ -1014,7 +1041,7 @@ function orderDetailHtml(o, idPrefix) {
     ${o.description ? `<p class="text-sm font-semibold text-on-surface mb-3 leading-snug">${o.description}</p>` : ''}
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Pipeline Status</label>
-      <select id="${idPrefix}-stage" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm">
+      <select id="${idPrefix}-stage" ${canEditOrders ? '' : 'disabled'} class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm ${canEditOrders ? '' : 'opacity-60 cursor-not-allowed'}">
         ${['Pending','Cutting','Production','Packing','Ready','Booked','Completed', ...(o.stage === 'Cancelled' ? ['Cancelled'] : [])].map(s => `<option value="${s}" ${o.stage===s?'selected':''}>${s}</option>`).join('')}
       </select>
     </div>
@@ -1027,24 +1054,24 @@ function orderDetailHtml(o, idPrefix) {
     </div>
     <div class="mb-4 flex items-center justify-between bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
       <label class="text-xs font-medium text-on-surface-variant uppercase tracking-wider" for="${idPrefix}-sample">Sample Approved</label>
-      <input id="${idPrefix}-sample" type="checkbox" ${o.sample_approved ? 'checked' : ''} class="w-5 h-5 accent-primary cursor-pointer"/>
+      <input id="${idPrefix}-sample" type="checkbox" ${o.sample_approved ? 'checked' : ''} ${canEditSamples ? '' : 'disabled'} class="w-5 h-5 accent-primary ${canEditSamples ? 'cursor-pointer' : 'opacity-50'}"/>
     </div>
-    <div class="mb-4">
+    ${canEditOrders ? `<div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">CMT (£ per unit)</label>
       <input id="${idPrefix}-cmt" type="number" min="0" step="0.01" value="${o.cmt ?? ''}" placeholder="No CMT set — enter price"
         class="w-full bg-surface-container-lowest border ${o.cmt == null ? 'border-amber-400' : 'border-outline-variant/30'} rounded p-2.5 text-xs text-on-surface focus:ring-1 focus:ring-primary shadow-sm"/>
       <p class="text-[10px] text-on-surface-variant mt-1">Saved to style costings${o.style_no || o.style ? ` for ${o.style_no || o.style}` : ''} — future orders with this style get it automatically.</p>
-    </div>
+    </div>` : ''}
     <div class="mb-4">
       <label class="text-xs font-medium text-on-surface-variant block mb-1.5 uppercase tracking-wider">Production Notes</label>
       <textarea id="${idPrefix}-notes" class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-3 text-xs text-on-surface focus:ring-1 focus:ring-primary h-24 placeholder:italic resize-none" placeholder="Add notes here...">${o.notes||''}</textarea>
     </div>
     <div id="${idPrefix}-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 mb-3"></div>
     <div class="space-y-2">
-      <button onclick="saveOrder('${o.id}','${idPrefix}')" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">Update Order</button>
+      ${canEditSamples ? `<button onclick="saveOrder('${o.id}','${idPrefix}')" class="w-full bg-primary text-on-primary py-2.5 rounded font-bold text-xs tracking-wider shadow-sm hover:bg-primary-dim transition-all uppercase">Update Order</button>` : ''}
       ${o.docket_url ? `<button onclick="openPdf('${o.docket_url}','Docket – PO ${o.po||''}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Docket</button>` : ''}
       ${o.packing_list_url ? `<button onclick="openUrl('${o.packing_list_url}')" class="w-full bg-transparent border border-outline-variant/30 text-on-surface-variant py-2.5 rounded font-bold text-xs hover:bg-surface-container transition-all uppercase">Open Packing List</button>` : ''}
-      ${o.stage !== 'Completed' && o.stage !== 'Cancelled' ? `<button onclick="cancelOrder('${o.id}')" class="w-full bg-transparent border border-red-300 text-red-600 py-2.5 rounded font-bold text-xs hover:bg-red-50 dark:hover:bg-red-950/30 transition-all uppercase">Cancel Order</button>` : ''}
+      ${canEditOrders && o.stage !== 'Completed' && o.stage !== 'Cancelled' ? `<button onclick="cancelOrder('${o.id}')" class="w-full bg-transparent border border-red-300 text-red-600 py-2.5 rounded font-bold text-xs hover:bg-red-50 dark:hover:bg-red-950/30 transition-all uppercase">Cancel Order</button>` : ''}
     </div>`
 }
 
