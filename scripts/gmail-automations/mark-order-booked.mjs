@@ -81,7 +81,11 @@ async function processThread(accessToken, apiKey, thread) {
     });
   } catch (err) {
     console.error(`  judgment failed for thread ${thread.id}: ${err.message}`);
-    return { failed: false, genuine: false, booked: 0, events: 0 };
+    // A failed judgment call (API error, rate limit, billing, etc.) is not
+    // the same as the model deciding the thread isn't genuine — leave it
+    // completely unlabeled so it's retried next run, same as an edge
+    // function failure below. Never label on a caught exception here.
+    return { failed: true, genuine: null, booked: 0, events: 0 };
   }
 
   if (!result.genuine || !result.bookings?.length) {
@@ -176,9 +180,13 @@ async function main() {
   for (const thread of threads) {
     console.log(`Processing thread ${thread.id}...`);
     const result = await processThread(accessToken, apiKey, thread);
-    if (result.failed) failed++;
-    if (!result.genuine) flaggedNotConfirmation++;
-    else genuine++;
+    if (result.failed) {
+      failed++;
+    } else if (!result.genuine) {
+      flaggedNotConfirmation++;
+    } else {
+      genuine++;
+    }
     totalBooked += result.booked;
     totalEvents += result.events;
   }
@@ -190,7 +198,7 @@ async function main() {
   console.log(`  Flagged Needs Review (not a confirmation): ${flaggedNotConfirmation}`);
   console.log(`  Orders booked: ${totalBooked}`);
   console.log(`  Calendar events created: ${totalEvents}`);
-  console.log(`  Failed (left for retry next run): ${failed}`);
+  console.log(`  Failed / judgment errors (left unlabeled for retry next run): ${failed}`);
 }
 
 main().catch((err) => {

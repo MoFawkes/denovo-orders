@@ -62,7 +62,11 @@ async function processThread(accessToken, apiKey, thread) {
     });
   } catch (err) {
     console.error(`  judgment failed for thread ${thread.id}: ${err.message}`);
-    return { needsReview: true, failed: false };
+    // A failed judgment call (API error, rate limit, billing, etc.) is not
+    // the same as the model deciding the email isn't genuine — leave it
+    // completely unlabeled so it's retried next run, same as an edge
+    // function failure below. Never label on a caught exception here.
+    return { needsReview: false, failed: true, genuine: null };
   }
 
   if (!result.genuine || !result.pairs?.length) {
