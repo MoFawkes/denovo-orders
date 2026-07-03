@@ -63,9 +63,22 @@ function addDaysUTC(isoDate, delta) {
   return d.toISOString().slice(0, 10);
 }
 
+// The "Bookings" label goes back to 2021. Anything older than this is
+// certainly for an order that's long since Completed (or Cancelled) --
+// mark-order-booked would just skip it anyway -- so there's no reason to
+// spend an LLM call judging it. Bulk-mark it Processed instead, for free.
+const OLD_THREAD_CUTOFF = new Date('2026-04-03T00:00:00Z');
+
 async function processThread(accessToken, apiKey, thread) {
   const full = await getThread(accessToken, thread.id);
   const latest = full.messages[full.messages.length - 1];
+
+  const messageDate = latest.internalDate ? new Date(Number(latest.internalDate)) : null;
+  if (messageDate && messageDate < OLD_THREAD_CUTOFF) {
+    await modifyThreadLabels(accessToken, thread.id, { add: [LABEL.PROCESSED] });
+    return { failed: false, genuine: null, booked: 0, tasks: 0, skippedOld: true };
+  }
+
   const body = extractPlainTextBody(latest);
   const subject = getHeader(latest, 'Subject');
   const from = getHeader(latest, 'From');
@@ -177,6 +190,7 @@ async function main() {
 
   let genuine = 0;
   let flaggedNotConfirmation = 0;
+  let skippedOld = 0;
   let totalBooked = 0;
   let totalTasks = 0;
   let failed = 0;
@@ -184,7 +198,9 @@ async function main() {
   for (const thread of threads) {
     console.log(`Processing thread ${thread.id}...`);
     const result = await processThread(accessToken, apiKey, thread);
-    if (result.failed) {
+    if (result.skippedOld) {
+      skippedOld++;
+    } else if (result.failed) {
       failed++;
     } else if (!result.genuine) {
       flaggedNotConfirmation++;
@@ -198,6 +214,7 @@ async function main() {
   console.log('');
   console.log('Summary:');
   console.log(`  Threads found: ${threads.length}`);
+  console.log(`  Skipped as too old (>3 months, marked Processed with no LLM call): ${skippedOld}`);
   console.log(`  Genuine booking confirmations: ${genuine}`);
   console.log(`  Flagged Needs Review (not a confirmation): ${flaggedNotConfirmation}`);
   console.log(`  Orders booked: ${totalBooked}`);
