@@ -1,0 +1,45 @@
+name: Gmail automations
+
+# Hourly Gmail-polling automations that write to Supabase. These run here
+# (rather than as Claude Code cloud routines) because the cloud routine
+# sandbox's egress proxy blocks outbound calls to supabase.co and blocks
+# mutating GitHub API calls — a normal GitHub-hosted runner has neither
+# restriction. See scripts/gmail-automations/README.md for setup.
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  mark-sample-approved:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run sample-approval automation
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SAMPLE_APPROVAL_SECRET: ${{ secrets.SAMPLE_APPROVAL_SECRET }}
+        run: node scripts/gmail-automations/mark-sample-approved.mjs
+
+  mark-order-booked:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run booking-confirmation automation
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BOOKING_AUTOMATION_SECRET: ${{ secrets.BOOKING_AUTOMATION_SECRET }}
+        run: node scripts/gmail-automations/mark-order-booked.mjs
