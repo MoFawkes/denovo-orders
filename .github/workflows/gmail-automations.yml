@@ -11,6 +11,15 @@ on:
     - cron: "0 * * * *"
   workflow_dispatch:
 
+# Without this, a manual run and the hourly cron can overlap: both search
+# Gmail for the same unlabeled backlog and process (and pay for) the same
+# threads twice before either gets to apply labels. Queue instead of running
+# concurrently -- cheap once steady-state (most runs find 0 new threads),
+# but essential while there's still a backlog to work through.
+concurrency:
+  group: gmail-automations
+  cancel-in-progress: false
+
 jobs:
   mark-sample-approved:
     runs-on: ubuntu-latest
