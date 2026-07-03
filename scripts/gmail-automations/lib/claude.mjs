@@ -4,7 +4,12 @@
 // callers treat a throw the same as "needs review", never as a silent skip.
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-5';
+// Haiku is enough for this: classify genuine/not + pull a handful of
+// structured fields out of a fairly formulaic email. Anything the model is
+// unsure about gets flagged Needs Review by the caller rather than guessed,
+// so a cheaper/less capable model mainly shifts a few more borderline cases
+// into that bucket rather than causing silent wrong answers.
+const MODEL = 'claude-haiku-4-5-20251001';
 
 export async function extractJson({ apiKey, system, prompt, maxTokens = 1024 }) {
   const res = await fetch(API_URL, {
