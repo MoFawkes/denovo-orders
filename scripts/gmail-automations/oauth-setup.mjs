@@ -15,7 +15,7 @@ const PORT = 53682;
 const REDIRECT_URI = `http://127.0.0.1:${PORT}/oauth2callback`;
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/tasks',
 ].join(' ');
 
 const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;

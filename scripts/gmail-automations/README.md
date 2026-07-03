@@ -10,7 +10,7 @@ schedule, with full internet access — see `.github/workflows/gmail-automations
 ### 1. Create a Google Cloud OAuth client
 
 1. Go to https://console.cloud.google.com/ and create a project (or reuse one).
-2. Enable the **Gmail API** and **Google Calendar API** (APIs & Services > Library).
+2. Enable the **Gmail API** and **Google Tasks API** (APIs & Services > Library).
 3. Configure the **OAuth consent screen** (APIs & Services > OAuth consent
    screen): External, Testing mode. Add `denovogb@gmail.com` as a test user.
 4. Create credentials (APIs & Services > Credentials > Create Credentials >
@@ -19,8 +19,10 @@ schedule, with full internet access — see `.github/workflows/gmail-automations
 
 ### 2. Get a refresh token (run this yourself, not through Claude)
 
-The refresh token is a long-lived credential with Gmail + Calendar access —
-run this locally so it never appears in a chat transcript:
+The refresh token is a long-lived credential with Gmail + Tasks access —
+run this locally so it never appears in a chat transcript. If you already
+have a refresh token from before the switch to Google Tasks, it won't have
+the `tasks` scope — you must re-run this step to get a new one:
 
 ```powershell
 $env:GMAIL_OAUTH_CLIENT_ID = "<client id from step 1>"

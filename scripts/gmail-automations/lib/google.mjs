@@ -4,7 +4,7 @@
 // small and a dependency-free script is simpler to audit and run in CI.
 
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
-const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
+const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 export async function getAccessToken({ clientId, clientSecret, refreshToken }) {
@@ -105,9 +105,15 @@ export function getHeader(message, name) {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 }
 
-export async function createCalendarEvent(accessToken, event) {
-  return apiFetch(`${CALENDAR_BASE}/calendars/primary/events`, accessToken, {
+// Creates a Google Task on the default "My Tasks" list, so it shows up as a
+// checkable to-do (with a due date) rather than a fixed-time calendar event.
+export async function createTask(accessToken, { title, notes, dueDate }) {
+  return apiFetch(`${TASKS_BASE}/lists/@default/tasks`, accessToken, {
     method: 'POST',
-    body: JSON.stringify(event),
+    body: JSON.stringify({
+      title,
+      notes,
+      due: `${dueDate}T00:00:00.000Z`,
+    }),
   });
 }

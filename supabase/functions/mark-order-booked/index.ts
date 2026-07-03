@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: existing, error: fetchError } = await supabase
     .from('orders')
-    .select('id, po, style_no, stage, ex_factory, company')
+    .select('id, po, style_no, stage, ex_factory, company, description')
     .eq('po', po)
 
   if (fetchError) {
@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
       .from('orders')
       .update({ stage: 'Booked' })
       .in('id', ids)
-      .select('id, po, style_no, stage, ex_factory, company')
+      .select('id, po, style_no, stage, ex_factory, company, description')
 
     if (updateError) {
       return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })
