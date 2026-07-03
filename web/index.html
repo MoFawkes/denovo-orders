@@ -2948,7 +2948,7 @@ async function runImport() {
         docket_url: docketUrl,
         invoice_no: '',
         packing_list_url: '',
-        stage: 'Cutting',
+        stage: 'Pending',
         image_url: imageUrl,
         ppu: ppu ?? null,
       }
@@ -2978,7 +2978,7 @@ async function runImport() {
           <span class="text-xs font-mono text-primary ml-2">${r.style}</span>
           <span class="text-xs text-on-surface-variant ml-2">${r.colour} · ${r.qty} pcs</span>
         </div>
-        <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded stage-cutting">Cutting</span>
+        <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded stage-pending">Pending</span>
       </div>`
     ).join('')
 
