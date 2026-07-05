@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en-GB" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Denovo — UK Garment Manufacturer | CMT Production, Leicester</title>
+  <meta name="description" content="Denovo Sourcing Limited is a Leicester-based CMT garment manufacturer. In-house sampling, transparent production and fast turnaround for womenswear brands. Designed in the UK, made in the UK." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ivory: '#FAF7F2',
+            parchment: '#F1EBE2',
+            charcoal: '#211E1C',
+            ink: '#171412',
+            stone: '#6E6660',
+            clay: '#A0522D',
+            'clay-dark': '#7E3F21',
+          },
+          fontFamily: {
+            display: ['Fraunces', 'Georgia', 'serif'],
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <style type="text/css">
+    ::selection { background: #A0522D; color: #FAF7F2; }
+    .eyebrow { letter-spacing: 0.22em; }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.is-visible { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; transition: none; }
+      html { scroll-behavior: auto; }
+    }
+    /* Placeholder imagery — swap these blocks for real photos */
+    .ph { position: relative; overflow: hidden; }
+    .ph::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: repeating-linear-gradient(-45deg, transparent 0 14px, rgba(33,30,28,0.045) 14px 15px);
+    }
+  </style>
+</head>
+
+<body class="bg-ivory text-charcoal font-sans antialiased">
+
+  <!-- ============ NAV ============ -->
+  <header class="fixed inset-x-0 top-0 z-50 bg-ivory/90 backdrop-blur border-b border-charcoal/10">
+    <div class="mx-auto max-w-6xl px-5 sm:px-8">
+      <div class="flex h-16 items-center justify-between">
+        <a href="#top" class="font-display text-xl font-semibold tracking-tight">
+          Denovo<span class="text-clay">.</span>
+        </a>
+
+        <nav class="hidden md:flex items-center gap-8 text-[13px] font-medium text-stone">
+          <a href="#what-we-do" class="hover:text-charcoal transition-colors">What we do</a>
+          <a href="#process" class="hover:text-charcoal transition-colors">How we work</a>
+          <a href="#why" class="hover:text-charcoal transition-colors">Why Denovo</a>
+          <a href="#work" class="hover:text-charcoal transition-colors">Our work</a>
+          <a href="#contact" class="inline-flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-ivory hover:bg-clay transition-colors">
+            Start a conversation
+          </a>
+        </nav>
+
+        <button id="menu-btn" class="md:hidden p-2 -mr-2" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+          <svg id="menu-icon-open" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+          </svg>
+          <svg id="menu-icon-close" class="hidden h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="mobile-menu" class="hidden md:hidden border-t border-charcoal/10 bg-ivory">
+      <nav class="mx-auto max-w-6xl px-5 py-4 flex flex-col gap-1 text-sm font-medium">
+        <a href="#what-we-do" class="mobile-link py-3 border-b border-charcoal/5">What we do</a>
+        <a href="#process" class="mobile-link py-3 border-b border-charcoal/5">How we work</a>
+        <a href="#why" class="mobile-link py-3 border-b border-charcoal/5">Why Denovo</a>
+        <a href="#work" class="mobile-link py-3 border-b border-charcoal/5">Our work</a>
+        <a href="#contact" class="mobile-link mt-3 rounded-full bg-charcoal px-5 py-3 text-center text-ivory">Start a conversation</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ============ HERO ============ -->
+    <section class="relative pt-32 pb-20 sm:pt-44 sm:pb-28">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-6">
+          Denovo Sourcing Limited &middot; Leicester, England
+        </p>
+        <h1 class="font-display text-4xl sm:text-6xl lg:text-7xl font-medium leading-[1.05] tracking-tight max-w-4xl">
+          Garment production your brand can build on.
+        </h1>
+        <p class="mt-7 max-w-2xl text-base sm:text-lg text-stone leading-relaxed">
+          Denovo is a UK-based CMT manufacturer making womenswear for brands that
+          care where their clothes come from. Sampled, cut, sewn and finished in
+          Leicester — with every order visible from first fabric to final delivery.
+        </p>
+        <div class="mt-10 flex flex-col sm:flex-row gap-4">
+          <a href="#contact" class="inline-flex items-center justify-center gap-2 rounded-full bg-charcoal px-8 py-4 text-sm font-semibold text-ivory hover:bg-clay transition-colors">
+            Start a conversation
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+          <a href="#process" class="inline-flex items-center justify-center rounded-full border border-charcoal/20 px-8 py-4 text-sm font-semibold hover:border-charcoal transition-colors">
+            See how we work
+          </a>
+        </div>
+
+        <div class="mt-16 sm:mt-20 grid grid-cols-3 gap-6 border-t border-charcoal/10 pt-8 max-w-2xl">
+          <div>
+            <p class="font-display text-3xl sm:text-4xl font-medium">10+</p>
+            <p class="mt-1 text-xs sm:text-sm text-stone">years in garment manufacturing</p>
+          </div>
+          <div>
+            <p class="font-display text-3xl sm:text-4xl font-medium">100%</p>
+            <p class="mt-1 text-xs sm:text-sm text-stone">made in the United Kingdom</p>
+          </div>
+          <div>
+            <p class="font-display text-3xl sm:text-4xl font-medium">1</p>
+            <p class="mt-1 text-xs sm:text-sm text-stone">roof — sampling to dispatch</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WHAT WE DO ============ -->
+    <section id="what-we-do" class="bg-parchment py-20 sm:py-28 scroll-mt-16">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
+          <div class="reveal">
+            <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-4">What we do</p>
+            <h2 class="font-display text-3xl sm:text-5xl font-medium leading-tight tracking-tight">
+              CMT manufacturing for womenswear, done properly.
+            </h2>
+            <p class="mt-6 text-stone leading-relaxed">
+              You supply the design and fabric; we cut, make and trim. From your
+              tech pack or an approved sample, we deliver production runs that
+              match the garment you signed off — style after style, repeat after
+              repeat.
+            </p>
+            <p class="mt-4 text-stone leading-relaxed">
+              Everything happens in the UK, in our own Leicester unit, by
+              machinists we employ directly. That means fair conditions, full
+              visibility, no sub-contract surprises — and lead times measured in
+              weeks, not seasons.
+            </p>
+          </div>
+
+          <div class="reveal grid sm:grid-cols-2 gap-4">
+            <div class="rounded-2xl bg-ivory p-6 border border-charcoal/5">
+              <h3 class="font-display text-lg font-semibold">Dresses</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">Day, occasion and modest wear, in wovens and stretch fabrics.</p>
+            </div>
+            <div class="rounded-2xl bg-ivory p-6 border border-charcoal/5">
+              <h3 class="font-display text-lg font-semibold">Tops &amp; blouses</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">Shirting, jersey basics and detailed styles with trims and finishes.</p>
+            </div>
+            <div class="rounded-2xl bg-ivory p-6 border border-charcoal/5">
+              <h3 class="font-display text-lg font-semibold">Trousers &amp; skirts</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">Tailored and pull-on styles, including bengaline and ponte stretch.</p>
+            </div>
+            <div class="rounded-2xl bg-ivory p-6 border border-charcoal/5">
+              <h3 class="font-display text-lg font-semibold">Co-ords &amp; sets</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">Matched two-pieces and loungewear, cut for consistent colour and fit.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW WE WORK ============ -->
+    <section id="process" class="py-20 sm:py-28 scroll-mt-16">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="max-w-2xl reveal">
+          <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-4">How we work</p>
+          <h2 class="font-display text-3xl sm:text-5xl font-medium leading-tight tracking-tight">
+            Four steps. No guesswork.
+          </h2>
+          <p class="mt-6 text-stone leading-relaxed">
+            Nothing goes into bulk until you have approved a sample you can hold
+            in your hands. From there, every order runs through our live
+            production tracker — so you always know exactly which stage your
+            styles are at, without having to chase.
+          </p>
+        </div>
+
+        <ol class="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <li class="reveal rounded-2xl border border-charcoal/10 p-7 flex flex-col">
+            <span class="font-display text-clay text-sm font-semibold">01</span>
+            <h3 class="mt-4 font-display text-xl font-semibold">Sampling</h3>
+            <p class="mt-3 text-sm text-stone leading-relaxed flex-1">
+              Our in-house sample team develops your style from a tech pack,
+              sketch or reference garment. We iterate until you approve —
+              nothing is cut in bulk before sign-off.
+            </p>
+          </li>
+          <li class="reveal rounded-2xl border border-charcoal/10 p-7 flex flex-col">
+            <span class="font-display text-clay text-sm font-semibold">02</span>
+            <h3 class="mt-4 font-display text-xl font-semibold">Cutting</h3>
+            <p class="mt-3 text-sm text-stone leading-relaxed flex-1">
+              Fabric is checked in, relaxed and laid, then cut against the
+              approved sample's specs and your size ratios for a clean,
+              consistent run.
+            </p>
+          </li>
+          <li class="reveal rounded-2xl border border-charcoal/10 p-7 flex flex-col">
+            <span class="font-display text-clay text-sm font-semibold">03</span>
+            <h3 class="mt-4 font-display text-xl font-semibold">Production</h3>
+            <p class="mt-3 text-sm text-stone leading-relaxed flex-1">
+              Our machinists sew your order on dedicated lines. Progress is
+              logged in our live tracking system at every stage, so your order's
+              status is never a mystery.
+            </p>
+          </li>
+          <li class="reveal rounded-2xl border border-charcoal/10 p-7 flex flex-col">
+            <span class="font-display text-clay text-sm font-semibold">04</span>
+            <h3 class="mt-4 font-display text-xl font-semibold">Quality check &amp; delivery</h3>
+            <p class="mt-3 text-sm text-stone leading-relaxed flex-1">
+              Every garment is inspected, pressed and packed to your packing
+              list, then booked for dispatch — arriving floor-ready, on the date
+              we agreed.
+            </p>
+          </li>
+        </ol>
+
+        <div class="reveal mt-10 rounded-2xl bg-charcoal text-ivory p-7 sm:p-9 flex flex-col sm:flex-row sm:items-center gap-6">
+          <div class="flex-1">
+            <h3 class="font-display text-xl sm:text-2xl font-semibold">Tracked from first cut to final carton.</h3>
+            <p class="mt-2 text-sm text-ivory/70 leading-relaxed max-w-xl">
+              Every order moves through our production system in real time —
+              sampling, cutting, production, packing, dispatch. Ask us where
+              your order is and you'll get an answer in minutes, not days.
+            </p>
+          </div>
+          <a href="#contact" class="shrink-0 inline-flex items-center justify-center rounded-full bg-ivory px-7 py-3.5 text-sm font-semibold text-charcoal hover:bg-clay hover:text-ivory transition-colors">
+            Talk to us
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WHY DENOVO ============ -->
+    <section id="why" class="bg-parchment py-20 sm:py-28 scroll-mt-16">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="max-w-2xl reveal">
+          <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-4">Why Denovo</p>
+          <h2 class="font-display text-3xl sm:text-5xl font-medium leading-tight tracking-tight">
+            Designed in the UK.<br />Made in the UK.
+          </h2>
+          <p class="mt-6 text-stone leading-relaxed">
+            "Designed in the UK" should mean made here too. Producing in
+            Leicester keeps your supply chain short, your carbon footprint
+            smaller, and your label honest — and it puts your production
+            partner a train ride away, not a time zone away.
+          </p>
+        </div>
+
+        <div class="mt-14 grid sm:grid-cols-2 gap-x-12 gap-y-10">
+          <div class="reveal flex gap-5">
+            <div class="shrink-0 h-11 w-11 rounded-full bg-clay/10 text-clay flex items-center justify-center">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-display text-xl font-semibold">A decade of making, and counting</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">
+                Over ten years of CMT manufacturing means your styles are handled
+                by people who have seen — and solved — almost everything a
+                garment can throw at a factory.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal flex gap-5">
+            <div class="shrink-0 h-11 w-11 rounded-full bg-clay/10 text-clay flex items-center justify-center">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5 14.25 2.25 12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-display text-xl font-semibold">Fast turnaround</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">
+                No shipping containers, no customs queues. UK production lets you
+                sample quickly, react to sell-through and re-cut winners while
+                the season is still live.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal flex gap-5">
+            <div class="shrink-0 h-11 w-11 rounded-full bg-clay/10 text-clay flex items-center justify-center">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-display text-xl font-semibold">Transparent communication</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">
+                One point of contact, straight answers, and live order tracking.
+                If a delivery date moves, you hear it from us first — with a plan,
+                not an excuse.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal flex gap-5">
+            <div class="shrink-0 h-11 w-11 rounded-full bg-clay/10 text-clay flex items-center justify-center">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-display text-xl font-semibold">Ethical, and provably so</h3>
+              <p class="mt-2 text-sm text-stone leading-relaxed">
+                Our own premises, our own team, UK employment standards — and an
+                open door. Buyers are welcome to visit the factory floor any time
+                their order is running.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ OUR WORK ============ -->
+    <section id="work" class="py-20 sm:py-28 scroll-mt-16">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="max-w-2xl reveal">
+          <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-4">Our work</p>
+          <h2 class="font-display text-3xl sm:text-5xl font-medium leading-tight tracking-tight">
+            From the cutting table to the shop floor.
+          </h2>
+          <p class="mt-6 text-stone leading-relaxed">
+            A look inside the unit and at the garments that leave it.
+          </p>
+        </div>
+
+        <!-- Placeholder grid — replace each .ph block with an <img> of the real photo -->
+        <div class="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <figure class="reveal ph col-span-2 row-span-2 rounded-2xl bg-gradient-to-br from-parchment to-[#E2D6C6] aspect-square lg:aspect-auto flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Finished garments</figcaption>
+          </figure>
+          <figure class="reveal ph rounded-2xl bg-gradient-to-br from-[#E7DFD3] to-parchment aspect-square flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Sample room</figcaption>
+          </figure>
+          <figure class="reveal ph rounded-2xl bg-gradient-to-br from-parchment to-[#DDD2C0] aspect-square flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Cutting table</figcaption>
+          </figure>
+          <figure class="reveal ph rounded-2xl bg-gradient-to-br from-[#E2D6C6] to-parchment aspect-square flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Production lines</figcaption>
+          </figure>
+          <figure class="reveal ph rounded-2xl bg-gradient-to-br from-parchment to-[#E7DFD3] aspect-square flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Quality control</figcaption>
+          </figure>
+          <figure class="reveal ph col-span-2 lg:col-span-4 rounded-2xl bg-gradient-to-br from-[#DDD2C0] to-parchment aspect-[2/1] lg:aspect-[4/1] flex items-end p-5">
+            <figcaption class="relative z-10 text-xs font-semibold uppercase tracking-widest text-charcoal/50">Packed &amp; ready for dispatch</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section id="contact" class="bg-charcoal text-ivory py-20 sm:py-28 scroll-mt-16">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="grid lg:grid-cols-2 gap-14 lg:gap-20">
+          <div class="reveal">
+            <p class="eyebrow text-[11px] font-semibold uppercase text-clay mb-4">Contact</p>
+            <h2 class="font-display text-3xl sm:text-5xl font-medium leading-tight tracking-tight">
+              Let's talk about your next production run.
+            </h2>
+            <p class="mt-6 text-ivory/70 leading-relaxed max-w-md">
+              Tell us what you're making and roughly how many — we'll come back
+              with honest answers on timing and feasibility, usually within one
+              working day.
+            </p>
+
+            <dl class="mt-10 space-y-6 text-sm">
+              <div>
+                <dt class="eyebrow text-[10px] font-semibold uppercase text-ivory/40">Email</dt>
+                <dd class="mt-1"><a href="mailto:denovogb@gmail.com" class="text-lg font-medium hover:text-clay transition-colors">denovogb@gmail.com</a></dd>
+              </div>
+              <div>
+                <dt class="eyebrow text-[10px] font-semibold uppercase text-ivory/40">Phone</dt>
+                <dd class="mt-1"><a href="tel:+447443918607" class="text-lg font-medium hover:text-clay transition-colors">07443 918607</a></dd>
+              </div>
+              <div>
+                <dt class="eyebrow text-[10px] font-semibold uppercase text-ivory/40">Factory</dt>
+                <dd class="mt-1 text-lg font-medium leading-snug">Unit 1, Ali House<br />Leicester LE5 0DP<br />United Kingdom</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="reveal">
+            <form id="enquiry-form" class="rounded-2xl bg-ivory text-charcoal p-7 sm:p-9" novalidate>
+              <h3 class="font-display text-2xl font-semibold">Send an enquiry</h3>
+              <p class="mt-2 text-sm text-stone">This opens a pre-filled email in your mail app — nothing is stored here.</p>
+
+              <div class="mt-7 space-y-5">
+                <div>
+                  <label for="f-name" class="block text-xs font-semibold uppercase tracking-widest text-stone mb-2">Your name</label>
+                  <input id="f-name" name="name" type="text" required autocomplete="name"
+                         class="w-full rounded-xl border border-charcoal/15 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-clay/60 focus:border-clay" />
+                </div>
+                <div>
+                  <label for="f-brand" class="block text-xs font-semibold uppercase tracking-widest text-stone mb-2">Brand / company</label>
+                  <input id="f-brand" name="brand" type="text" required autocomplete="organization"
+                         class="w-full rounded-xl border border-charcoal/15 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-clay/60 focus:border-clay" />
+                </div>
+                <div>
+                  <label for="f-email" class="block text-xs font-semibold uppercase tracking-widest text-stone mb-2">Email</label>
+                  <input id="f-email" name="email" type="email" required autocomplete="email"
+                         class="w-full rounded-xl border border-charcoal/15 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-clay/60 focus:border-clay" />
+                </div>
+                <div>
+                  <label for="f-message" class="block text-xs font-semibold uppercase tracking-widest text-stone mb-2">Message</label>
+                  <textarea id="f-message" name="message" rows="4" required
+                            placeholder="What are you looking to make, and roughly how many units?"
+                            class="w-full rounded-xl border border-charcoal/15 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-clay/60 focus:border-clay resize-y"></textarea>
+                </div>
+              </div>
+
+              <button type="submit" class="mt-7 w-full rounded-full bg-charcoal px-8 py-4 text-sm font-semibold text-ivory hover:bg-clay transition-colors">
+                Open email to send
+              </button>
+              <p id="form-hint" class="hidden mt-3 text-xs text-clay-dark text-center">Please fill in all fields before sending.</p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="bg-ink text-ivory/60">
+    <div class="mx-auto max-w-6xl px-5 sm:px-8 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs">
+      <div>
+        <p class="font-display text-base font-semibold text-ivory">Denovo<span class="text-clay">.</span></p>
+        <p class="mt-1">Denovo Sourcing Limited &middot; Unit 1, Ali House, Leicester LE5 0DP</p>
+      </div>
+      <p>Designed in the UK. Made in the UK. &copy; <span id="year"></span> Denovo Sourcing Limited.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Footer year
+    document.getElementById('year').textContent = new Date().getFullYear()
+
+    // Mobile menu
+    const menuBtn = document.getElementById('menu-btn')
+    const mobileMenu = document.getElementById('mobile-menu')
+    const iconOpen = document.getElementById('menu-icon-open')
+    const iconClose = document.getElementById('menu-icon-close')
+
+    function setMenu(open) {
+      mobileMenu.classList.toggle('hidden', !open)
+      iconOpen.classList.toggle('hidden', open)
+      iconClose.classList.toggle('hidden', !open)
+      menuBtn.setAttribute('aria-expanded', String(open))
+    }
+    menuBtn.addEventListener('click', () => setMenu(mobileMenu.classList.contains('hidden')))
+    document.querySelectorAll('.mobile-link').forEach((link) => {
+      link.addEventListener('click', () => setMenu(false))
+    })
+
+    // Scroll-reveal animation
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.12 }
+    )
+    document.querySelectorAll('.reveal').forEach((el) => observer.observe(el))
+
+    // Enquiry form → mailto
+    document.getElementById('enquiry-form').addEventListener('submit', (e) => {
+      e.preventDefault()
+      const name = document.getElementById('f-name').value.trim()
+      const brand = document.getElementById('f-brand').value.trim()
+      const email = document.getElementById('f-email').value.trim()
+      const message = document.getElementById('f-message').value.trim()
+      const hint = document.getElementById('form-hint')
+
+      if (!name || !brand || !email || !message) {
+        hint.classList.remove('hidden')
+        return
+      }
+      hint.classList.add('hidden')
+
+      const subject = `Production enquiry from ${brand}`
+      const body = [
+        `Name: ${name}`,
+        `Brand: ${brand}`,
+        `Email: ${email}`,
+        '',
+        message,
+      ].join('\n')
+
+      window.location.href =
+        'mailto:denovogb@gmail.com' +
+        '?subject=' + encodeURIComponent(subject) +
+        '&body=' + encodeURIComponent(body)
+    })
+  </script>
+</body>
+</html>
