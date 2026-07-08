@@ -1,0 +1,10 @@
+{
+  "name": "gmail-automations",
+  "private": true,
+  "description": "Deps for generate-docket.mjs. mark-sample-approved.mjs and mark-order-booked.mjs use only built-in fetch, no deps needed. Kept separate from the root package.json so the mobile app's dependency tree doesn't grow for server-only libraries.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.1",
+    "exceljs": "^4.4.0",
+    "pdfjs-dist": "^4.2.67"
+  }
+}

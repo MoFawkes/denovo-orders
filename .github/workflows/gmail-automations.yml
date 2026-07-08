@@ -52,3 +52,29 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BOOKING_AUTOMATION_SECRET: ${{ secrets.BOOKING_AUTOMATION_SECRET }}
         run: node scripts/gmail-automations/mark-order-booked.mjs
+
+  generate-docket:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        # Only this job needs npm packages (exceljs, pdfjs-dist,
+        # @supabase/supabase-js) -- the other two automations use only
+        # built-in fetch. Deps live in their own package.json here rather
+        # than the root one so the mobile app's dependency tree doesn't grow
+        # for server-only libraries.
+        working-directory: scripts/gmail-automations
+        run: npm install
+      - name: Run docket-generation automation
+        env:
+          # Same OAuth client as the other two jobs (it identifies the app,
+          # not the mailbox) but a separate refresh token, since this reads
+          # denovosourcing@gmail.com instead of denovogb@gmail.com.
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/gmail-automations/generate-docket.mjs

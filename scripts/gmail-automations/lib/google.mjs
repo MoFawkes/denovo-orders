@@ -71,6 +71,60 @@ function decodeBase64Url(data) {
   return Buffer.from(data, 'base64').toString('utf-8');
 }
 
+// Walks a message's MIME tree and returns every part that carries a
+// filename (i.e. an attachment), regardless of nesting depth.
+export function listAttachments(message) {
+  const attachments = [];
+  (function walk(node) {
+    if (!node) return;
+    if (node.filename && node.body?.attachmentId) {
+      attachments.push({
+        filename: node.filename,
+        mimeType: node.mimeType,
+        attachmentId: node.body.attachmentId,
+        size: node.body.size ?? 0,
+      });
+    }
+    (node.parts ?? []).forEach(walk);
+  })(message.payload);
+  return attachments;
+}
+
+// Attachment bytes are binary (PDF, xlsx, ...) so this returns a Buffer,
+// unlike extractPlainTextBody's decodeBase64Url which assumes UTF-8 text.
+export async function getAttachment(accessToken, messageId, attachmentId) {
+  const json = await apiFetch(
+    `${GMAIL_BASE}/messages/${messageId}/attachments/${attachmentId}`,
+    accessToken,
+  );
+  return Buffer.from(json.data, 'base64');
+}
+
+export async function listLabels(accessToken) {
+  const json = await apiFetch(`${GMAIL_BASE}/labels`, accessToken);
+  return json.labels ?? [];
+}
+
+// Docket-generation labels are pure bookkeeping the script applies to its
+// own output (unlike Sample-Approval/Bookings, which a human hand-applies
+// to correspondence) -- create them on first run instead of requiring a
+// manual setup step and hardcoded label IDs.
+export async function getOrCreateLabel(accessToken, name) {
+  const labels = await listLabels(accessToken);
+  const existing = labels.find((l) => l.name === name);
+  if (existing) return existing.id;
+
+  const created = await apiFetch(`${GMAIL_BASE}/labels`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      name,
+      labelListVisibility: 'labelShow',
+      messageListVisibility: 'show',
+    }),
+  });
+  return created.id;
+}
+
 // Walks a message's MIME tree and returns the best plaintext representation
 // of the body: prefers text/plain, falls back to text/html with tags
 // stripped (some senders — e.g. the PLT booking system — only send HTML).
