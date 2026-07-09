@@ -27,6 +27,16 @@ const LABEL = {
 const SEARCH_QUERY =
   'label:Sample-Approval -label:Sample-Approval-Processed -label:Sample-Approval-Needs-Review';
 
+// georgia.matulka's team sends approvals as "PROCEED WITH BOOKING" emails
+// straight to the inbox instead of the hand-labeled correspondence the main
+// query expects — label them automatically so they enter the normal flow.
+// Kept sender-scoped and recent; the LLM judgment downstream still decides
+// whether each thread is a genuine approval, so a loose match here costs at
+// most a Needs-Review flag, never a false approval.
+const AUTO_LABEL_QUERY =
+  'from:georgia.matulka@prettylittlething.com {subject:(proceed booking) "sample approval"} ' +
+  '-label:Sample-Approval newer_than:30d';
+
 const SUPABASE_FUNCTIONS_URL =
   process.env.SUPABASE_FUNCTIONS_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co/functions/v1';
 
@@ -117,6 +127,14 @@ async function main() {
     refreshToken: process.env.GMAIL_OAUTH_REFRESH_TOKEN,
   });
   const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  const autoLabelThreads = await searchThreads(accessToken, AUTO_LABEL_QUERY);
+  for (const thread of autoLabelThreads) {
+    await modifyThreadLabels(accessToken, thread.id, { add: [LABEL.SAMPLE_APPROVAL] });
+  }
+  if (autoLabelThreads.length > 0) {
+    console.log(`Auto-labeled ${autoLabelThreads.length} thread(s) as Sample-Approval.`);
+  }
 
   const threads = await searchThreads(accessToken, SEARCH_QUERY);
   console.log(`Found ${threads.length} unprocessed Sample Approval thread(s).`);
