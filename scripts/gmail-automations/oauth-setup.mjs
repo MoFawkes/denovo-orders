@@ -20,6 +20,10 @@ const SCOPES = [
   // denovogb Drive for "INV ..." packing lists. Tokens issued before this
   // scope was added won't have it — re-run this setup if Drive calls 403.
   'https://www.googleapis.com/auth/drive.readonly',
+  // Write access limited to the app's own uploads: draft-packing-list.mjs
+  // creates the generated "INV ..." sheets in Drive. Same re-run rule as
+  // above if uploads 403.
+  'https://www.googleapis.com/auth/drive.file',
 ].join(' ');
 
 const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;

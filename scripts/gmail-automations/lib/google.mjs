@@ -160,6 +160,27 @@ export function getHeader(message, name) {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 }
 
+// Sends a plain-text reply into an existing thread, threading it properly
+// (In-Reply-To/References) so Gmail shows it inside the conversation. The
+// gmail.modify scope already covers messages.send — no extra scope needed.
+export async function sendReply(accessToken, { threadId, replyTo, to, subject, body }) {
+  const messageId = getHeader(replyTo, 'Message-ID');
+  const references = [getHeader(replyTo, 'References'), messageId].filter(Boolean).join(' ');
+  const headers = [
+    `To: ${to}`,
+    `Subject: ${subject.startsWith('Re:') ? subject : `Re: ${subject}`}`,
+    messageId ? `In-Reply-To: ${messageId}` : null,
+    references ? `References: ${references}` : null,
+    'Content-Type: text/plain; charset=UTF-8',
+    'MIME-Version: 1.0',
+  ].filter(Boolean);
+  const raw = Buffer.from(`${headers.join('\r\n')}\r\n\r\n${body}`, 'utf-8').toString('base64url');
+  return apiFetch(`${GMAIL_BASE}/messages/send`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ raw, threadId }),
+  });
+}
+
 // Creates a Google Task on the default "My Tasks" list, so it shows up as a
 // checkable to-do (with a due date) rather than a fixed-time calendar event.
 export async function createTask(accessToken, { title, notes, dueDate }) {
@@ -222,4 +243,37 @@ export async function driveDownloadFile(accessToken, fileId) {
     throw new Error(`GET drive file ${fileId} -> ${res.status} ${await res.text()}`);
   }
   return Buffer.from(await res.arrayBuffer());
+}
+
+// Uploads a new file into My Drive (root). Requires the drive.file scope on
+// the refresh token — narrower than full drive access: it only grants the
+// app its own uploads, not the rest of the Drive (see oauth-setup.mjs).
+export async function driveUploadFile(accessToken, { name, mimeType, buffer }) {
+  const boundary = `denovo-${Date.now()}`;
+  const metadata = JSON.stringify({ name, mimeType });
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+        `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+      'utf-8',
+    ),
+    buffer,
+    Buffer.from(`\r\n--${boundary}--`, 'utf-8'),
+  ]);
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      body,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`POST drive upload -> ${res.status} ${await res.text()}`);
+  }
+  return res.json();
 }
