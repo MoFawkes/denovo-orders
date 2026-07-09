@@ -136,8 +136,16 @@ async function extractPdfText(buffer) {
   return text;
 }
 
+// Only the live docket series counts: rows imported from the old Completed
+// Orders sheet carry unrelated docket numbers (up to 20512), so restrict to
+// source_tab OPO -- the tab every generated docket row is written to. Null
+// dockets must be excluded explicitly: they sort FIRST in a bare descending
+// order (Postgres NULLS FIRST), which made this fall back to 241 and stamp
+// every docket #242.
 async function nextDocketNumber(supabase) {
-  const { data } = await supabase.from('orders').select('docket').order('docket', { ascending: false }).limit(1);
+  const { data } = await supabase.from('orders').select('docket')
+    .eq('source_tab', 'OPO').not('docket', 'is', null)
+    .order('docket', { ascending: false }).limit(1);
   const max = data?.[0]?.docket ?? FALLBACK_DOCKET_BASE;
   return max + 1;
 }
