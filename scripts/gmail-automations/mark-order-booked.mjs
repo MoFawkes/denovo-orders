@@ -1,8 +1,9 @@
 // Scans Gmail for genuine PLT DC booking-confirmation emails under the
 // "Bookings" label, marks the matching orders Booked via the
-// mark-order-booked edge function, and creates a Google Task (one per
-// dispatching style/garment, due the day before the confirmed delivery
-// date) so it can be checked off as work gets done.
+// mark-order-booked edge function, and creates one Google Task per PO/
+// appointment (combining every colourway dispatching under that booking
+// into a single checkable to-do), due the day before the confirmed
+// delivery date.
 //
 // "Bookings" is a broad label the human applies to ALL booking-related
 // correspondence with PrettyLittleThing, not just genuine DC confirmations —
@@ -61,6 +62,39 @@ function addDaysUTC(isoDate, delta) {
   const d = new Date(`${isoDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// 'YYYY-MM-DD' + 'HH:MM' -> 'Sun 05-Jul-26 11:00'
+function formatConfirmedDateTime(isoDate, time) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const weekday = WEEKDAYS[d.getUTCDay()];
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = MONTHS[d.getUTCMonth()];
+  const year = String(d.getUTCFullYear()).slice(-2);
+  return `${weekday} ${day}-${month}-${year} ${time}`;
+}
+
+// DB POs are 10-digit zero-padded; display them as they appear in the
+// source email instead (e.g. '0070044193' -> '70044193').
+function unpadPO(po) {
+  return po.replace(/^0+(?=\d)/, '');
+}
+
+function titleCase(word) {
+  if (!word) return '';
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+// description is "<Colour> <garment name>" (e.g. 'Black Stretch Woven Key
+// Hole Bodycon Dress') -- strip the leading colour word so it can be
+// recombined with other colourways sharing the same appointment.
+function stripColourPrefix(description, colour) {
+  if (!description) return '';
+  if (!colour) return description.trim();
+  return description.replace(new RegExp(`^${colour}\\s+`, 'i'), '').trim();
 }
 
 // The "Bookings" label goes back to 2021. Anything older than this is
@@ -138,29 +172,34 @@ async function processThread(accessToken, apiKey, thread) {
     if (skipped.length > 0) anyNeedsReview = true;
     booked += matched;
 
-    // One task per matched order row (i.e. per style/garment actually
-    // booked), not one per PO — a PO with three styles dispatching together
-    // should show up as three separate checkable to-dos.
+    // One task per PO/appointment, combining every colourway dispatching
+    // under this booking (mark-order-booked matches by PO, so apiResult.orders
+    // already holds every style booked for this specific date/time/reference).
     const dispatchDate = addDaysUTC(booking.confirmed_date, -1);
-    for (const order of apiResult.orders ?? []) {
+    const matchedOrders = apiResult.orders ?? [];
+    if (matchedOrders.length > 0) {
+      const colours = [];
+      for (const order of matchedOrders) {
+        const label = titleCase(order.colour);
+        if (label && !colours.includes(label)) colours.push(label);
+      }
+      const baseText = stripColourPrefix(matchedOrders[0].description, matchedOrders[0].colour);
+      const title = colours.length > 0 ? `${colours.join('/')} ${baseText}`.trim() : baseText || `PO ${booking.po}`;
+      const skus = matchedOrders.map((o) => o.style).filter(Boolean).join('/');
+      const notes = [
+        unpadPO(booking.po),
+        skus,
+        formatConfirmedDateTime(booking.confirmed_date, booking.confirmed_time),
+        booking.reference,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
       try {
-        const notes = [
-          order.po,
-          order.style_no,
-          booking.confirmed_date,
-          booking.confirmed_time,
-          booking.reference,
-        ]
-          .filter(Boolean)
-          .join('\n');
-        await createTask(accessToken, {
-          title: order.description || `PO ${order.po}`,
-          notes,
-          dueDate: dispatchDate,
-        });
+        await createTask(accessToken, { title, notes, dueDate: dispatchDate });
         tasks++;
       } catch (err) {
-        console.error(`  task creation failed for PO ${order.po}: ${err.message}`);
+        console.error(`  task creation failed for PO ${booking.po}: ${err.message}`);
         anyNeedsReview = true;
       }
     }

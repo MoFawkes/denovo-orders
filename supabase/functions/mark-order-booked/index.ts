@@ -37,9 +37,11 @@ Deno.serve(async (req: Request) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
+  const SELECT_COLS = 'id, po, style_no, style, colour, stage, ex_factory, company, description'
+
   const { data: existing, error: fetchError } = await supabase
     .from('orders')
-    .select('id, po, style_no, stage, ex_factory, company, description')
+    .select(SELECT_COLS)
     .eq('po', po)
 
   if (fetchError) {
@@ -67,7 +69,7 @@ Deno.serve(async (req: Request) => {
       .from('orders')
       .update({ stage: 'Booked' })
       .in('id', ids)
-      .select('id, po, style_no, stage, ex_factory, company, description')
+      .select(SELECT_COLS)
 
     if (updateError) {
       return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })
