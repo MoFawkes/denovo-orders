@@ -1,6 +1,6 @@
 # Gmail automations (GitHub Actions)
 
-Four automations, one workflow (`.github/workflows/gmail-automations.yml`),
+Five automations, one workflow (`.github/workflows/gmail-automations.yml`),
 running hourly on a normal GitHub-hosted runner with full internet access
 (this replaces two Claude Code cloud routines that couldn't reach
 `supabase.co` from their sandbox):
@@ -22,6 +22,21 @@ running hourly on a normal GitHub-hosted runner with full internet access
   invoice number, and prefixes `INV <n>` onto the booking's Google Task. No
   Gmail involvement; needs the `drive.readonly` scope on the denovogb
   refresh token (see step 2).
+- `draft-packing-list.mjs` — creates those `INV <n> ...` packing lists in
+  the first place, from WhatsApp photos of handwritten docket sheets.
+  Forward the packer's photo(s) to `denovogb@gmail.com` and label the
+  thread **`Packing List`** (hand-applied, like `Bookings`; the
+  `Awaiting INV` / `Processed` / `Needs Review` sub-labels are created by
+  the script). The script reads the handwriting with Claude (Sonnet) —
+  each stacked number under a size is one carton, checked against the
+  written grand total and box count — matches the order by PO + SKU,
+  pulls the delivery slot and booking ref from the booking's Google Task,
+  and **replies to the email** with what it read, asking for the invoice
+  number (which lives in the accounts app, so it stays human-supplied).
+  Reply with the number (e.g. `220`) and the next hourly run uploads the
+  finished sheet to Drive and confirms; `complete-order-from-packing-list`
+  then completes the order as usual. Needs the `drive.file` scope on the
+  denovogb refresh token (see step 2).
 
 ## One-time setup
 
@@ -42,7 +57,8 @@ running hourly on a normal GitHub-hosted runner with full internet access
 ### 2. Get a refresh token per mailbox (run this yourself, not through Claude)
 
 A refresh token is a long-lived credential with Gmail + Tasks + Drive
-(read-only) access for whichever account you sign in as — run this locally
+(read-only, plus write access to the app's own uploads via `drive.file`)
+access for whichever account you sign in as — run this locally
 so it never appears in a chat transcript. You need **one refresh token per
 mailbox** (two runs of the same script, signing in as a different account
 each time). Tokens issued before a scope was added to this script lack that

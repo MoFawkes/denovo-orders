@@ -74,6 +74,28 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/gmail-automations/complete-order-from-packing-list.mjs
 
+  draft-packing-list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: scripts/gmail-automations
+        run: npm install
+      - name: Run packing-list drafting automation
+        env:
+          # denovogb token again: reads the forwarded docket photos, replies
+          # in-thread, and uploads the generated sheet. Requires the
+          # drive.file scope (re-run oauth-setup.mjs if uploads 403).
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/gmail-automations/draft-packing-list.mjs
+
   generate-docket:
     runs-on: ubuntu-latest
     steps:
