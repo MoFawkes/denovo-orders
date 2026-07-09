@@ -16,6 +16,10 @@ const REDIRECT_URI = `http://127.0.0.1:${PORT}/oauth2callback`;
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/tasks',
+  // Read-only Drive access: complete-order-from-packing-list.mjs scans the
+  // denovogb Drive for "INV ..." packing lists. Tokens issued before this
+  // scope was added won't have it — re-run this setup if Drive calls 403.
+  'https://www.googleapis.com/auth/drive.readonly',
 ].join(' ');
 
 const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;

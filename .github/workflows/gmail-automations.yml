@@ -53,6 +53,27 @@ jobs:
           BOOKING_AUTOMATION_SECRET: ${{ secrets.BOOKING_AUTOMATION_SECRET }}
         run: node scripts/gmail-automations/mark-order-booked.mjs
 
+  complete-from-packing-list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: scripts/gmail-automations
+        run: npm install
+      - name: Run packing-list completion automation
+        env:
+          # denovogb token: it owns both the Drive packing lists and the
+          # Google Tasks created by mark-order-booked. Requires the
+          # drive.readonly scope (re-run oauth-setup.mjs if this 403s).
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/gmail-automations/complete-order-from-packing-list.mjs
+
   generate-docket:
     runs-on: ubuntu-latest
     steps:
@@ -61,11 +82,11 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        # Only this job needs npm packages (exceljs, pdfjs-dist,
-        # @supabase/supabase-js) -- the other two automations use only
-        # built-in fetch. Deps live in their own package.json here rather
-        # than the root one so the mobile app's dependency tree doesn't grow
-        # for server-only libraries.
+        # Only this job and complete-from-packing-list need npm packages
+        # (exceljs, pdfjs-dist, @supabase/supabase-js) -- the other two
+        # automations use only built-in fetch. Deps live in their own
+        # package.json here rather than the root one so the mobile app's
+        # dependency tree doesn't grow for server-only libraries.
         working-directory: scripts/gmail-automations
         run: npm install
       - name: Run docket-generation automation

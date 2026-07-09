@@ -1,6 +1,6 @@
 # Gmail automations (GitHub Actions)
 
-Three automations, one workflow (`.github/workflows/gmail-automations.yml`),
+Four automations, one workflow (`.github/workflows/gmail-automations.yml`),
 running hourly on a normal GitHub-hosted runner with full internet access
 (this replaces two Claude Code cloud routines that couldn't reach
 `supabase.co` from their sandbox):
@@ -15,13 +15,21 @@ running hourly on a normal GitHub-hosted runner with full internet access
   / `Docket-Needs-Review` labels are created automatically by the script on
   first run — unlike `Sample-Approval` / `Bookings`, there's no manual
   labeling step to set up.
+- `complete-order-from-packing-list.mjs` — scans **denovogb's Google Drive**
+  for packing lists (spreadsheets titled `INV <n> ...`); when one's PO
+  Reference + Internal Code match an order in stage `Booked`, marks the
+  order `Completed`, links the sheet as `packing_list_url`, records the
+  invoice number, and prefixes `INV <n>` onto the booking's Google Task. No
+  Gmail involvement; needs the `drive.readonly` scope on the denovogb
+  refresh token (see step 2).
 
 ## One-time setup
 
 ### 1. Create a Google Cloud OAuth client
 
 1. Go to https://console.cloud.google.com/ and create a project (or reuse one).
-2. Enable the **Gmail API** and **Google Tasks API** (APIs & Services > Library).
+2. Enable the **Gmail API**, **Google Tasks API** and **Google Drive API**
+   (APIs & Services > Library).
 3. Configure the **OAuth consent screen** (APIs & Services > OAuth consent
    screen): External, Testing mode. Add `denovogb@gmail.com` **and**
    `denovosourcing@gmail.com` as test users — the client is shared across
@@ -33,12 +41,14 @@ running hourly on a normal GitHub-hosted runner with full internet access
 
 ### 2. Get a refresh token per mailbox (run this yourself, not through Claude)
 
-A refresh token is a long-lived credential with Gmail + Tasks access for
-whichever account you sign in as — run this locally so it never appears in
-a chat transcript. You need **one refresh token per mailbox** (two runs of
-the same script, signing in as a different account each time). If you
-already have a `denovogb` refresh token from before the switch to Google
-Tasks, it won't have the `tasks` scope — re-run for that account too:
+A refresh token is a long-lived credential with Gmail + Tasks + Drive
+(read-only) access for whichever account you sign in as — run this locally
+so it never appears in a chat transcript. You need **one refresh token per
+mailbox** (two runs of the same script, signing in as a different account
+each time). Tokens issued before a scope was added to this script lack that
+scope — e.g. a `denovogb` token from before the packing-list automation has
+no `drive.readonly`, so Drive calls 403 until you re-run this and update
+the secret:
 
 ```powershell
 $env:GMAIL_OAUTH_CLIENT_ID = "<client id from step 1>"

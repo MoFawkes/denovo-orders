@@ -5,6 +5,7 @@
 
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
+const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 export async function getAccessToken({ clientId, clientSecret, refreshToken }) {
@@ -170,4 +171,55 @@ export async function createTask(accessToken, { title, notes, dueDate }) {
       due: `${dueDate}T00:00:00.000Z`,
     }),
   });
+}
+
+// Lists open (not yet completed) tasks on the default list.
+export async function listOpenTasks(accessToken) {
+  const tasks = [];
+  let pageToken;
+  do {
+    const url = new URL(`${TASKS_BASE}/lists/@default/tasks`);
+    url.searchParams.set('showCompleted', 'false');
+    url.searchParams.set('maxResults', '100');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const json = await apiFetch(url, accessToken);
+    tasks.push(...(json.items ?? []));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return tasks;
+}
+
+export async function patchTask(accessToken, taskId, fields) {
+  return apiFetch(`${TASKS_BASE}/lists/@default/tasks/${taskId}`, accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  });
+}
+
+// Requires the drive.readonly scope on the refresh token (see oauth-setup.mjs).
+export async function driveListFiles(accessToken, query) {
+  const files = [];
+  let pageToken;
+  do {
+    const url = new URL(`${DRIVE_BASE}/files`);
+    url.searchParams.set('q', query);
+    url.searchParams.set('fields', 'nextPageToken, files(id, name, modifiedTime)');
+    url.searchParams.set('pageSize', '1000');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const json = await apiFetch(url, accessToken);
+    files.push(...(json.files ?? []));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
+// Downloads a Drive file's raw bytes (e.g. an .xlsx packing list).
+export async function driveDownloadFile(accessToken, fileId) {
+  const res = await fetch(`${DRIVE_BASE}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`GET drive file ${fileId} -> ${res.status} ${await res.text()}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
