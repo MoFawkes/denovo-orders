@@ -141,7 +141,7 @@ export function cartonRows(groups) {
       totalBoxes += r.boxes;
       totalPcs += r.qty * r.boxes;
       rows.push({
-        colourLabel: i === 0 ? group.colour : i === 1 ? group.sku : '',
+        colourLabel: i === 0 ? group.colour : '',
         size: r.size,
         qty: r.qty,
         boxes: r.boxes,
@@ -166,81 +166,139 @@ export function buildPackingListWorkbook({
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   ws.columns = [
-    { width: 20 }, { width: 34 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 14 },
+    { width: 18.43 }, { width: 11.71 }, { width: 23.57 }, { width: 13 }, { width: 20 }, { width: 19.71 },
   ];
 
-  const bold = { bold: true };
-  ws.getCell('C1').value = 'PACKING LIST';
-  ws.getCell('C1').font = { bold: true, size: 14 };
+  const M = { style: 'medium', color: { argb: 'FF000000' } };
+  const T = { style: 'thin', color: { argb: 'FF000000' } };
+  const RED = { argb: 'FFFF0000' };
+  const georgia = (size, extra = {}) => ({ name: 'Georgia', size, ...extra });
+  const arial = (extra = {}) => ({ name: 'Arial', ...extra });
+  const calibri = { name: 'Calibri', size: 11 };
+  const centre = { horizontal: 'center', vertical: 'bottom' };
+  const middle = { horizontal: 'center', vertical: 'middle' };
+  const asNumber = (v) => (/^\d+$/.test(String(v)) ? Number(v) : v);
 
-  const headerFields = [
-    ['Customer:', 'Pretty Little Thing', 'Delivery Note No.', String(invoice)],
-    ['Delivery Address :', 'Shepcote Lane, Sheffield S9 1RF', 'Dispatch Date', dispatchDate ?? ''],
-    ['', '', 'Delivery Date', deliveryDate ?? ''],
-    ['SUPPLIER:', 'DENOVO SOURCING', 'Booking Ref.', bookingRef ?? ''],
-    ['', '25 Temple Building, Temple Road', '', ''],
-    ['', 'Leicester', '', ''],
-    ['', 'LE5 4JG', '', ''],
-    ['PO Reference', poDisplay, '', ''],
-    ['Internal Code', internalCode, '', ''],
-    ['Description', description, '', ''],
-  ];
-  headerFields.forEach(([a, b, e, f], i) => {
-    const row = ws.getRow(2 + i);
-    if (a) { row.getCell(1).value = a; row.getCell(1).font = bold; }
-    if (b) row.getCell(2).value = b;
-    if (e) { row.getCell(5).value = e; row.getCell(5).font = bold; }
-    if (f) row.getCell(6).value = f;
-  });
-
-  const border = {
-    top: { style: 'thin' }, bottom: { style: 'thin' },
-    left: { style: 'thin' }, right: { style: 'thin' },
+  const set = (addr, value, { font, border, alignment, numFmt, fill } = {}) => {
+    const cell = ws.getCell(addr);
+    if (value !== undefined) cell.value = value;
+    if (font) cell.font = font;
+    if (border) cell.border = border;
+    if (alignment) cell.alignment = alignment;
+    if (numFmt) cell.numFmt = numFmt;
+    if (fill) cell.fill = fill;
   };
-  const tableHeaderRow = 12;
-  const headers = ['Colour Breakdown', 'Size', 'Qty per Box', 'No of Boxes', 'Total Pcs', 'Carton Nos.'];
-  headers.forEach((h, i) => {
-    const cell = ws.getRow(tableHeaderRow).getCell(1 + i);
-    cell.value = h;
-    cell.font = bold;
-    cell.border = border;
-    cell.alignment = { horizontal: 'center' };
-  });
 
+  // Title, plus the top edge of the boxed Delivery Note table in column F.
+  ws.mergeCells('C1:D1');
+  set('C1', 'PACKING LIST', { font: georgia(16, { bold: true, color: RED }), alignment: centre });
+  set('F1', ' ', { border: { bottom: M } });
+
+  // Left header block (Georgia) and the medium-boxed E/F fields (Arial).
+  ws.mergeCells('B2:C2');
+  set('A2', 'Customer:', { font: georgia(13, { bold: true }), alignment: centre });
+  set('B2', 'Pretty Little Thing', { font: georgia(13) });
+  set('E2', 'Delivery Note No.', { font: arial({ bold: true }), border: { top: M, bottom: M, left: M, right: M }, alignment: centre });
+  set('F2', asNumber(invoice), { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+
+  ws.mergeCells('B3:D3');
+  set('A3', 'Delivery Address :', { font: georgia(9, { bold: true }) });
+  set('B3', 'Shepcote Lane, Sheffield  S9 1RF', {
+    font: georgia(9, { color: { argb: 'FF222222' } }),
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' }, bgColor: { argb: 'FFFFFFFF' } },
+  });
+  set('D3', undefined, { border: { right: M } });
+  set('E3', 'Dispatch Date', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
+  set('F3', dispatchDate ?? '', { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+
+  ws.mergeCells('B4:C4');
+  set('E4', 'Delivery Date', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
+  set('F4', deliveryDate ?? '', { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+
+  ws.mergeCells('B5:C5');
+  set('A5', 'SUPPLIER:', { font: georgia(13, { bold: true }), alignment: centre });
+  set('B5', 'DENOVO SOURCING', { font: georgia(13) });
+  set('E5', 'Booking Ref.', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
+  set('F5', bookingRef ?? '', { font: arial(), border: { top: M, bottom: M, left: M, right: M }, alignment: { horizontal: 'center' } });
+
+  set('B6', '25 Temple Building, Temple Road', { font: georgia(9) });
+  ws.mergeCells('B7:C7');
+  set('B7', 'Leicester', { font: georgia(9) });
+  set('B8', 'LE5 4JG', { font: georgia(9) });
+
+  // Separator rule under the supplier block.
+  ws.mergeCells('A9:B9');
+  set('A9', undefined, { border: { bottom: M } });
+  set('B9', undefined, { border: { bottom: M } });
+
+  // Labelled field rows — label with the value in the next cell; this shape
+  // is what complete-order-from-packing-list.mjs matches on, do not change.
+  ws.mergeCells('B10:C10');
+  set('A10', 'PO Reference', { font: arial(), border: { left: M, right: M, bottom: T }, alignment: centre });
+  set('B10', asNumber(poDisplay), { font: arial(), border: { bottom: T }, alignment: centre });
+  set('C10', undefined, { border: { right: M, bottom: T } });
+
+  ws.mergeCells('B11:C11');
+  ws.mergeCells('D11:E11');
+  set('A11', 'Internal Code', { font: arial(), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('B11', internalCode, { font: arial(), border: { bottom: T }, alignment: centre });
+  set('C11', undefined, { border: { right: T, bottom: T } });
+  set('E11', undefined, { border: { right: T, bottom: T } });
+
+  ws.mergeCells('B12:E12');
+  set('A12', 'Description', { font: arial(), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('B12', description, { font: arial(), border: { bottom: T }, alignment: { vertical: 'bottom', wrapText: true } });
+  set('C12', undefined, { border: { bottom: T } });
+  set('D12', undefined, { border: { bottom: T } });
+  set('E12', undefined, { border: { right: T, bottom: T } });
+
+  // Carton table header (row 14; row 13 stays blank).
+  set('A14', 'Colour Breakdown', { font: arial({ bold: true }), border: { left: M, right: M, bottom: M }, alignment: centre });
+  set('B14', 'Size', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
+  set('C14', 'Qty per Box', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
+  set('D14', 'No of Boxes', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
+  set('E14', 'Total Pcs', { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
+  set('F14', 'Carton Nos.', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
+
+  // Data rows: sizes/qty-per-box/carton numbers are stored as text (like the
+  // hand-made sheets); Total Pcs is a live formula so edits recompute.
   const { rows, totalBoxes, totalPcs } = cartonRows(groups);
+  const dataStart = 15;
   rows.forEach((r, i) => {
-    const row = ws.getRow(tableHeaderRow + 1 + i);
-    const values = [r.colourLabel, r.size, r.qty, r.boxes, r.pcs, r.cartons];
-    values.forEach((v, j) => {
-      const cell = row.getCell(1 + j);
-      cell.value = v;
-      cell.border = border;
-      if (j > 0) cell.alignment = { horizontal: 'center' };
-    });
+    const rn = dataStart + i;
+    if (r.colourLabel) {
+      set(`A${rn}`, r.colourLabel, { font: calibri, border: { left: T, right: T, bottom: T }, alignment: middle });
+    }
+    set(`B${rn}`, r.size, { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`C${rn}`, String(r.qty), { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`D${rn}`, r.boxes, { font: calibri, border: { right: T, bottom: T }, alignment: middle });
+    set(`E${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: calibri, border: { right: T, bottom: T }, alignment: middle });
+    set(`F${rn}`, r.cartons, { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
   });
 
-  const totalRow = ws.getRow(tableHeaderRow + 1 + rows.length);
-  totalRow.getCell(1).value = 'Total Boxes/Pcs.';
-  totalRow.getCell(1).font = bold;
-  totalRow.getCell(4).value = totalBoxes;
-  totalRow.getCell(5).value = totalPcs;
-  for (let c = 1; c <= 6; c++) {
-    totalRow.getCell(c).border = border;
-    if (c > 1) totalRow.getCell(c).alignment = { horizontal: 'center' };
-    if (c === 4 || c === 5) totalRow.getCell(c).font = bold;
-  }
+  // Totals sit at row 40 like the hand-made template (the gap rows stay
+  // blank), pushed down only if a delivery overflows the template area.
+  const totalRowNum = Math.max(40, dataStart + rows.length + 1);
+  const sumBottom = totalRowNum - 1;
+  set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: arial({ bold: true }), border: { left: T, right: T, bottom: T }, alignment: centre });
+  set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
+  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
+  ws.getRow(totalRowNum).height = 15.75;
 
-  const footerStart = totalRow.number + 2;
+  const footerStart = totalRowNum + 2;
   const footer = [
-    'Email. denovosourcing@gmail.com',
-    'T&C: Please check the goods against this packing list. Any discrepancies must be notified in writing ',
+    '  Email. denovosourcing@gmail.com',
+    'T&C:  Please check the goods against this packing list. Any discrepancies must be notified in writing          ',
     'within 12 hours of receipt of goods. Defective goods must be returned within 7 days from the day of delivery.',
     'Ownership of the above goods does not transfer to the buyer untill the payment is received in full.',
     'No claims considered for shortage of goods collected from premises.',
     'Goods are sold subject to our Terms and Conditions of sale copies of which are available on request.',
   ];
   footer.forEach((line, i) => {
-    ws.getRow(footerStart + i).getCell(1).value = line;
+    const rn = footerStart + i;
+    ws.mergeCells(`A${rn}:F${rn}`);
+    set(`A${rn}`, line, { font: arial({ size: 9 }), alignment: centre });
+    ws.getRow(rn).height = 12;
   });
 
   return wb;
