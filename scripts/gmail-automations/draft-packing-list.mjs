@@ -487,11 +487,18 @@ async function processAwaitingThread(ctx, thread) {
   const { accessToken, labels } = ctx;
   const full = await getThread(accessToken, thread.id);
 
-  // Find the newest automation-data message we sent, then look for a later
-  // human reply carrying the invoice number.
+  // Find the automation-data message we sent, then look for a later human
+  // reply carrying the invoice number. Take the FIRST message containing a
+  // valid data block, not the last: Phase A sends exactly one such message
+  // per thread (its label leaves the "new threads" search the moment it
+  // succeeds, so it never runs twice), but every human reply quotes it back
+  // in full -- meaning the marker shows up again in every later message too.
+  // Taking the last occurrence would latch onto the human's own most recent
+  // reply and leave nothing after it to scan.
   let dataMessage = null;
   let payload = null;
   for (const message of full.messages) {
+    if (dataMessage) break;
     const body = extractPlainTextBody(message);
     const idx = body.indexOf(DATA_MARKER);
     if (idx !== -1) {
@@ -501,8 +508,8 @@ async function processAwaitingThread(ctx, thread) {
           payload = JSON.parse(match[0]);
           dataMessage = message;
         } catch {
-          // fall through: a corrupted block in an older message may be
-          // superseded by a later, intact one.
+          // corrupted marker -- shouldn't happen since Phase A always writes
+          // valid JSON, but keep scanning defensively rather than giving up.
         }
       }
     }
@@ -516,12 +523,16 @@ async function processAwaitingThread(ctx, thread) {
     return { outcome: 'needs_review', reason: 'missing data block' };
   }
 
+  // Every human reply quotes dataMessage back in full, so its body also
+  // contains DATA_MARKER -- that's expected, not a sign this is one of our
+  // own messages (Phase A never sends a second one; see above). Don't skip
+  // on that basis: extractInvoiceNumber already cuts the quoted portion off
+  // before searching for the number.
   const dataIndex = full.messages.indexOf(dataMessage);
   let invoice = null;
   let replyMessage = null;
   for (const message of full.messages.slice(dataIndex + 1)) {
     const body = extractPlainTextBody(message);
-    if (body.includes(DATA_MARKER)) continue; // our own follow-up
     const found = extractInvoiceNumber(body);
     if (found) {
       invoice = found;
