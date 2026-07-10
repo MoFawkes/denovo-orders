@@ -1,67 +1,95 @@
-import { useState } from "react";
-import { Text, TextInput, StyleSheet, Alert } from "react-native";
-import { supabase } from "../../lib/supabase";
-import AppCard from "../ui/AppCard";
-import AppButton from "../ui/AppButton";
+// The "Order Notes" card in the OPO detail panel: editable for
+// managers/admins, read-only for packers (who cannot write notes — see the
+// role rules in CLAUDE.md). Controlled by the screen so unsaved edits
+// survive re-renders and the save button can track dirtiness.
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { colors, radius, spacing } from '../../theme/tokens'
+import { formStyles } from './form-styles'
 
-export default function OrderNotesCard({ order }: any) {
-  const [notes, setNotes] = useState(order.notes ?? "");
-  const [saving, setSaving] = useState(false);
+type Props = {
+  canEdit: boolean
+  value: string
+  onChangeValue: (value: string) => void
+  saving: boolean
+  changed: boolean
+  onSave: () => void
+}
 
-  async function saveNotes() {
-    try {
-      setSaving(true);
-
-      const { error } = await supabase
-        .from("orders")
-        .update({ notes })
-        .eq("id", order.id);
-
-      if (error) throw error;
-
-      Alert.alert("Saved", "Order notes updated");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
+export default function OrderNotesCard({
+  canEdit,
+  value,
+  onChangeValue,
+  saving,
+  changed,
+  onSave,
+}: Props) {
   return (
-    <AppCard>
-      <Text style={styles.title}>Order Notes</Text>
+    <View style={formStyles.formCard}>
+      <Text style={formStyles.formCardTitle}>Order Notes</Text>
+      <Text style={formStyles.formCardSubtitle}>
+        Shared updates for trims, fabric arrivals, urgency, or packing context.
+      </Text>
 
-      <TextInput
-        multiline
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Write notes here (fabric ordered, trims pending, etc)"
-        style={styles.input}
-      />
+      {canEdit ? (
+        <>
+          <TextInput
+            style={styles.notesInput}
+            multiline
+            value={value}
+            onChangeText={onChangeValue}
+            placeholder="Write notes here..."
+            placeholderTextColor={colors.textSoft}
+            textAlignVertical="top"
+          />
 
-      <AppButton
-        label={saving ? "Saving..." : "Save Notes"}
-        onPress={saveNotes}
-      />
-    </AppCard>
-  );
+          <TouchableOpacity
+            style={[
+              formStyles.primaryCompactButton,
+              (!changed || saving) && formStyles.buttonDisabled,
+            ]}
+            onPress={onSave}
+            disabled={!changed || saving}
+          >
+            <Text style={formStyles.primaryCompactButtonText}>
+              {saving ? 'Saving...' : 'Save Notes'}
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View style={styles.readOnlyNotesBox}>
+          <Text style={styles.readOnlyNotesText}>
+            {value.trim() || 'No notes for this order.'}
+          </Text>
+        </View>
+      )}
+    </View>
+  )
 }
 
 const styles = StyleSheet.create({
-  title: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-  input: {
-    backgroundColor: "#10151D",
-    borderRadius: 12,
-    padding: 14,
-    minHeight: 120,
-    color: "white",
+  notesInput: {
+    minHeight: 150,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "#2A3140",
-    marginBottom: 12,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    color: colors.text,
+    fontSize: 15,
   },
-});
+  readOnlyNotesBox: {
+    minHeight: 80,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  readOnlyNotesText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textMuted,
+  },
+})

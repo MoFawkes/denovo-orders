@@ -26,9 +26,6 @@ import BottomTabBar from '../components/navigation/BottomTabBar'
 import { persistStageChange, persistOrderFields, uploadOrderImage } from '../lib/order-mutations'
 import {
   CANCELLED,
-  STAGES,
-  canPackerAdvanceTo,
-  getStageAccent,
   isValidUrl,
   normaliseUrl,
   sortOrders,
@@ -41,29 +38,13 @@ import {
 } from '../lib/order-workflow'
 import { useAuth } from '../providers/AuthProvider'
 import { useOrders } from '../hooks/use-orders'
+import CompleteOrderPrompt from '../components/orders/CompleteOrderPrompt'
+import MetricCard from '../components/orders/MetricCard'
+import OrderCard from '../components/orders/OrderCard'
+import OrderNotesCard from '../components/orders/OrderNotesCard'
+import PackingListLinkCard from '../components/orders/PackingListLinkCard'
+import StageSelector from '../components/orders/StageSelector'
 import { colors, radius, spacing, typography } from '../theme/tokens'
-
-function MetricCard({
-  label,
-  value,
-  tone = 'primary',
-}: {
-  label: string
-  value: string | number
-  tone?: 'primary' | 'success'
-}) {
-  return (
-    <View
-      style={[
-        styles.metricCard,
-        tone === 'success' ? styles.metricCardSuccess : null,
-      ]}
-    >
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  )
-}
 
 // Persists search and tab state across navigation (component remounts)
 let _savedSearchQuery = ''
@@ -583,77 +564,7 @@ export default function OpoScreen() {
   }
 
   function renderOrderCard({ item }: { item: Order }) {
-    const accent = getStageAccent(item.stage)
-    const hasPackingList = item.stage === 'Completed' && !!item.packing_list_url
-
-    return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        style={styles.orderCard}
-        onPress={() => openOrder(item)}
-      >
-        <View style={[styles.orderAccent, { backgroundColor: accent }]} />
-
-        <View style={styles.orderCardBody}>
-          <View style={styles.orderCardTop}>
-            <View style={styles.orderMetaBlock}>
-              <Text style={styles.orderEyebrow}>PO {item.po || '-'}</Text>
-              <Text style={styles.orderTitle}>
-                {item.description || item.style || 'Untitled order'}
-              </Text>
-            </View>
-            <StatusChip status={toChipStatus(item.stage)} />
-          </View>
-
-          <View style={styles.orderInfoGrid}>
-            <View style={styles.orderInfoItem}>
-              <Text style={styles.orderInfoLabel}>Style</Text>
-              <Text style={styles.orderInfoValue}>{item.style_no || item.style || '-'}</Text>
-            </View>
-            <View style={styles.orderInfoItem}>
-              <Text style={styles.orderInfoLabel}>Colour</Text>
-              <View style={styles.colourValueRow}>
-                {!!item.colour && <ColourSwatch colour={item.colour} />}
-                <Text style={styles.orderInfoValue}>{item.colour || '-'}</Text>
-              </View>
-            </View>
-            <View style={styles.orderInfoItem}>
-              <Text style={styles.orderInfoLabel}>Quantity</Text>
-              <Text style={styles.orderInfoValue}>{item.qty ?? '-'}</Text>
-            </View>
-            <View style={styles.orderInfoItem}>
-              <Text style={styles.orderInfoLabel}>Ex Factory</Text>
-              <Text style={styles.orderInfoValue}>{item.ex_factory || '-'}</Text>
-            </View>
-          </View>
-
-          {!!item.notes?.trim() && (
-            <View style={styles.noteBanner}>
-              <MaterialIcons name="sticky-note-2" size={16} color={colors.primary} />
-              <Text numberOfLines={2} style={styles.noteBannerText}>
-                {item.notes}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.orderCardFooter}>
-            <TouchableOpacity style={styles.secondaryAction} onPress={() => openOrder(item)}>
-              <Text style={styles.secondaryActionText}>Open Details</Text>
-              <MaterialIcons name="chevron-right" size={18} color={colors.primary} />
-            </TouchableOpacity>
-
-            {hasPackingList ? (
-              <TouchableOpacity
-                style={styles.packingListAction}
-                onPress={() => openPackingList(item.packing_list_url)}
-              >
-                <Text style={styles.packingListActionText}>Packing List</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-      </TouchableOpacity>
-    )
+    return <OrderCard order={item} onOpen={openOrder} onOpenPackingList={openPackingList} />
   }
 
   if (loading) {
@@ -813,223 +724,48 @@ export default function OpoScreen() {
               </View>
 
               {selectedOrder.stage === 'Completed' ? (
-                <View style={styles.formCard}>
-                  <Text style={styles.formCardTitle}>Packing List Link</Text>
-                  <Text style={styles.formCardSubtitle}>
-                    Keep the final packing link up to date for downstream teams.
-                  </Text>
-
-                  {canEdit ? (
-                    <TextInput
-                      style={styles.singleLineInput}
-                      value={packingListEditValue}
-                      onChangeText={setPackingListEditValue}
-                      placeholder="Paste packing list link"
-                      placeholderTextColor={colors.textSoft}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                      editable={!savingPackingList}
-                    />
-                  ) : null}
-
-                  <View style={styles.formActionRow}>
-                    {!!selectedOrder.packing_list_url && (
-                      <TouchableOpacity
-                        style={styles.lightActionButton}
-                        onPress={() => openPackingList(selectedOrder.packing_list_url)}
-                      >
-                        <Text style={styles.lightActionText}>Open Link</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {canEdit && (
-                      <TouchableOpacity
-                        style={[
-                          styles.primaryCompactButton,
-                          (!packingListChanged || savingPackingList) && styles.buttonDisabled,
-                        ]}
-                        onPress={savePackingListUrl}
-                        disabled={!packingListChanged || savingPackingList}
-                      >
-                        <Text style={styles.primaryCompactButtonText}>
-                          {savingPackingList ? 'Saving...' : 'Save Packing List'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
+                <PackingListLinkCard
+                  canEdit={canEdit}
+                  value={packingListEditValue}
+                  onChangeValue={setPackingListEditValue}
+                  saving={savingPackingList}
+                  changed={packingListChanged}
+                  currentUrl={selectedOrder.packing_list_url}
+                  onOpen={() => openPackingList(selectedOrder.packing_list_url)}
+                  onSave={savePackingListUrl}
+                />
               ) : null}
 
-              <View style={styles.formCard}>
-                <Text style={styles.formCardTitle}>Order Notes</Text>
-                <Text style={styles.formCardSubtitle}>
-                  Shared updates for trims, fabric arrivals, urgency, or packing context.
-                </Text>
-
-                {canEdit ? (
-                  <>
-                    <TextInput
-                      style={styles.notesInput}
-                      multiline
-                      value={orderNotes}
-                      onChangeText={setOrderNotes}
-                      placeholder="Write notes here..."
-                      placeholderTextColor={colors.textSoft}
-                      textAlignVertical="top"
-                    />
-
-                    <TouchableOpacity
-                      style={[
-                        styles.primaryCompactButton,
-                        (!notesChanged || savingNotes) && styles.buttonDisabled,
-                      ]}
-                      onPress={saveOrderNotes}
-                      disabled={!notesChanged || savingNotes}
-                    >
-                      <Text style={styles.primaryCompactButtonText}>
-                        {savingNotes ? 'Saving...' : 'Save Notes'}
-                      </Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <View style={styles.readOnlyNotesBox}>
-                    <Text style={styles.readOnlyNotesText}>
-                      {orderNotes.trim() || 'No notes for this order.'}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              <OrderNotesCard
+                canEdit={canEdit}
+                value={orderNotes}
+                onChangeValue={setOrderNotes}
+                saving={savingNotes}
+                changed={notesChanged}
+                onSave={saveOrderNotes}
+              />
 
               {canEdit && showCompletePrompt && pendingCompleteOrderId === selectedOrder.id ? (
-                <View style={styles.formCard}>
-                  <Text style={styles.formCardTitle}>Complete Order</Text>
-                  <Text style={styles.formCardSubtitle}>
-                    Add the packing list before moving this order into completed.
-                  </Text>
-
-                  <TextInput
-                    style={styles.singleLineInput}
-                    value={packingListInput}
-                    onChangeText={setPackingListInput}
-                    placeholder="Paste packing list link"
-                    placeholderTextColor={colors.textSoft}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    editable={!completeLoading}
-                  />
-
-                  <View style={styles.formActionRow}>
-                    <TouchableOpacity
-                      style={styles.lightActionButton}
-                      onPress={() => {
-                        if (completeLoading) return
-                        setShowCompletePrompt(false)
-                        setPendingCompleteOrderId(null)
-                        setPackingListInput('')
-                      }}
-                    >
-                      <Text style={styles.lightActionText}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.primaryCompactButton,
-                        completeLoading && styles.buttonDisabled,
-                      ]}
-                      onPress={handleConfirmCompleteInline}
-                      disabled={completeLoading}
-                    >
-                      <Text style={styles.primaryCompactButtonText}>
-                        {completeLoading ? 'Completing...' : 'Complete Order'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <CompleteOrderPrompt
+                  value={packingListInput}
+                  onChangeValue={setPackingListInput}
+                  loading={completeLoading}
+                  onCancel={() => {
+                    if (completeLoading) return
+                    setShowCompletePrompt(false)
+                    setPendingCompleteOrderId(null)
+                    setPackingListInput('')
+                  }}
+                  onConfirm={handleConfirmCompleteInline}
+                />
               ) : null}
 
-              {canAdvanceStage ? (
-                <View style={styles.stageSection}>
-                  <Text style={styles.stageSectionLabel}>Move Order To</Text>
-                  <View style={styles.stageButtons}>
-                    {STAGES.map((stage) => {
-                      const isCurrentStage = selectedOrder.stage === stage
-                      const isTappable =
-                        canEdit || canPackerAdvanceTo(selectedOrder.stage, stage)
-
-                      if (!isTappable) {
-                        return (
-                          <View
-                            key={stage}
-                            style={[
-                              styles.stageButton,
-                              isCurrentStage && styles.currentStageButton,
-                              styles.stageButtonDisabled,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.stageButtonText,
-                                isCurrentStage && styles.currentStageButtonText,
-                              ]}
-                            >
-                              {isCurrentStage ? `Current: ${stage}` : stage}
-                            </Text>
-                          </View>
-                        )
-                      }
-
-                      return (
-                        <TouchableOpacity
-                          key={stage}
-                          style={[
-                            styles.stageButton,
-                            isCurrentStage && styles.currentStageButton,
-                          ]}
-                          onPress={() => handleStagePress(selectedOrder, stage)}
-                        >
-                          <Text
-                            style={[
-                              styles.stageButtonText,
-                              isCurrentStage && styles.currentStageButtonText,
-                            ]}
-                          >
-                            {isCurrentStage ? `Current: ${stage}` : stage}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.stageSection}>
-                  <Text style={styles.stageSectionLabel}>Current Stage</Text>
-                  <View style={styles.stageButtons}>
-                    {STAGES.map((stage) => {
-                      const isCurrentStage = selectedOrder.stage === stage
-                      return (
-                        <View
-                          key={stage}
-                          style={[
-                            styles.stageButton,
-                            isCurrentStage && styles.currentStageButton,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.stageButtonText,
-                              isCurrentStage && styles.currentStageButtonText,
-                            ]}
-                          >
-                            {isCurrentStage ? `Current: ${stage}` : stage}
-                          </Text>
-                        </View>
-                      )
-                    })}
-                  </View>
-                </View>
-              )}
+              <StageSelector
+                currentStage={selectedOrder.stage}
+                canEdit={canEdit}
+                canAdvanceStage={canAdvanceStage}
+                onStagePress={(stage) => handleStagePress(selectedOrder, stage)}
+              />
 
               {canEdit &&
               selectedOrder.stage !== 'Completed' &&
@@ -1423,26 +1159,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.lg,
   },
-  metricCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  metricCardSuccess: {
-    backgroundColor: colors.successTint,
-  },
-  metricLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  metricValue: {
-    ...typography.kpi,
-    color: colors.text,
-  },
   searchShell: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1487,103 +1203,6 @@ const styles = StyleSheet.create({
   },
   tabButtonTextActive: {
     color: '#FFFFFF',
-  },
-  orderCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    overflow: 'hidden',
-    marginBottom: spacing.md,
-  },
-  orderAccent: {
-    width: 5,
-  },
-  orderCardBody: {
-    flex: 1,
-    padding: spacing.lg,
-  },
-  orderCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  orderMetaBlock: {
-    flex: 1,
-  },
-  orderEyebrow: {
-    ...typography.eyebrow,
-    color: colors.primary,
-    marginBottom: spacing.sm,
-  },
-  orderTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  orderInfoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  orderInfoItem: {
-    minWidth: '46%',
-  },
-  orderInfoLabel: {
-    ...typography.eyebrow,
-    color: colors.textSoft,
-    marginBottom: spacing.xs,
-  },
-  orderInfoValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  noteBanner: {
-    marginTop: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceMuted,
-    padding: spacing.md,
-    borderRadius: radius.md,
-  },
-  noteBannerText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textMuted,
-  },
-  orderCardFooter: {
-    marginTop: spacing.lg,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  secondaryAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  secondaryActionText: {
-    ...typography.eyebrow,
-    color: colors.primary,
-  },
-  packingListAction: {
-    backgroundColor: colors.primaryTint,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-  },
-  packingListActionText: {
-    ...typography.eyebrow,
-    color: colors.primaryDeep,
   },
   emptyState: {
     paddingVertical: spacing.xxxl,
@@ -1767,122 +1386,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     textTransform: 'uppercase',
-  },
-  formCard: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-  },
-  formCardTitle: {
-    ...typography.title,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  formCardSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
-  },
-  singleLineInput: {
-    minHeight: 56,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    fontSize: 15,
-  },
-  formActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  primaryCompactButton: {
-    backgroundColor: colors.primaryDeep,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryCompactButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  notesInput: {
-    minHeight: 150,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    color: colors.text,
-    fontSize: 15,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  readOnlyNotesBox: {
-    minHeight: 80,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  readOnlyNotesText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textMuted,
-  },
-  stageSection: {
-    marginTop: spacing.xl,
-  },
-  stageSectionLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-    marginBottom: spacing.md,
-  },
-  stageButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  stageButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: 999,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  currentStageButton: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  stageButtonDisabled: {
-    opacity: 0.4,
-  },
-  stageButtonText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: colors.text,
-    textTransform: 'uppercase',
-  },
-  currentStageButtonText: {
-    color: '#FFFFFF',
   },
   desktopContent: {
     paddingBottom: spacing.xl,
