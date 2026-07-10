@@ -6,8 +6,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.99.1",
+    "@supabase/supabase-js": "^2.110.2",
     "exceljs": "^4.4.0",
-    "pdfjs-dist": "^4.2.67"
+    "pdfjs-dist": "^6.1.200"
   }
 }
