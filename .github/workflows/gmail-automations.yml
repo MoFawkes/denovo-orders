@@ -55,6 +55,12 @@ jobs:
 
   complete-from-packing-list:
     runs-on: ubuntu-latest
+    # Runs after draft-packing-list so a sheet drafted in this run is picked
+    # up immediately instead of waiting for the next hourly run. Not `needs`'
+    # default behaviour alone: if drafting fails (e.g. an upload left for
+    # retry), completion of already-uploaded sheets should still run.
+    needs: draft-packing-list
+    if: ${{ always() }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
