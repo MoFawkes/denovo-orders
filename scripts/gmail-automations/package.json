@@ -9,5 +9,10 @@
     "@supabase/supabase-js": "^2.110.2",
     "exceljs": "^4.4.0",
     "pdfjs-dist": "^6.1.200"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }
