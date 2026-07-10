@@ -248,9 +248,9 @@ export async function driveDownloadFile(accessToken, fileId) {
 // Uploads a new file into My Drive (root). Requires the drive.file scope on
 // the refresh token — narrower than full drive access: it only grants the
 // app its own uploads, not the rest of the Drive (see oauth-setup.mjs).
-export async function driveUploadFile(accessToken, { name, mimeType, buffer }) {
+export async function driveUploadFile(accessToken, { name, mimeType, buffer, appProperties }) {
   const boundary = `denovo-${Date.now()}`;
-  const metadata = JSON.stringify({ name, mimeType });
+  const metadata = JSON.stringify({ name, mimeType, ...(appProperties ? { appProperties } : {}) });
   const body = Buffer.concat([
     Buffer.from(
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +

@@ -25,6 +25,7 @@ import {
   patchTask,
 } from './lib/google.mjs';
 import { normalisePo, extractPackingListFields, findBookingTask } from './lib/domain.mjs';
+import { completeExecution, failExecution } from './lib/execution-state.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
 
@@ -104,10 +105,14 @@ async function main() {
       await workbook.xlsx.load(buffer);
       fields = extractPackingListFields(workbook.worksheets[0]);
     } catch (err) {
+      await failExecution(supabase, 'complete-order-from-packing-list', file.id, 'parse', err);
       console.error(`  ${file.name}: could not read/parse (${err.message}) — will retry next run.`);
       parseFailures++;
       continue;
     }
+    await completeExecution(supabase, 'complete-order-from-packing-list', file.id, 'parse', {
+      file_name: file.name,
+    });
 
     const po = normalisePo(fields.po);
     const sku = (fields.sku ?? '').trim().toUpperCase();
@@ -176,6 +181,10 @@ async function main() {
   console.log(`  Google Tasks stamped with INV number: ${tasksUpdated}`);
   console.log(`  Packing lists with no matching Booked order (left for next run): ${unmatched}`);
   console.log(`  Failed to read/update (left for retry next run): ${parseFailures}`);
+
+  // Retrying is automatic, but a persistent corrupt workbook or database
+  // error must make the Actions run visible as failed.
+  if (parseFailures > 0) process.exitCode = 1;
 }
 
 // Guarded so importing the module (e.g. from a test) doesn't kick off a

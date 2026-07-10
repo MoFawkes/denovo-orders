@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      expo-app:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /scripts/gmail-automations
+    schedule:
+      interval: weekly
+    groups:
+      gmail-automations:
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']

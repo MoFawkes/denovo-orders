@@ -11,6 +11,9 @@ on:
     - cron: "0 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Without this, a manual run and the hourly cron can overlap: both search
 # Gmail for the same unlabeled backlog and process (and pay for) the same
 # threads twice before either gets to apply labels. Queue instead of running
@@ -23,11 +26,10 @@ concurrency:
 jobs:
   mark-sample-approved:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: ./.github/actions/setup-automation
       - name: Run sample-approval automation
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
@@ -39,11 +41,10 @@ jobs:
 
   mark-order-booked:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: ./.github/actions/setup-automation
       - name: Run booking-confirmation automation
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
@@ -55,6 +56,7 @@ jobs:
 
   complete-from-packing-list:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Runs after draft-packing-list so a sheet drafted in this run is picked
     # up immediately instead of waiting for the next hourly run. Not `needs`'
     # default behaviour alone: if drafting fails (e.g. an upload left for
@@ -63,12 +65,7 @@ jobs:
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        working-directory: scripts/gmail-automations
-        run: npm install
+      - uses: ./.github/actions/setup-automation
       - name: Run packing-list completion automation
         env:
           # denovogb token: it owns both the Drive packing lists and the
@@ -82,14 +79,10 @@ jobs:
 
   draft-packing-list:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        working-directory: scripts/gmail-automations
-        run: npm install
+      - uses: ./.github/actions/setup-automation
       - name: Run packing-list drafting automation
         env:
           # denovogb token again: reads the forwarded docket photos, replies
@@ -104,19 +97,10 @@ jobs:
 
   generate-docket:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        # Only this job and complete-from-packing-list need npm packages
-        # (exceljs, pdfjs-dist, @supabase/supabase-js) -- the other two
-        # automations use only built-in fetch. Deps live in their own
-        # package.json here rather than the root one so the mobile app's
-        # dependency tree doesn't grow for server-only libraries.
-        working-directory: scripts/gmail-automations
-        run: npm install
+      - uses: ./.github/actions/setup-automation
       - name: Run docket-generation automation
         env:
           # Same OAuth client as the other two jobs (it identifies the app,

@@ -113,3 +113,33 @@ inactivity in Testing-mode consent screens, or if you change the account
 password), re-run step 2 for that mailbox and update the matching secret
 (`GMAIL_OAUTH_REFRESH_TOKEN` for `denovogb`, `GMAIL_SOURCING_OAUTH_REFRESH_TOKEN`
 for `denovosourcing`).
+
+## Retry safety and recovery
+
+`draft-packing-list` and `complete-order-from-packing-list` write durable
+checkpoints to `public.automation_executions`. The table is protected by RLS
+with no browser-client policies; only the service-role automation can access
+it.
+
+Checkpoint identities use the external source rather than an order row:
+
+| Automation | Source | Steps |
+|---|---|---|
+| Packing-list drafting | Gmail thread ID | Invoice request, Drive upload, creation confirmation |
+| Packing-list completion | Drive file ID | Workbook parse attempts and last error |
+
+If a run fails after an external side effect but before Gmail labels are
+updated, rerun the workflow. A completed checkpoint lets the retry repair the
+label without repeating the recorded reply or upload. Failed parse rows retain
+`attempt_count` and `last_error` for diagnosis; a later successful parse clears
+the error.
+
+For a persistent failure:
+
+1. Open the failed GitHub Actions job and identify the Gmail thread or Drive
+   file ID in its log.
+2. Inspect the matching `automation_executions` rows in Supabase.
+3. Fix the input or credential problem. Do not delete a completed upload or
+   reply checkpoint unless repeating that external action is intentional.
+4. Use **Run workflow** to retry. Jobs return a non-zero exit code when work
+   remains failed, so a green run means the retry backlog was cleared.

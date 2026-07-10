@@ -31,7 +31,7 @@ export default function DotsLoader() {
     )
     Animated.parallel(animations).start()
     return () => animations.forEach((a) => a.stop())
-  }, [])
+  }, [anims])
 
   return (
     <View style={styles.row}>

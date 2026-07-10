@@ -7,4 +7,12 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*'],
   },
+  {
+    files: ['scripts/gmail-automations/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+      },
+    },
+  },
 ]);

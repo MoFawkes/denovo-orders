@@ -40,9 +40,11 @@ import {
   extractPlainTextBody,
   sendReply,
   listOpenTasks,
+  driveListFiles,
   driveUploadFile,
 } from './lib/google.mjs';
 import { extractJson } from './lib/claude.mjs';
+import { getExecution, completeExecution, failExecution } from './lib/execution-state.mjs';
 import {
   DATA_MARKER,
   validateDocket,
@@ -100,7 +102,19 @@ Rules:
 
 async function processNewThread(ctx, thread) {
   const { accessToken, apiKey, supabase, labels } = ctx;
+  const replyCheckpoint = await getExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent');
+  if (replyCheckpoint?.status === 'completed') {
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
+    return { outcome: 'awaiting_inv', recovered: true };
+  }
   const full = await getThread(accessToken, thread.id);
+  if (full.messages.some((message) => extractPlainTextBody(message).includes(DATA_MARKER))) {
+    await completeExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent', {
+      recovered_from_gmail: true,
+    });
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
+    return { outcome: 'awaiting_inv', recovered: true };
+  }
 
   const images = [];
   for (const message of full.messages) {
@@ -240,6 +254,7 @@ async function processNewThread(ctx, thread) {
       `Reply to this email with the invoice number (e.g. "220") and the packing list will be created in Drive within the hour.\n\n` +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
+  await completeExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
   await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
   return { outcome: 'awaiting_inv' };
 }
@@ -247,7 +262,7 @@ async function processNewThread(ctx, thread) {
 // ── Phase B: pick up the INV number, build + upload the sheet ────────────────
 
 async function processAwaitingThread(ctx, thread) {
-  const { accessToken, labels } = ctx;
+  const { accessToken, supabase, labels } = ctx;
   const full = await getThread(accessToken, thread.id);
 
   // Find the automation-data message we sent, then look for a later human
@@ -319,35 +334,67 @@ async function processAwaitingThread(ctx, thread) {
   });
 
   const name = `INV ${invoice} ${description}.xlsx`;
-  let uploaded;
-  try {
-    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
-    uploaded = await driveUploadFile(accessToken, {
-      name,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      buffer,
-    });
-  } catch (err) {
-    console.error(`  Drive upload failed for ${name}: ${err.message} — will retry next run.`);
-    if (String(err.message).includes('403')) {
-      console.error(
-        '  A 403 here usually means the GMAIL_OAUTH_REFRESH_TOKEN secret lacks the drive.file scope — ' +
-          're-run scripts/gmail-automations/oauth-setup.mjs as denovogb@gmail.com and update the secret.',
-      );
+  const uploadStep = `drive-upload:${invoice}`;
+  const uploadCheckpoint = await getExecution(supabase, 'draft-packing-list', thread.id, uploadStep);
+  let uploaded = uploadCheckpoint?.status === 'completed' ? uploadCheckpoint.result : null;
+  const uploadKey = `${thread.id}:${invoice}`;
+  if (!uploaded?.id) {
+    const existingFiles = await driveListFiles(
+      accessToken,
+      `appProperties has { key='denovoPackingList' and value='${uploadKey}' } and trashed = false`,
+    );
+    if (existingFiles.length > 0) {
+      uploaded = existingFiles[0];
+      await completeExecution(supabase, 'draft-packing-list', thread.id, uploadStep, {
+        id: uploaded.id,
+        name: uploaded.name,
+        recovered_from_drive: true,
+      });
     }
-    return { outcome: 'failed' };
+  }
+  if (!uploaded?.id) {
+    try {
+      const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+      uploaded = await driveUploadFile(accessToken, {
+        name,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer,
+        appProperties: { denovoPackingList: uploadKey },
+      });
+      await completeExecution(supabase, 'draft-packing-list', thread.id, uploadStep, {
+        id: uploaded.id,
+        name,
+      });
+    } catch (err) {
+      await failExecution(supabase, 'draft-packing-list', thread.id, uploadStep, err);
+      console.error(`  Drive upload failed for ${name}: ${err.message} — will retry next run.`);
+      if (String(err.message).includes('403')) {
+        console.error(
+          '  A 403 here usually means the GMAIL_OAUTH_REFRESH_TOKEN secret lacks the drive.file scope — ' +
+            're-run scripts/gmail-automations/oauth-setup.mjs as denovogb@gmail.com and update the secret.',
+        );
+      }
+      return { outcome: 'failed' };
+    }
   }
 
-  const latest = replyMessage ?? full.messages[full.messages.length - 1];
-  await sendReply(accessToken, {
-    threadId: thread.id,
-    replyTo: latest,
-    to: getHeader(latest, 'From'),
-    subject: getHeader(latest, 'Subject') || 'Packing list',
-    body:
-      `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
-      `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).`,
-  });
+  const confirmationStep = `creation-confirmation-sent:${invoice}`;
+  const confirmation = await getExecution(supabase, 'draft-packing-list', thread.id, confirmationStep);
+  if (confirmation?.status !== 'completed') {
+    const latest = replyMessage ?? full.messages[full.messages.length - 1];
+    await sendReply(accessToken, {
+      threadId: thread.id,
+      replyTo: latest,
+      to: getHeader(latest, 'From'),
+      subject: getHeader(latest, 'Subject') || 'Packing list',
+      body:
+        `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
+        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).`,
+    });
+    await completeExecution(supabase, 'draft-packing-list', thread.id, confirmationStep, {
+      file_id: uploaded.id,
+    });
+  }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
     remove: [labels.awaitingInv],

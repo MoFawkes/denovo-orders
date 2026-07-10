@@ -25,6 +25,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint automation scripts
+        run: npx eslint scripts/gmail-automations --no-error-on-unmatched-pattern
+
   automations:
     runs-on: ubuntu-latest
     steps:

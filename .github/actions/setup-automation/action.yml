@@ -1,0 +1,15 @@
+name: Set up Gmail automation
+description: Install the pinned Node version and cached automation dependencies
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: scripts/gmail-automations/package-lock.json
+    - name: Install automation dependencies
+      shell: bash
+      working-directory: scripts/gmail-automations
+      run: npm ci
+
