@@ -1,3 +1,5 @@
+const DRY_RUN = process.env.DRY_RUN === '1';
+
 export async function getExecution(supabase, automation, sourceId, step) {
   const { data, error } = await supabase
     .from('automation_executions')
@@ -50,5 +52,4 @@ export async function failExecution(supabase, automation, sourceId, step, errorV
   });
   if (error) throw new Error(`recording automation failure failed: ${error.message}`);
 }
-const DRY_RUN = process.env.DRY_RUN === '1';
 
