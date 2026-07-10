@@ -15,7 +15,6 @@
 // Requires the denovogb refresh token to carry the drive.readonly scope --
 // re-run oauth-setup.mjs (which now requests it) if this fails with 403.
 import { pathToFileURL } from 'node:url';
-import { createClient } from '@supabase/supabase-js';
 import ExcelJS from 'exceljs';
 import {
   getAccessToken,
@@ -25,9 +24,9 @@ import {
   patchTask,
 } from './lib/google.mjs';
 import { normalisePo, extractPackingListFields, findBookingTask } from './lib/domain.mjs';
+import { callPackingListDb } from './lib/automation-db.mjs';
 import { completeExecution, failExecution } from './lib/execution-state.mjs';
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
 const DRY_RUN = process.env.DRY_RUN === '1';
 
 // Only look at recently modified files: everything older has either been
@@ -41,13 +40,9 @@ async function main() {
     clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
     refreshToken: process.env.GMAIL_OAUTH_REFRESH_TOKEN,
   });
-  const supabase = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  const { data: bookedOrders, error: bookedError } = await supabase
-    .from('orders')
-    .select('id, po, style, style_no, description, stage')
-    .eq('stage', 'Booked');
-  if (bookedError) throw new Error(`fetching Booked orders failed: ${bookedError.message}`);
+  const database = callPackingListDb;
+  const snapshot = await database('snapshot');
+  const bookedOrders = snapshot.booked ?? [];
 
   console.log(`Booked orders awaiting dispatch: ${bookedOrders.length}.`);
   if (bookedOrders.length === 0) {
@@ -57,16 +52,7 @@ async function main() {
 
   // Every file id already referenced by any order's packing_list_url is
   // done — never re-process, whatever stage that order is in now.
-  const { data: linkedRows, error: linkedError } = await supabase
-    .from('orders')
-    .select('packing_list_url')
-    .neq('packing_list_url', '');
-  if (linkedError) throw new Error(`fetching linked packing lists failed: ${linkedError.message}`);
-  const linkedIds = new Set(
-    (linkedRows ?? [])
-      .map((r) => r.packing_list_url?.match(/\/d\/([A-Za-z0-9_-]{20,})/)?.[1])
-      .filter(Boolean),
-  );
+  const linkedIds = new Set(snapshot.linkedFileIds ?? []);
 
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400_000).toISOString();
   let files;
@@ -106,12 +92,12 @@ async function main() {
       await workbook.xlsx.load(buffer);
       fields = extractPackingListFields(workbook.worksheets[0]);
     } catch (err) {
-      await failExecution(supabase, 'complete-order-from-packing-list', file.id, 'parse', err);
+      await failExecution(database, 'complete-order-from-packing-list', file.id, 'parse', err);
       console.error(`  ${file.name}: could not read/parse (${err.message}) — will retry next run.`);
       parseFailures++;
       continue;
     }
-    await completeExecution(supabase, 'complete-order-from-packing-list', file.id, 'parse', {
+    await completeExecution(database, 'complete-order-from-packing-list', file.id, 'parse', {
       file_name: file.name,
     });
 
@@ -132,34 +118,26 @@ async function main() {
       continue;
     }
 
-    const link = `https://docs.google.com/spreadsheets/d/${file.id}/edit?usp=sharing`;
-    const ids = matches.map((o) => o.id);
+    let completedOrders = matches;
     if (DRY_RUN) {
-      console.log(`[dry-run] complete orders: ${JSON.stringify({ ids, link, invoice })}`);
+      console.log(`[dry-run] complete orders: ${JSON.stringify({ fileId: file.id, po, sku, invoice })}`);
       console.log(`[dry-run] insert ${matches.length} order_events row(s)`);
     } else {
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ stage: 'Completed', packing_list_url: link, invoice_no: invoice })
-        .in('id', ids);
-      if (updateError) {
-        console.error(`  ${file.name}: order update failed (${updateError.message}) — will retry next run.`);
+      try {
+        const result = await database('complete', { fileId: file.id, po, sku, invoice });
+        completedOrders = result.orders ?? [];
+      } catch (error) {
+        console.error(`  ${file.name}: order update failed (${error.message}) — will retry next run.`);
         parseFailures++;
         continue;
       }
-
-      const { error: eventError } = await supabase.from('order_events').insert(
-        matches.map((o) => ({
-          order_id: o.id,
-          old_stage: 'Booked',
-          new_stage: 'Completed',
-          changed_by: null,
-        })),
-      );
-      if (eventError) console.error(`  order_events insert error: ${eventError.message}`);
+      if (completedOrders.length === 0) {
+        unmatched++;
+        continue;
+      }
     }
 
-    completed += matches.length;
+    completed += completedOrders.length;
     console.log(`  ${file.name}: PO ${po} / ${sku} -> Completed (INV ${invoice}), packing list linked.`);
 
     // Stamp the booking's Google Task with the invoice number and tick it
@@ -168,7 +146,7 @@ async function main() {
     // is not an error (it may have been ticked off already).
     try {
       if (openTasks === null) openTasks = await listOpenTasks(accessToken);
-      for (const order of matches) {
+      for (const order of completedOrders) {
         const task = findBookingTask(openTasks, order, invoice);
         if (task) {
           task.title = `INV ${invoice} — ${task.title}`;

@@ -27,7 +27,6 @@
 // Requires the drive.file scope on the denovogb refresh token (upload); see
 // oauth-setup.mjs — tokens issued before that scope was added need a re-run.
 import { pathToFileURL } from 'node:url';
-import { createClient } from '@supabase/supabase-js';
 import {
   getAccessToken,
   searchThreads,
@@ -44,6 +43,7 @@ import {
   driveUploadFile,
 } from './lib/google.mjs';
 import { extractJson } from './lib/claude.mjs';
+import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution, completeExecution, failExecution } from './lib/execution-state.mjs';
 import {
   DATA_MARKER,
@@ -55,8 +55,6 @@ import {
   combineDescriptions,
   extractInvoiceNumber,
 } from './lib/domain.mjs';
-
-const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
 
 // Sonnet, not the Haiku default: misreading a handwritten digit changes a
 // carton quantity silently, which the checksums below can't always catch
@@ -101,15 +99,15 @@ Rules:
 // ── Phase A: read photos, extract, ask for the INV number ───────────────────
 
 async function processNewThread(ctx, thread) {
-  const { accessToken, apiKey, supabase, labels } = ctx;
-  const replyCheckpoint = await getExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent');
+  const { accessToken, apiKey, database, labels } = ctx;
+  const replyCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent');
   if (replyCheckpoint?.status === 'completed') {
     await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
     return { outcome: 'awaiting_inv', recovered: true };
   }
   const full = await getThread(accessToken, thread.id);
   if (full.messages.some((message) => extractPlainTextBody(message).includes(DATA_MARKER))) {
-    await completeExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent', {
+    await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', {
       recovered_from_gmail: true,
     });
     await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
@@ -178,11 +176,10 @@ async function processNewThread(ctx, thread) {
   }
 
   const po = uniquePos[0];
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('id, po, style, style_no, description, stage')
-    .eq('po', po);
-  if (error) {
+  let orders;
+  try {
+    ({ orders } = await database('orders-for-po', { po }));
+  } catch (error) {
     console.error(`  order lookup failed for PO ${po}: ${error.message}`);
     return { outcome: 'failed' };
   }
@@ -254,7 +251,7 @@ async function processNewThread(ctx, thread) {
       `Reply to this email with the invoice number (e.g. "220") and the packing list will be created in Drive within the hour.\n\n` +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
-  await completeExecution(supabase, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
+  await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
   await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
   return { outcome: 'awaiting_inv' };
 }
@@ -262,7 +259,7 @@ async function processNewThread(ctx, thread) {
 // ── Phase B: pick up the INV number, build + upload the sheet ────────────────
 
 async function processAwaitingThread(ctx, thread) {
-  const { accessToken, supabase, labels } = ctx;
+  const { accessToken, database, labels } = ctx;
   const full = await getThread(accessToken, thread.id);
 
   // Find the automation-data message we sent, then look for a later human
@@ -335,7 +332,7 @@ async function processAwaitingThread(ctx, thread) {
 
   const name = `INV ${invoice} ${description}.xlsx`;
   const uploadStep = `drive-upload:${invoice}`;
-  const uploadCheckpoint = await getExecution(supabase, 'draft-packing-list', thread.id, uploadStep);
+  const uploadCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, uploadStep);
   let uploaded = uploadCheckpoint?.status === 'completed' ? uploadCheckpoint.result : null;
   const uploadKey = `${thread.id}:${invoice}`;
   if (!uploaded?.id) {
@@ -345,7 +342,7 @@ async function processAwaitingThread(ctx, thread) {
     );
     if (existingFiles.length > 0) {
       uploaded = existingFiles[0];
-      await completeExecution(supabase, 'draft-packing-list', thread.id, uploadStep, {
+      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
         id: uploaded.id,
         name: uploaded.name,
         recovered_from_drive: true,
@@ -361,12 +358,12 @@ async function processAwaitingThread(ctx, thread) {
         buffer,
         appProperties: { denovoPackingList: uploadKey },
       });
-      await completeExecution(supabase, 'draft-packing-list', thread.id, uploadStep, {
+      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
         id: uploaded.id,
         name,
       });
     } catch (err) {
-      await failExecution(supabase, 'draft-packing-list', thread.id, uploadStep, err);
+      await failExecution(database, 'draft-packing-list', thread.id, uploadStep, err);
       console.error(`  Drive upload failed for ${name}: ${err.message} — will retry next run.`);
       if (String(err.message).includes('403')) {
         console.error(
@@ -379,7 +376,7 @@ async function processAwaitingThread(ctx, thread) {
   }
 
   const confirmationStep = `creation-confirmation-sent:${invoice}`;
-  const confirmation = await getExecution(supabase, 'draft-packing-list', thread.id, confirmationStep);
+  const confirmation = await getExecution(database, 'draft-packing-list', thread.id, confirmationStep);
   if (confirmation?.status !== 'completed') {
     const latest = replyMessage ?? full.messages[full.messages.length - 1];
     await sendReply(accessToken, {
@@ -391,7 +388,7 @@ async function processAwaitingThread(ctx, thread) {
         `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
         `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).`,
     });
-    await completeExecution(supabase, 'draft-packing-list', thread.id, confirmationStep, {
+    await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
       file_id: uploaded.id,
     });
   }
@@ -410,8 +407,6 @@ async function main() {
     clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
     refreshToken: process.env.GMAIL_OAUTH_REFRESH_TOKEN,
   });
-  const supabase = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
   // 'Packing List' itself is hand-applied by the human when forwarding a
   // photo; the sub-labels are pure script bookkeeping, created on demand.
   const labels = {
@@ -421,7 +416,13 @@ async function main() {
     needsReview: await getOrCreateLabel(accessToken, 'Packing List/Needs Review'),
   };
 
-  const ctx = { accessToken, apiKey: process.env.ANTHROPIC_API_KEY, supabase, labels, openTasks: null };
+  const ctx = {
+    accessToken,
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    database: callPackingListDb,
+    labels,
+    openTasks: null,
+  };
 
   const newThreads = await searchThreads(
     accessToken,
