@@ -40,6 +40,7 @@ import {
   type Stage,
 } from '../lib/order-workflow'
 import { useAuth } from '../providers/AuthProvider'
+import { useOrders } from '../hooks/use-orders'
 import { colors, radius, spacing, typography } from '../theme/tokens'
 
 function MetricCard({
@@ -75,15 +76,25 @@ export default function OpoScreen() {
   const [packingListInput, setPackingListInput] = useState('')
   const [completeLoading, setCompleteLoading] = useState(false)
   const [pendingCompleteOrderId, setPendingCompleteOrderId] = useState<string | null>(null)
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [selectedTab, setSelectedTab] = useState<TabType>(_savedTab)
   const [searchQuery, setSearchQuery] = useState(_savedSearchQuery)
   const [orderNotes, setOrderNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const { orders, setOrders, loading, refreshing, loadOrders } = useOrders({
+    onUpdate(updatedOrder) {
+      setSelectedOrder((previous) => {
+        if (!previous || previous.id !== updatedOrder.id) return previous
+        setOrderNotes(updatedOrder.notes ?? '')
+        setPackingListEditValue(updatedOrder.packing_list_url ?? '')
+        return updatedOrder
+      })
+    },
+    onDelete(deletedOrder) {
+      setSelectedOrder((previous) => previous?.id === deletedOrder.id ? null : previous)
+    },
+  })
 
   function updateSearchQuery(q: string) {
     _savedSearchQuery = q
@@ -108,87 +119,6 @@ export default function OpoScreen() {
   const { signOut, role, user } = useAuth()
   const canEdit = role === 'manager' || role === 'admin'
   const canAdvanceStage = canEdit || role === 'packer'
-
-  useEffect(() => {
-    loadOrders()
-
-    const channel = supabase
-      .channel('orders-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newOrder = payload.new as Order
-            setOrders((prev) => {
-              const exists = prev.some((order) => order.id === newOrder.id)
-              if (exists) return prev
-              return [...prev, newOrder].sort(sortOrders)
-            })
-            return
-          }
-
-          if (payload.eventType === 'UPDATE') {
-            const updatedOrder = payload.new as Order
-            setOrders((prev) =>
-              prev
-                .map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
-                .sort(sortOrders)
-            )
-            setSelectedOrder((prev) => {
-              if (!prev || prev.id !== updatedOrder.id) return prev
-              setOrderNotes(updatedOrder.notes ?? '')
-              setPackingListEditValue(updatedOrder.packing_list_url ?? '')
-              return updatedOrder
-            })
-            return
-          }
-
-          if (payload.eventType === 'DELETE') {
-            const deletedOrder = payload.old as Order
-            setOrders((prev) => prev.filter((order) => order.id !== deletedOrder.id))
-            setSelectedOrder((prev) =>
-              prev && prev.id === deletedOrder.id ? null : prev
-            )
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  async function loadOrders(isRefresh = false) {
-    if (isRefresh) {
-      setRefreshing(true)
-    } else {
-      setLoading(true)
-    }
-
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('po', { ascending: true })
-
-    if (error) {
-      console.error('Load orders error:', error)
-      Alert.alert('Error', 'Could not load orders.')
-    } else {
-      setOrders((data as Order[]) || [])
-    }
-
-    if (isRefresh) {
-      setRefreshing(false)
-    } else {
-      setLoading(false)
-    }
-  }
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.stage !== 'Completed' && order.stage !== 'Cancelled'),
