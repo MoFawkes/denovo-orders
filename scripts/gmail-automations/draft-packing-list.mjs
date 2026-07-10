@@ -326,6 +326,10 @@ const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 export function parseBookingTask(task) {
   const lines = (task.notes ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
   const dtLine = lines.find((l) => /^\w{3}\s+\d{2}-\w{3}-\d{2}\s+\d{1,2}:\d{2}$/.test(l));
+  // Tasks created before the combined format carry the date and time as two
+  // separate lines instead: "2026-07-12" then "11:00".
+  const dateLine = lines.find((l) => /^\d{4}-\d{2}-\d{2}$/.test(l));
+  const timeLine = lines.find((l) => /^\d{1,2}:\d{2}$/.test(l));
   let date = null;
   let time = null;
   if (dtLine) {
@@ -335,18 +339,27 @@ export function parseBookingTask(task) {
       date = `20${m[3]}-${String(monthIdx + 1).padStart(2, '0')}-${m[1]}`;
       time = m[4];
     }
+  } else if (dateLine) {
+    date = dateLine;
+    time = timeLine ?? null;
   }
   const last = lines[lines.length - 1];
-  const ref = lines.length > 1 && last && last !== dtLine ? last : null;
+  const ref =
+    lines.length > 1 && last && last !== dtLine && last !== dateLine && last !== timeLine ? last : null;
   return { date, time, ref };
 }
 
 function findBooking(openTasks, po, styleNo) {
   const poUnpadded = po.replace(/^0+(?=\d)/, '');
-  const task = openTasks.find(
-    (t) =>
-      (t.notes?.includes(po) || t.notes?.includes(poUnpadded)) && (!styleNo || t.notes.includes(styleNo)),
+  const poMatches = openTasks.filter(
+    (t) => t.notes?.includes(po) || t.notes?.includes(poUnpadded),
   );
+  // Notes from before the combined-task format carry no SKU at all, so the
+  // SKU is a preference, not a requirement: fall back to a lone PO match
+  // rather than treating the order as unbooked.
+  const task =
+    poMatches.find((t) => styleNo && t.notes.includes(styleNo)) ??
+    (poMatches.length === 1 ? poMatches[0] : undefined);
   return task ? parseBookingTask(task) : null;
 }
 

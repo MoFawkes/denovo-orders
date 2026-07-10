@@ -186,20 +186,27 @@ async function main() {
     //
     // PO is matched against both the padded (DB) and unpadded (as shown in
     // notes since the combined-task format change) forms, since tasks
-    // created before that change still carry the padded PO.
+    // created before that change still carry the padded PO. Those legacy
+    // notes also carry no SKU at all (and current ones carry SKUs, never
+    // style_no), so the SKU is a preference, not a requirement: prefer a
+    // PO-matching task that also names the SKU or style_no, but accept a
+    // lone PO match rather than never stamping a legacy task.
     try {
       if (openTasks === null) openTasks = await listOpenTasks(accessToken);
       for (const order of matches) {
         const poUnpadded = order.po.replace(/^0+(?=\d)/, '');
-        const task = openTasks.find(
+        const poMatches = openTasks.filter(
           (t) =>
             (t.notes?.includes(order.po) || t.notes?.includes(poUnpadded)) &&
-            (!order.style_no || t.notes.includes(order.style_no)) &&
-            (!order.style || t.notes.includes(order.style)) &&
             !t.title?.includes(`INV ${invoice}`),
         );
+        const task =
+          poMatches.find((t) => order.style && t.notes.includes(order.style)) ??
+          poMatches.find((t) => order.style_no && t.notes.includes(order.style_no)) ??
+          (poMatches.length === 1 ? poMatches[0] : undefined);
         if (task) {
-          await patchTask(accessToken, task.id, { title: `INV ${invoice} — ${task.title}` });
+          task.title = `INV ${invoice} — ${task.title}`;
+          await patchTask(accessToken, task.id, { title: task.title });
           tasksUpdated++;
         }
       }
