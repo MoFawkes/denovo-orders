@@ -682,6 +682,10 @@ const SUPABASE_KEY = 'sb_publishable_duNC--xXncN1Et3VedYPNw_oaBtBcu1'
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let allOrders = []
+// Orders that moved to Completed recently (order_events lookback) — shown
+// with a "new" marker in the Completed tab.
+const RECENT_COMPLETION_DAYS = 3
+let recentlyCompletedIds = new Set()
 let selectedOrderId = null
 let currentTab = 'active'
 let currentRole = null
@@ -838,8 +842,13 @@ async function showDashboard(user) {
 // ── Data ──────────────────────────────────────────────────────────────────────
 
 async function loadOrders() {
-  const { data, error } = await sb.from('orders').select('*').order('po', { ascending: true })
-  if (!error) { allOrders = data || []; renderOrders(); updateKpis() }
+  const since = new Date(Date.now() - RECENT_COMPLETION_DAYS * 86400000).toISOString()
+  const [ordersRes, eventsRes] = await Promise.all([
+    sb.from('orders').select('*').order('po', { ascending: true }),
+    sb.from('order_events').select('order_id').eq('new_stage', 'Completed').gte('created_at', since),
+  ])
+  if (!eventsRes.error) recentlyCompletedIds = new Set((eventsRes.data || []).map(e => e.order_id))
+  if (!ordersRes.error) { allOrders = ordersRes.data || []; renderOrders(); updateKpis() }
 }
 
 function subscribeRealtime() {
@@ -849,6 +858,9 @@ function subscribeRealtime() {
         if (!allOrders.find(o => o.id === payload.new.id)) allOrders.push(payload.new)
       } else if (payload.eventType === 'UPDATE') {
         const idx = allOrders.findIndex(o => o.id === payload.new.id)
+        if (idx >= 0 && payload.new.stage === 'Completed' && allOrders[idx].stage !== 'Completed') {
+          recentlyCompletedIds.add(payload.new.id)
+        }
         if (idx >= 0) allOrders[idx] = payload.new
         if (selectedOrderId === payload.new.id) {
           if (isMobile()) renderDrawerContent(payload.new)
@@ -1058,11 +1070,13 @@ function renderOrders() {
     if (!visible.length) { body.innerHTML = emptyHtml(); }
     else body.innerHTML = visible.map(o => {
       const sel = o.id === selectedOrderId
-      return `<div class="grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
+      const isNew = currentTab === 'completed' && recentlyCompletedIds.has(o.id)
+      return `<div class="relative grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
         style="${TABLE_GRID}"
         onclick="selectOrder('${o.id}')"
         onmouseenter="showOrderTooltip(event,'${o.id}')"
         onmouseleave="hideOrderTooltip()">
+        ${isNew ? `<span class="absolute left-0 top-1 bottom-1 w-1 rounded-r bg-green-500" title="Completed in the last ${RECENT_COMPLETION_DAYS} days"></span>` : ''}
         <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
         <div class="flex items-center gap-1 pr-3 min-w-0 group/desc">
           <span id="desc-${o.id}" class="text-xs text-on-surface truncate">${o.description||'—'}</span>
@@ -1087,8 +1101,11 @@ function renderOrders() {
   const cards = document.getElementById('orders-cards')
   if (cards) {
     if (!visible.length) { cards.innerHTML = emptyHtml(); return }
-    cards.innerHTML = `<div class="p-3 space-y-3">` + visible.map(o => `
-      <div class="bg-white rounded-xl border border-outline-variant/30 overflow-hidden shadow-sm active:opacity-70" onclick="selectOrder('${o.id}')">
+    cards.innerHTML = `<div class="p-3 space-y-3">` + visible.map(o => {
+      const isNew = currentTab === 'completed' && recentlyCompletedIds.has(o.id)
+      return `
+      <div class="relative bg-white rounded-xl border border-outline-variant/30 overflow-hidden shadow-sm active:opacity-70" onclick="selectOrder('${o.id}')">
+        ${isNew ? `<span class="absolute left-0 top-0 bottom-0 w-1 bg-green-500"></span>` : ''}
         <div class="flex items-center justify-between px-4 pt-4 pb-2">
           <span class="text-sm font-bold text-on-surface">PO ${o.po||'—'}</span>
           <span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span>
@@ -1105,7 +1122,7 @@ function renderOrders() {
           </div>
           ${o.notes ? `<p class="text-xs text-on-surface-variant italic mt-2 line-clamp-2">${o.notes}</p>` : ''}
         </div>
-      </div>`).join('') + `</div>`
+      </div>`}).join('') + `</div>`
   }
 }
 
@@ -1318,6 +1335,7 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
         new_stage: newStage,
         changed_by: user?.id ?? null,
       })
+      if (newStage === 'Completed') recentlyCompletedIds.add(orderId)
     }
 
     // Propagate a newly set CMT to the style costings table + same-style orders
