@@ -259,25 +259,35 @@ function addDaysUTC(isoDate, delta) {
   return d.toISOString().slice(0, 10);
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 // Booking Google Tasks (created by mark-order-booked.mjs) carry newline-
-// separated notes: padded PO, style_no (optional), ISO delivery date, time,
-// booking ref. Recognise the lines by shape rather than position so an
-// absent style_no doesn't shift everything.
+// separated notes: unpadded PO, SKU(s), a combined date+time line formatted
+// "Sun 05-Jul-26 11:00", and the booking reference. Recognise lines by shape
+// rather than fixed position.
 export function parseBookingTask(task) {
   const lines = (task.notes ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
-  const date = lines.find((l) => /^\d{4}-\d{2}-\d{2}$/.test(l)) ?? null;
-  const time = lines.find((l) => /^\d{1,2}:\d{2}$/.test(l)) ?? null;
+  const dtLine = lines.find((l) => /^\w{3}\s+\d{2}-\w{3}-\d{2}\s+\d{1,2}:\d{2}$/.test(l));
+  let date = null;
+  let time = null;
+  if (dtLine) {
+    const m = dtLine.match(/^\w{3}\s+(\d{2})-(\w{3})-(\d{2})\s+(\d{1,2}:\d{2})$/);
+    const monthIdx = MONTH_ABBR.findIndex((mo) => mo.toLowerCase() === m[2].toLowerCase());
+    if (monthIdx !== -1) {
+      date = `20${m[3]}-${String(monthIdx + 1).padStart(2, '0')}-${m[1]}`;
+      time = m[4];
+    }
+  }
   const last = lines[lines.length - 1];
-  const ref = lines.length > 1 && last !== lines[0] &&
-    !/^\d{4}-\d{2}-\d{2}$/.test(last) && !/^\d{1,2}:\d{2}$/.test(last)
-    ? last
-    : null;
+  const ref = lines.length > 1 && last && last !== dtLine ? last : null;
   return { date, time, ref };
 }
 
 function findBooking(openTasks, po, styleNo) {
+  const poUnpadded = po.replace(/^0+(?=\d)/, '');
   const task = openTasks.find(
-    (t) => t.notes?.includes(po) && (!styleNo || t.notes.includes(styleNo)),
+    (t) =>
+      (t.notes?.includes(po) || t.notes?.includes(poUnpadded)) && (!styleNo || t.notes.includes(styleNo)),
   );
   return task ? parseBookingTask(task) : null;
 }
