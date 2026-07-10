@@ -24,6 +24,7 @@ import {
   listOpenTasks,
   patchTask,
 } from './lib/google.mjs';
+import { normalisePo, extractPackingListFields, findBookingTask } from './lib/domain.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
 
@@ -31,37 +32,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.s
 // linked already or predates the tracker. Wide enough to survive the
 // automation being broken for a while without missing dispatches.
 const LOOKBACK_DAYS = 60;
-
-function normalisePo(value) {
-  const digits = String(value ?? '').replace(/\D/g, '');
-  return digits ? digits.padStart(10, '0') : null;
-}
-
-// Walks the sheet and pulls the labelled fields regardless of exact layout:
-// each label ("PO Reference", "Internal Code", "Delivery Note No.") is
-// followed by its value in the next non-empty cell of the same row.
-export function extractPackingListFields(worksheet) {
-  const fields = {};
-  const wanted = [
-    ['po', /po\s*reference/i],
-    ['sku', /internal\s*code/i],
-    ['invoice', /delivery\s*note\s*no/i],
-  ];
-  worksheet.eachRow((row) => {
-    const values = [];
-    row.eachCell({ includeEmpty: false }, (cell) => {
-      values.push(cell.text ?? String(cell.value ?? ''));
-    });
-    for (const [key, re] of wanted) {
-      if (fields[key] !== undefined) continue;
-      const idx = values.findIndex((v) => re.test(v));
-      if (idx !== -1 && idx + 1 < values.length) {
-        fields[key] = String(values[idx + 1]).trim();
-      }
-    }
-  });
-  return fields;
-}
 
 async function main() {
   const accessToken = await getAccessToken({
@@ -182,30 +152,13 @@ async function main() {
     console.log(`  ${file.name}: PO ${po} / ${sku} -> Completed (INV ${invoice}), packing list linked.`);
 
     // Stamp the booking's Google Task with the invoice number and tick it
-    // off. The task was created by mark-order-booked with the PO and SKU(s)
-    // in its notes; a missing task is not an error (it may have been ticked
-    // off already).
-    //
-    // PO is matched against both the padded (DB) and unpadded (as shown in
-    // notes since the combined-task format change) forms, since tasks
-    // created before that change still carry the padded PO. Those legacy
-    // notes also carry no SKU at all (and current ones carry SKUs, never
-    // style_no), so the SKU is a preference, not a requirement: prefer a
-    // PO-matching task that also names the SKU or style_no, but accept a
-    // lone PO match rather than never stamping a legacy task.
+    // off (matching rules live in findBookingTask). The task was created by
+    // mark-order-booked with the PO and SKU(s) in its notes; a missing task
+    // is not an error (it may have been ticked off already).
     try {
       if (openTasks === null) openTasks = await listOpenTasks(accessToken);
       for (const order of matches) {
-        const poUnpadded = order.po.replace(/^0+(?=\d)/, '');
-        const poMatches = openTasks.filter(
-          (t) =>
-            (t.notes?.includes(order.po) || t.notes?.includes(poUnpadded)) &&
-            !t.title?.includes(`INV ${invoice}`),
-        );
-        const task =
-          poMatches.find((t) => order.style && t.notes.includes(order.style)) ??
-          poMatches.find((t) => order.style_no && t.notes.includes(order.style_no)) ??
-          (poMatches.length === 1 ? poMatches[0] : undefined);
+        const task = findBookingTask(openTasks, order, invoice);
         if (task) {
           task.title = `INV ${invoice} — ${task.title}`;
           await patchTask(accessToken, task.id, { title: task.title, status: 'completed' });
@@ -225,8 +178,8 @@ async function main() {
   console.log(`  Failed to read/update (left for retry next run): ${parseFailures}`);
 }
 
-// Guarded so importing extractPackingListFields (e.g. from a test) doesn't
-// kick off a live run.
+// Guarded so importing the module (e.g. from a test) doesn't kick off a
+// live run.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error('Fatal error:', err);

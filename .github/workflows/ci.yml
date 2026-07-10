@@ -24,3 +24,27 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  automations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 to match the gmail-automations.yml jobs that run these
+      # scripts in production.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/gmail-automations/package-lock.json
+
+      - name: Install dependencies
+        working-directory: scripts/gmail-automations
+        run: npm ci
+
+      - name: Syntax-check every automation script
+        run: git ls-files '*.mjs' | xargs -n1 node --check
+
+      - name: Run automation tests
+        working-directory: scripts/gmail-automations
+        run: npm test
