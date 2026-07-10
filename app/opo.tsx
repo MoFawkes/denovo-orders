@@ -23,7 +23,7 @@ import ColourSwatch from '../components/ColourSwatch'
 import ScreenContainer from '../components/layout/ScreenContainer'
 import StatusChip from '../components/StatusChip'
 import BottomTabBar from '../components/navigation/BottomTabBar'
-import { supabase } from '../lib/supabase'
+import { persistStageChange, persistOrderFields, uploadOrderImage } from '../lib/order-mutations'
 import {
   CANCELLED,
   STAGES,
@@ -299,44 +299,6 @@ export default function OpoScreen() {
     }, 1500)
   }
 
-  async function updateOrderStage(
-    orderId: string,
-    currentStage: string | null,
-    nextStage: OrderStatus,
-    packingListUrl?: string
-  ) {
-    const updatePayload: Record<string, unknown> = {
-      stage: nextStage,
-      updated_by: user?.id ?? null,
-    }
-
-    if (typeof packingListUrl === 'string') {
-      updatePayload.packing_list_url = packingListUrl
-    }
-
-    const { error } = await supabase
-      .from('orders')
-      .update(updatePayload)
-      .eq('id', orderId)
-
-    if (error) throw error
-
-    const { error: eventError } = await supabase.from('order_events').insert({
-      order_id: orderId,
-      old_stage: currentStage,
-      new_stage: nextStage,
-      changed_by: user?.id ?? null,
-      metadata:
-        nextStage === 'Completed' && packingListUrl
-          ? { packing_list_url: packingListUrl }
-          : null,
-    })
-
-    if (eventError) {
-      console.error('Order event insert error:', eventError)
-    }
-  }
-
   async function updateStage(order: Order, newStage: OrderStatus, packingListUrl?: string) {
     const previousOrders = [...orders]
     const previousStage = order.stage
@@ -363,7 +325,13 @@ export default function OpoScreen() {
     }
 
     try {
-      await updateOrderStage(order.id, previousStage, newStage, packingListUrl)
+      await persistStageChange({
+        orderId: order.id,
+        oldStage: previousStage,
+        newStage,
+        userId: user?.id ?? null,
+        packingListUrl,
+      })
 
       if (newStage === 'Completed') {
         setSelectedOrder(null)
@@ -463,15 +431,7 @@ export default function OpoScreen() {
 
       const trimmedNotes = orderNotes.trim()
 
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          notes: trimmedNotes,
-          updated_by: user?.id ?? null,
-        })
-        .eq('id', selectedOrder.id)
-
-      if (error) throw error
+      await persistOrderFields(selectedOrder.id, { notes: trimmedNotes }, user?.id ?? null)
 
       const updatedOrder: Order = {
         ...selectedOrder,
@@ -508,15 +468,7 @@ export default function OpoScreen() {
     try {
       setSavingPackingList(true)
 
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          packing_list_url: normalised,
-          updated_by: user?.id ?? null,
-        })
-        .eq('id', selectedOrder.id)
-
-      if (error) throw error
+      await persistOrderFields(selectedOrder.id, { packing_list_url: normalised }, user?.id ?? null)
 
       const updatedOrder: Order = {
         ...selectedOrder,
@@ -546,25 +498,7 @@ export default function OpoScreen() {
     if (!selectedOrder) return
     try {
       setUploadingImage(true)
-      const ext = file.name.split('.').pop() ?? 'jpg'
-      const path = `orders/${selectedOrder.id}/image_${Date.now()}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('order-images')
-        .upload(path, file, { upsert: true, contentType: file.type })
-
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('order-images')
-        .getPublicUrl(path)
-
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ image_url: publicUrl, updated_by: user?.id ?? null })
-        .eq('id', selectedOrder.id)
-
-      if (updateError) throw updateError
+      const publicUrl = await uploadOrderImage(selectedOrder.id, file, user?.id ?? null)
 
       const updatedOrder: Order = { ...selectedOrder, image_url: publicUrl }
       setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updatedOrder : o)))
