@@ -1,12 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    groups:
-      expo-app:
-        patterns: ['*']
+  # No version-update entry for the root package.json: the Expo app's
+  # dependencies are pinned to the installed Expo SDK (npx expo install
+  # --check showed blanket bumps break 8 of them, see PR #19) and move only
+  # during an SDK upgrade. Dependabot SECURITY updates are enabled at the
+  # repo level and do not depend on this file.
   - package-ecosystem: npm
     directory: /scripts/gmail-automations
     schedule:
