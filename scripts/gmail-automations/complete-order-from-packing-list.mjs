@@ -181,15 +181,21 @@ async function main() {
     console.log(`  ${file.name}: PO ${po} / ${sku} -> Completed (INV ${invoice}), packing list linked.`);
 
     // Stamp the booking's Google Task with the invoice number. The task was
-    // created by mark-order-booked with the PO and style number in its notes;
-    // a missing task is not an error (it may have been ticked off already).
+    // created by mark-order-booked with the PO and SKU(s) in its notes; a
+    // missing task is not an error (it may have been ticked off already).
+    //
+    // PO is matched against both the padded (DB) and unpadded (as shown in
+    // notes since the combined-task format change) forms, since tasks
+    // created before that change still carry the padded PO.
     try {
       if (openTasks === null) openTasks = await listOpenTasks(accessToken);
       for (const order of matches) {
+        const poUnpadded = order.po.replace(/^0+(?=\d)/, '');
         const task = openTasks.find(
           (t) =>
-            t.notes?.includes(order.po) &&
+            (t.notes?.includes(order.po) || t.notes?.includes(poUnpadded)) &&
             (!order.style_no || t.notes.includes(order.style_no)) &&
+            (!order.style || t.notes.includes(order.style)) &&
             !t.title?.includes(`INV ${invoice}`),
         );
         if (task) {
