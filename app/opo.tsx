@@ -24,178 +24,23 @@ import ScreenContainer from '../components/layout/ScreenContainer'
 import StatusChip from '../components/StatusChip'
 import BottomTabBar from '../components/navigation/BottomTabBar'
 import { supabase } from '../lib/supabase'
+import {
+  CANCELLED,
+  STAGES,
+  canPackerAdvanceTo,
+  getStageAccent,
+  isValidUrl,
+  normaliseUrl,
+  sortOrders,
+  stageColor,
+  toChipStatus,
+  type Order,
+  type OrderStatus,
+  type OrderTab as TabType,
+  type Stage,
+} from '../lib/order-workflow'
 import { useAuth } from '../providers/AuthProvider'
 import { colors, radius, spacing, typography } from '../theme/tokens'
-
-type Order = {
-  id: string
-  source_tab: string | null
-  company: string | null
-  po: string | null
-  style_no: string | null
-  style: string | null
-  description: string | null
-  fabric: string | null
-  colour: string | null
-  qty: number | string | null
-  ex_factory: string | null
-  docket: number | string | null
-  docket_url: string | null
-  invoice_no: string | null
-  packing_list_url: string | null
-  stage: string | null
-  notes: string | null
-  image_url?: string | null
-  product_url?: string | null
-  updated_by?: string | null
-}
-
-const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Booked', 'Completed'] as const
-type Stage = (typeof STAGES)[number]
-const CANCELLED = 'Cancelled'
-type OrderStatus = Stage | typeof CANCELLED
-type TabType = 'active' | 'completed' | 'cancelled'
-
-function getStageRank(stage: string | null): number {
-  switch (stage) {
-    case 'Booked':
-      return 0
-    case 'Ready':
-      return 1
-    case 'Packing':
-      return 2
-    case 'Production':
-      return 3
-    case 'Cutting':
-      return 4
-    case 'Pending':
-      return 5
-    case 'Completed':
-      return 6
-    case 'Cancelled':
-      return 7
-    default:
-      return 5
-  }
-}
-
-// Distinct from getStageRank (a display sort order, highest-progress first) —
-// this is the forward production sequence packers are allowed to advance
-// through. Matches the packer stage-transition rule enforced in
-// supabase/migrations/20260702212619_packer_stage_and_designer_write_grants.sql.
-const PACKER_FORWARD_STAGES: Stage[] = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready']
-
-function canPackerAdvanceTo(currentStage: string | null, targetStage: Stage): boolean {
-  if (currentStage === 'Booked' || currentStage === 'Completed' || currentStage === CANCELLED) {
-    return false
-  }
-  const targetRank = PACKER_FORWARD_STAGES.indexOf(targetStage)
-  if (targetRank <= 0) return false // excludes 'Pending' and any stage outside the forward set
-  const currentRank = PACKER_FORWARD_STAGES.indexOf(currentStage as Stage)
-  return currentRank !== -1 && targetRank > currentRank
-}
-
-function parseExFactory(val: string | null): number {
-  if (!val) return 0
-  const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (m) {
-    const d = new Date(`${m[1]}-${m[3]}-${m[2]}`)
-    return isNaN(d.getTime()) ? 0 : d.getTime()
-  }
-  return 0
-}
-
-function sortOrders(a: Order, b: Order) {
-  if (a.stage === 'Completed' && b.stage === 'Completed') {
-    return parseExFactory(b.ex_factory) - parseExFactory(a.ex_factory)
-  }
-
-  const stageDiff = getStageRank(a.stage) - getStageRank(b.stage)
-  if (stageDiff !== 0) return stageDiff
-
-  return (a.po || '').localeCompare(b.po || '', undefined, {
-    numeric: true,
-    sensitivity: 'base',
-  })
-}
-
-function normaliseUrl(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed
-  }
-  return `https://${trimmed}`
-}
-
-function isValidUrl(value: string) {
-  try {
-    const url = new URL(value)
-    return !!url.protocol && !!url.host
-  } catch {
-    return false
-  }
-}
-
-function toChipStatus(stage: string | null) {
-  switch (stage) {
-    case 'Pending':
-      return 'PENDING'
-    case 'Cutting':
-      return 'CUTTING'
-    case 'Production':
-      return 'PRODUCTION'
-    case 'Packing':
-      return 'PACKING'
-    case 'Ready':
-      return 'READY'
-    case 'Booked':
-      return 'BOOKED'
-    case 'Completed':
-      return 'COMPLETED'
-    case 'Cancelled':
-      return 'CANCELLED'
-    default:
-      return 'PENDING'
-  }
-}
-
-function getStageAccent(stage: string | null) {
-  switch (stage) {
-    case 'Pending':
-      return colors.textSoft
-    case 'Cutting':
-      return colors.warning
-    case 'Production':
-      return colors.primary
-    case 'Packing':
-      return colors.info
-    case 'Ready':
-      return colors.success
-    case 'Booked':
-      return colors.primaryDeep
-    case 'Completed':
-      return colors.success
-    case 'Cancelled':
-      return colors.danger
-    default:
-      return colors.textSoft
-  }
-}
-
-function stageColor(stage: string | null): string {
-  switch (stage) {
-    case 'Pending': return '#7f8c8d'
-    case 'Cutting': return '#c0392b'
-    case 'Production': return '#e67e22'
-    case 'Packing': return '#2980b9'
-    case 'Ready': return '#27ae60'
-    case 'Booked': return '#1e3a8a'
-    case 'Completed': return '#1e8449'
-    case 'Cancelled': return '#4a4a4a'
-    default: return '#7f8c8d'
-  }
-}
 
 function MetricCard({
   label,
