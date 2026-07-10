@@ -13,14 +13,6 @@
 // attachment matching the order-rows shape is a deterministic signal, so
 // there's no ambiguous free text to classify.
 //
-// Writes to Supabase directly with the service-role key (bypasses RLS and
-// the enforce_role_scoped_order_update trigger, same as the other
-// automations' edge functions -- see
-// supabase/migrations/20260703000000_trigger_allow_service_role.sql)
-// instead of going through a bespoke edge function: the payload here is a
-// binary xlsx file plus many order rows per thread, much bigger than the
-// other automations' tiny {po, style_no} JSON bodies.
-import { createClient } from '@supabase/supabase-js';
 import ExcelJS from 'exceljs';
 // Same library and version as the browser's extractPdfText() in
 // web/index.html (loaded there from a CDN). This matters: pdf.js forces a
@@ -39,10 +31,10 @@ import {
   getAttachment,
   getOrCreateLabel,
 } from './lib/google.mjs';
+import { callDocketDb } from './lib/docket-db.mjs';
 
 const SEARCH_QUERY = 'filename:csv -label:Docket-Processed -label:Docket-Needs-Review';
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
 const DRY_RUN = process.env.DRY_RUN === '1';
 
 const DEFAULT_FABRIC = 'Bengaline';
@@ -143,24 +135,14 @@ async function extractPdfText(buffer) {
 // dockets must be excluded explicitly: they sort FIRST in a bare descending
 // order (Postgres NULLS FIRST), which made this fall back to 241 and stamp
 // every docket #242.
-async function nextDocketNumber(supabase) {
-  const { data } = await supabase.from('orders').select('docket')
-    .eq('source_tab', 'OPO').not('docket', 'is', null)
-    .order('docket', { ascending: false }).limit(1);
-  const max = data?.[0]?.docket ?? FALLBACK_DOCKET_BASE;
-  return max + 1;
+async function nextDocketNumber(database) {
+  const result = await database('next-docket');
+  return result.docketNumber ?? FALLBACK_DOCKET_BASE + 1;
 }
 
-async function lookupCosting(supabase, sku, styleNo) {
-  if (sku) {
-    const { data } = await supabase.from('style_costings').select('style_no, cmt, price').ilike('style', sku).limit(1);
-    if (data?.[0]) return data[0];
-  }
-  if (styleNo && isD5StyleNo(styleNo)) {
-    const { data } = await supabase.from('style_costings').select('style_no, cmt, price').ilike('style_no', styleNo).limit(1);
-    if (data?.[0]) return data[0];
-  }
-  return null;
+async function lookupCosting(database, sku, styleNo) {
+  const result = await database('lookup-costing', { sku, styleNo });
+  return result.costing ?? null;
 }
 
 // The PO PDF carries a "Product Code / Fabric Weight / Fabrication /
@@ -339,7 +321,7 @@ async function extractBestPdf(accessToken, messageId, pdfAttachments) {
   return best;
 }
 
-async function processThread(accessToken, supabase, thread) {
+async function processThread(accessToken, database, thread) {
   const full = await getThread(accessToken, thread.id);
   const latest = full.messages[full.messages.length - 1];
   const attachments = listAttachments(latest);
@@ -365,8 +347,8 @@ async function processThread(accessToken, supabase, thread) {
   // before this automation existed, or via a resent email that landed in a
   // new thread without the Docket-Processed label) -- without this we'd
   // hand out a fresh docket number and duplicate the workbook every time.
-  const { data: existing } = await supabase.from('orders').select('id').eq('po', poNumber).not('docket', 'is', null).limit(1);
-  if (existing?.length) {
+  const existing = await database('po-exists', { po: poNumber });
+  if (existing.exists) {
     return { status: 'skipped_existing', poNumber, reason: `PO ${poNumber} already has a docket -- skipping to avoid renumbering` };
   }
 
@@ -411,7 +393,7 @@ async function processThread(accessToken, supabase, thread) {
 
   const descDisplay = `${colourList.join('/')} ${baseDesc}`.trim();
 
-  const docketNumber = await nextDocketNumber(supabase);
+  const docketNumber = await nextDocketNumber(database);
 
   const groups = {};
   for (const row of rows) {
@@ -435,7 +417,7 @@ async function processThread(accessToken, supabase, thread) {
     }
 
     const skuForDb = supplierRef.toUpperCase();
-    const costing = await lookupCosting(supabase, supplierRef, isD5StyleNo(supplierRef) ? supplierRef : null);
+    const costing = await lookupCosting(database, supplierRef, isD5StyleNo(supplierRef) ? supplierRef : null);
     const styleNo = costing?.style_no || (isD5StyleNo(supplierRef) ? supplierRef : null);
     const costingCmt = costing?.cmt ?? null;
     if (!costing) anyMissingCosting = true;
@@ -497,35 +479,27 @@ async function processThread(accessToken, supabase, thread) {
   const storagePath = `${poNumber}/dockets/${docketFileName}`;
 
   let uploadError = null;
+  let rowErrors = [];
   if (DRY_RUN) {
     console.log(`[dry-run] upload docket: ${storagePath} (${docketBuffer.length} bytes)`);
-  } else {
-    const upload = await supabase.storage.from('orders').upload(storagePath, docketBuffer, {
-      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      upsert: true,
-    });
-    uploadError = upload.error;
-  }
-  let docketUrl = null;
-  if (uploadError) {
-    console.error(`  docket upload failed for PO ${poNumber}: ${uploadError.message}`);
-  } else {
-    docketUrl = supabase.storage.from('orders').getPublicUrl(storagePath).data.publicUrl;
-  }
-  for (const row of dbRows) row.docket_url = docketUrl;
-
-  let anyDbError = false;
-  for (const row of dbRows) {
-    if (DRY_RUN) {
+    for (const row of dbRows) {
       console.log(`[dry-run] upsert order: ${JSON.stringify({ po: row.po, style: row.style, colour: row.colour })}`);
-      continue;
     }
-    const { error } = await supabase.from('orders').upsert(row, { onConflict: 'po,style,colour' });
-    if (error) {
-      console.error(`  order upsert failed for PO ${row.po} / ${row.style} / ${row.colour}: ${error.message}`);
-      anyDbError = true;
-    }
+  } else {
+    const saved = await database('save', {
+      storagePath,
+      fileBase64: docketBuffer.toString('base64'),
+      rows: dbRows,
+    });
+    uploadError = saved.uploadError;
+    rowErrors = saved.rowErrors ?? [];
   }
+  if (uploadError) {
+    console.error(`  docket upload failed for PO ${poNumber}: ${uploadError}`);
+  }
+
+  const anyDbError = rowErrors.length > 0;
+  for (const error of rowErrors) console.error(`  order upsert failed: ${error}`);
 
   if (anyDbError) {
     return { status: 'failed', poNumber, reason: 'one or more order rows failed to save' };
@@ -554,7 +528,7 @@ async function main() {
     clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
     refreshToken: process.env.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN,
   });
-  const supabase = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const database = callDocketDb;
 
   const [processedLabelId, needsReviewLabelId] = await Promise.all([
     getOrCreateLabel(accessToken, 'Docket-Processed'),
@@ -574,7 +548,7 @@ async function main() {
     console.log(`Processing thread ${thread.id}...`);
     let result;
     try {
-      result = await processThread(accessToken, supabase, thread);
+      result = await processThread(accessToken, database, thread);
     } catch (err) {
       console.error(`  unexpected error: ${err.message}`);
       failed++;

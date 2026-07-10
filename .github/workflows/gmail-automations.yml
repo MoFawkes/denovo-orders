@@ -123,7 +123,7 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DOCKET_DB_SECRET: ${{ secrets.DOCKET_DB_SECRET }}
         run: node scripts/gmail-automations/generate-docket.mjs
 
   alert-on-failure:
