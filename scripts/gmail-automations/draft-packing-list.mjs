@@ -310,14 +310,23 @@ export function combineDescriptions(groups, orderByGroup) {
 }
 
 // Pulls the INV number out of the human's reply: "220", "INV 220",
-// "inv no 220" etc, ignoring quoted lines from earlier messages.
+// "inv no 220" etc, ignoring quoted content from the automation's own
+// earlier message.
 export function extractInvoiceNumber(text) {
-  const fresh = text
+  const stripped = text
     .split('\n')
     .filter((l) => !l.trim().startsWith('>'))
     .join('\n')
     // Everything below a quote header ("On ... wrote:") is quoted content.
     .split(/^On .+wrote:/m)[0];
+  // extractPlainTextBody's HTML fallback collapses all whitespace (including
+  // newlines) into single spaces, which defeats both the '>' filtering above
+  // and the line-anchored bare-number match below when a reply has no
+  // text/plain part. DATA_MARKER only ever appears in our own quoted
+  // message, survives that flattening intact (plain ASCII), and this cut is
+  // resilient either way -- if the marker isn't present (nothing quoted,
+  // or already stripped above), the text is used as-is.
+  const fresh = stripped.split(DATA_MARKER)[0];
   const labelled = fresh.match(/\binv(?:oice)?\.?\s*(?:no\.?|number|#)?\s*[:\-]?\s*(\d{1,6})\b/i);
   if (labelled) return labelled[1];
   const bare = fresh.match(/^\s*#?(\d{1,6})\s*$/m);
