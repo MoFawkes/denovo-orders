@@ -652,6 +652,12 @@ async function main() {
   console.log(`  Still awaiting a reply with the INV number: ${stillAwaiting}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
+
+  // A failed thread still retries next run, but exit non-zero so the Actions
+  // run turns red instead of green — otherwise a persistent failure (e.g. a
+  // Drive-upload 403 from a refresh token missing the drive.file scope) is
+  // invisible unless someone opens the run log.
+  if (failed > 0) process.exitCode = 1;
 }
 
 // Guarded so importing the builders (e.g. from a test) doesn't start a run.
