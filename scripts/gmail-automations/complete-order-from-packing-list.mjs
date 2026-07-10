@@ -3,7 +3,8 @@
 // list's PO Reference + Internal Code (SKU) match an order in stage Booked,
 // the order is marked Completed with the packing list's Google Sheet link and
 // invoice number, and the booking's Google Task gets "INV <n>" added to its
-// title so the to-do shows the goods have dispatched.
+// title and is ticked off, so it shows struck through (goods dispatched)
+// instead of lingering as an open to-do.
 //
 // Matching is deliberately strict — PO and SKU both, read from inside the
 // spreadsheet (filenames repeat across rebuys and carry no PO). A packing
@@ -180,9 +181,10 @@ async function main() {
     completed += matches.length;
     console.log(`  ${file.name}: PO ${po} / ${sku} -> Completed (INV ${invoice}), packing list linked.`);
 
-    // Stamp the booking's Google Task with the invoice number. The task was
-    // created by mark-order-booked with the PO and SKU(s) in its notes; a
-    // missing task is not an error (it may have been ticked off already).
+    // Stamp the booking's Google Task with the invoice number and tick it
+    // off. The task was created by mark-order-booked with the PO and SKU(s)
+    // in its notes; a missing task is not an error (it may have been ticked
+    // off already).
     //
     // PO is matched against both the padded (DB) and unpadded (as shown in
     // notes since the combined-task format change) forms, since tasks
@@ -206,7 +208,7 @@ async function main() {
           (poMatches.length === 1 ? poMatches[0] : undefined);
         if (task) {
           task.title = `INV ${invoice} — ${task.title}`;
-          await patchTask(accessToken, task.id, { title: task.title });
+          await patchTask(accessToken, task.id, { title: task.title, status: 'completed' });
           tasksUpdated++;
         }
       }
