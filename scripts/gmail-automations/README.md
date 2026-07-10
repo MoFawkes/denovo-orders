@@ -103,6 +103,11 @@ Actions tab > "Gmail automations" workflow > Run workflow (uses
 `workflow_dispatch`, no need to wait for the hourly cron). Check the run logs
 for the summary line each script prints at the end.
 
+For a read-only production rehearsal, enable the **dry_run** input. The jobs
+still read real Gmail, Drive, Tasks, and Supabase data, but every label, reply,
+task, upload, edge-function mutation, database mutation, and checkpoint write
+is replaced by a `[dry-run]` log line.
+
 ## Ongoing
 
 Runs hourly via cron (`0 * * * *`, UTC) automatically once the secrets above
@@ -143,3 +148,65 @@ For a persistent failure:
    reply checkpoint unless repeating that external action is intentional.
 4. Use **Run workflow** to retry. Jobs return a non-zero exit code when work
    remains failed, so a green run means the retry backlog was cleared.
+
+### Useful checkpoint queries
+
+Run these in the Supabase SQL editor as an administrator. Always inspect a row
+before changing it; deleting a completed checkpoint explicitly authorizes the
+corresponding external action to happen again.
+
+Find failures, oldest first:
+
+```sql
+select automation, source_id, step, attempt_count, last_error, last_attempted_at
+from public.automation_executions
+where status = 'failed'
+order by last_attempted_at;
+```
+
+Find threads that have uploaded a file but have not recorded a confirmation:
+
+```sql
+select upload.source_id, upload.result ->> 'id' as drive_file_id,
+       upload.last_attempted_at
+from public.automation_executions upload
+where upload.automation = 'draft-packing-list'
+  and upload.step like 'drive-upload:%'
+  and upload.status = 'completed'
+  and not exists (
+    select 1 from public.automation_executions confirmation
+    where confirmation.automation = upload.automation
+      and confirmation.source_id = upload.source_id
+      and confirmation.step = replace(upload.step, 'drive-upload:', 'creation-confirmation-sent:')
+      and confirmation.status = 'completed'
+  );
+```
+
+Inspect every checkpoint for one Gmail thread or Drive file:
+
+```sql
+select * from public.automation_executions
+where source_id = '<gmail-thread-id-or-drive-file-id>'
+order by first_attempted_at;
+```
+
+Reset only the failed parse record for a Drive file, then rerun the workflow:
+
+```sql
+delete from public.automation_executions
+where automation = 'complete-order-from-packing-list'
+  and source_id = '<drive-file-id>'
+  and step = 'parse'
+  and status = 'failed';
+```
+
+Replay a generated file only after the existing Drive file has been removed or
+confirmed unwanted. This deletes the upload and confirmation checkpoints; the
+next run uploads and replies again:
+
+```sql
+delete from public.automation_executions
+where automation = 'draft-packing-list'
+  and source_id = '<gmail-thread-id>'
+  and step in ('drive-upload:<invoice>', 'creation-confirmation-sent:<invoice>');
+```

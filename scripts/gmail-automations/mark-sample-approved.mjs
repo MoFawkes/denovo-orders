@@ -39,6 +39,7 @@ const AUTO_LABEL_QUERY =
 
 const SUPABASE_FUNCTIONS_URL =
   process.env.SUPABASE_FUNCTIONS_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co/functions/v1';
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 const SYSTEM_PROMPT = `You judge and extract data from a single email thread for Denovo Apparel's order tracker.
 
@@ -92,6 +93,10 @@ async function processThread(accessToken, apiKey, thread) {
     if (pair.style_no) payload.style_no = pair.style_no;
 
     try {
+      if (DRY_RUN) {
+        console.log(`[dry-run] mark sample approved: ${JSON.stringify(payload)}`);
+        continue;
+      }
       const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/mark-sample-approved`, {
         method: 'POST',
         headers: {

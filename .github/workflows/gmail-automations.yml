@@ -10,23 +10,25 @@ on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log intended writes without changing Gmail, Drive, Tasks, or Supabase
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
 
 permissions:
   contents: read
-
-# Without this, a manual run and the hourly cron can overlap: both search
-# Gmail for the same unlabeled backlog and process (and pay for) the same
-# threads twice before either gets to apply labels. Queue instead of running
-# concurrently -- cheap once steady-state (most runs find 0 new threads),
-# but essential while there's still a backlog to work through.
-concurrency:
-  group: gmail-automations
-  cancel-in-progress: false
 
 jobs:
   mark-sample-approved:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: sample-approvals
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-automation
@@ -42,6 +44,9 @@ jobs:
   mark-order-booked:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: booking-confirmations
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-automation
@@ -57,6 +62,9 @@ jobs:
   complete-from-packing-list:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: packing-list-pipeline
+      cancel-in-progress: false
     # Runs after draft-packing-list so a sheet drafted in this run is picked
     # up immediately instead of waiting for the next hourly run. Not `needs`'
     # default behaviour alone: if drafting fails (e.g. an upload left for
@@ -80,6 +88,9 @@ jobs:
   draft-packing-list:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: packing-list-pipeline
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-automation
@@ -98,6 +109,9 @@ jobs:
   generate-docket:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: docket-generation
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-automation
@@ -111,3 +125,27 @@ jobs:
           GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/gmail-automations/generate-docket.mjs
+
+  alert-on-failure:
+    if: ${{ failure() }}
+    needs: [mark-sample-approved, mark-order-booked, draft-packing-list, complete-from-packing-list, generate-docket]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the automation failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Gmail automations are failing"
+          body="$(printf 'Workflow run failed: %s\n\nTrigger: %s\nCommit: %s\nDry run: %s' \
+            "${RUN_URL}" '${{ github.event_name }}' '${{ github.sha }}' "${DRY_RUN}")"
+          issue_number="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "${issue_number}" ]; then
+            gh issue comment "${issue_number}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}"
+          fi

@@ -11,6 +11,10 @@ export async function getExecution(supabase, automation, sourceId, step) {
 }
 
 export async function completeExecution(supabase, automation, sourceId, step, result = {}) {
+  if (DRY_RUN) {
+    console.log(`[dry-run] complete checkpoint: ${automation}/${sourceId}/${step}`);
+    return;
+  }
   const existing = await getExecution(supabase, automation, sourceId, step);
   const now = new Date().toISOString();
   const { error } = await supabase.from('automation_executions').upsert({
@@ -28,6 +32,10 @@ export async function completeExecution(supabase, automation, sourceId, step, re
 }
 
 export async function failExecution(supabase, automation, sourceId, step, errorValue) {
+  if (DRY_RUN) {
+    console.log(`[dry-run] fail checkpoint: ${automation}/${sourceId}/${step}: ${errorValue?.message ?? errorValue}`);
+    return;
+  }
   const existing = await getExecution(supabase, automation, sourceId, step);
   const { error } = await supabase.from('automation_executions').upsert({
     automation,
@@ -42,4 +50,5 @@ export async function failExecution(supabase, automation, sourceId, step, errorV
   });
   if (error) throw new Error(`recording automation failure failed: ${error.message}`);
 }
+const DRY_RUN = process.env.DRY_RUN === '1';
 

@@ -28,6 +28,7 @@ import { normalisePo, extractPackingListFields, findBookingTask } from './lib/do
 import { completeExecution, failExecution } from './lib/execution-state.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 // Only look at recently modified files: everything older has either been
 // linked already or predates the tracker. Wide enough to survive the
@@ -133,25 +134,30 @@ async function main() {
 
     const link = `https://docs.google.com/spreadsheets/d/${file.id}/edit?usp=sharing`;
     const ids = matches.map((o) => o.id);
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ stage: 'Completed', packing_list_url: link, invoice_no: invoice })
-      .in('id', ids);
-    if (updateError) {
-      console.error(`  ${file.name}: order update failed (${updateError.message}) — will retry next run.`);
-      parseFailures++;
-      continue;
-    }
+    if (DRY_RUN) {
+      console.log(`[dry-run] complete orders: ${JSON.stringify({ ids, link, invoice })}`);
+      console.log(`[dry-run] insert ${matches.length} order_events row(s)`);
+    } else {
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ stage: 'Completed', packing_list_url: link, invoice_no: invoice })
+        .in('id', ids);
+      if (updateError) {
+        console.error(`  ${file.name}: order update failed (${updateError.message}) — will retry next run.`);
+        parseFailures++;
+        continue;
+      }
 
-    const { error: eventError } = await supabase.from('order_events').insert(
-      matches.map((o) => ({
-        order_id: o.id,
-        old_stage: 'Booked',
-        new_stage: 'Completed',
-        changed_by: null,
-      })),
-    );
-    if (eventError) console.error(`  order_events insert error: ${eventError.message}`);
+      const { error: eventError } = await supabase.from('order_events').insert(
+        matches.map((o) => ({
+          order_id: o.id,
+          old_stage: 'Booked',
+          new_stage: 'Completed',
+          changed_by: null,
+        })),
+      );
+      if (eventError) console.error(`  order_events insert error: ${eventError.message}`);
+    }
 
     completed += matches.length;
     console.log(`  ${file.name}: PO ${po} / ${sku} -> Completed (INV ${invoice}), packing list linked.`);

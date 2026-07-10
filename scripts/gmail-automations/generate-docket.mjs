@@ -43,6 +43,7 @@ import {
 const SEARCH_QUERY = 'filename:csv -label:Docket-Processed -label:Docket-Needs-Review';
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co';
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 const DEFAULT_FABRIC = 'Bengaline';
 const FALLBACK_DOCKET_BASE = 241; // matches nextDocketNumber() in web/index.html
@@ -495,10 +496,16 @@ async function processThread(accessToken, supabase, thread) {
   const docketFileName = `${docketNumber}_${poNumber}.xlsx`;
   const storagePath = `${poNumber}/dockets/${docketFileName}`;
 
-  const { error: uploadError } = await supabase.storage.from('orders').upload(storagePath, docketBuffer, {
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    upsert: true,
-  });
+  let uploadError = null;
+  if (DRY_RUN) {
+    console.log(`[dry-run] upload docket: ${storagePath} (${docketBuffer.length} bytes)`);
+  } else {
+    const upload = await supabase.storage.from('orders').upload(storagePath, docketBuffer, {
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      upsert: true,
+    });
+    uploadError = upload.error;
+  }
   let docketUrl = null;
   if (uploadError) {
     console.error(`  docket upload failed for PO ${poNumber}: ${uploadError.message}`);
@@ -509,6 +516,10 @@ async function processThread(accessToken, supabase, thread) {
 
   let anyDbError = false;
   for (const row of dbRows) {
+    if (DRY_RUN) {
+      console.log(`[dry-run] upsert order: ${JSON.stringify({ po: row.po, style: row.style, colour: row.colour })}`);
+      continue;
+    }
     const { error } = await supabase.from('orders').upsert(row, { onConflict: 'po,style,colour' });
     if (error) {
       console.error(`  order upsert failed for PO ${row.po} / ${row.style} / ${row.colour}: ${error.message}`);

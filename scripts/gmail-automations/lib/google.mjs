@@ -7,6 +7,11 @@ const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DRY_RUN = process.env.DRY_RUN === '1';
+
+function logDryRun(action, details) {
+  console.log(`[dry-run] ${action}: ${JSON.stringify(details)}`);
+}
 
 export async function getAccessToken({ clientId, clientSecret, refreshToken }) {
   const res = await fetch(TOKEN_URL, {
@@ -62,6 +67,10 @@ export async function getThread(accessToken, threadId) {
 }
 
 export async function modifyThreadLabels(accessToken, threadId, { add = [], remove = [] }) {
+  if (DRY_RUN) {
+    logDryRun('modify Gmail thread labels', { threadId, add, remove });
+    return null;
+  }
   return apiFetch(`${GMAIL_BASE}/threads/${threadId}/modify`, accessToken, {
     method: 'POST',
     body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
@@ -115,6 +124,11 @@ export async function getOrCreateLabel(accessToken, name) {
   const existing = labels.find((l) => l.name === name);
   if (existing) return existing.id;
 
+  if (DRY_RUN) {
+    logDryRun('create Gmail label', { name });
+    return `dry-run:${name}`;
+  }
+
   const created = await apiFetch(`${GMAIL_BASE}/labels`, accessToken, {
     method: 'POST',
     body: JSON.stringify({
@@ -164,6 +178,10 @@ export function getHeader(message, name) {
 // (In-Reply-To/References) so Gmail shows it inside the conversation. The
 // gmail.modify scope already covers messages.send — no extra scope needed.
 export async function sendReply(accessToken, { threadId, replyTo, to, subject, body }) {
+  if (DRY_RUN) {
+    logDryRun('send Gmail reply', { threadId, to, subject, bodyPreview: body.slice(0, 160) });
+    return { id: 'dry-run-message', threadId };
+  }
   const messageId = getHeader(replyTo, 'Message-ID');
   const references = [getHeader(replyTo, 'References'), messageId].filter(Boolean).join(' ');
   const headers = [
@@ -184,6 +202,10 @@ export async function sendReply(accessToken, { threadId, replyTo, to, subject, b
 // Creates a Google Task on the default "My Tasks" list, so it shows up as a
 // checkable to-do (with a due date) rather than a fixed-time calendar event.
 export async function createTask(accessToken, { title, notes, dueDate }) {
+  if (DRY_RUN) {
+    logDryRun('create Google Task', { title, notes, dueDate });
+    return { id: 'dry-run-task', title, notes };
+  }
   return apiFetch(`${TASKS_BASE}/lists/@default/tasks`, accessToken, {
     method: 'POST',
     body: JSON.stringify({
@@ -211,6 +233,10 @@ export async function listOpenTasks(accessToken) {
 }
 
 export async function patchTask(accessToken, taskId, fields) {
+  if (DRY_RUN) {
+    logDryRun('update Google Task', { taskId, fields });
+    return { id: taskId, ...fields };
+  }
   return apiFetch(`${TASKS_BASE}/lists/@default/tasks/${taskId}`, accessToken, {
     method: 'PATCH',
     body: JSON.stringify(fields),
@@ -249,6 +275,10 @@ export async function driveDownloadFile(accessToken, fileId) {
 // the refresh token — narrower than full drive access: it only grants the
 // app its own uploads, not the rest of the Drive (see oauth-setup.mjs).
 export async function driveUploadFile(accessToken, { name, mimeType, buffer, appProperties }) {
+  if (DRY_RUN) {
+    logDryRun('upload Drive file', { name, mimeType, bytes: buffer.length, appProperties });
+    return { id: 'dry-run-drive-file', name };
+  }
   const boundary = `denovo-${Date.now()}`;
   const metadata = JSON.stringify({ name, mimeType, ...(appProperties ? { appProperties } : {}) });
   const body = Buffer.concat([

@@ -32,6 +32,7 @@ const SEARCH_QUERY = 'label:Bookings -label:Bookings-Processed -label:Bookings-N
 
 const SUPABASE_FUNCTIONS_URL =
   process.env.SUPABASE_FUNCTIONS_URL ?? 'https://sfwnmddlmiprvsoxbatz.supabase.co/functions/v1';
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 const SYSTEM_PROMPT = `You judge and extract data from a single email thread for Denovo Apparel's order tracker.
 
@@ -147,6 +148,11 @@ async function processThread(accessToken, apiKey, thread) {
   for (const booking of result.bookings) {
     let apiResult;
     try {
+      if (DRY_RUN) {
+        console.log(`[dry-run] mark order booked: ${booking.po}`);
+        apiResult = { matched: 0, orders: [], skipped: [] };
+        continue;
+      }
       const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/mark-order-booked`, {
         method: 'POST',
         headers: {
