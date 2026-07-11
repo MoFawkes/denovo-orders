@@ -123,28 +123,6 @@ export default function SettingsScreen() {
               <Text style={s.signOutText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
-
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Planned Utilities</Text>
-            <Text style={s.cardSubtitle}>
-              These still make sense, but they are intentionally kept out of the
-              way until we need them.
-            </Text>
-
-            <View style={s.utilityList}>
-              {[
-                { icon: 'bedtime', label: 'Keep screen awake during shifts' },
-                { icon: 'task-alt', label: 'Extra confirmation before completion' },
-                { icon: 'format-size', label: 'Larger text mode for factory floor use' },
-                { icon: 'info-outline', label: 'App version and build diagnostics' },
-              ].map(({ icon, label }) => (
-                <View key={label} style={s.utilityRow}>
-                  <MaterialIcons name={icon as any} size={18} color={colors.primary} />
-                  <Text style={s.utilityText}>{label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
         </ScrollView>
         <BottomTabBar />
       </View>
@@ -320,24 +298,6 @@ function makeStyles(colors: AppColors) {
       fontWeight: '800',
       letterSpacing: 1,
       textTransform: 'uppercase',
-    },
-    utilityList: {
-      gap: spacing.md,
-    },
-    utilityRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: radius.md,
-      padding: spacing.md,
-    },
-    utilityText: {
-      flex: 1,
-      fontSize: 14,
-      lineHeight: 20,
-      color: colors.text,
-      fontWeight: '600',
     },
   })
 }
