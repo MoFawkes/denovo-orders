@@ -35,7 +35,7 @@ jobs:
   edge-functions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: 2.8.1
@@ -66,7 +66,7 @@ jobs:
       PGPASSWORD: postgres
       PGDATABASE: postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Load the pre-migration baseline
         run: psql --set ON_ERROR_STOP=1 --file supabase/tests/pre_migrations_baseline.sql
       - name: Apply migrations in timestamp order
