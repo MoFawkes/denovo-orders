@@ -60,7 +60,7 @@ export default function LoginScreen() {
       return
     }
 
-    router.replace('/main-menu')
+    router.replace('/')
   }
 
   return (

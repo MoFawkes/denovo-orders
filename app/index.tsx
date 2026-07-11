@@ -6,7 +6,6 @@ import OperationalHeader from '../components/OperationalHeader'
 import KpiCard from '../components/KpiCard'
 import SectionHeader from '../components/SectionHeader'
 import OrderRow from '../components/OrderRow'
-import SummaryPanel from '../components/SummaryPanel'
 import BottomTabBar from '../components/navigation/BottomTabBar'
 import { supabase } from '../lib/supabase'
 import type { Order } from '../lib/types'
@@ -78,12 +77,6 @@ export default function IndexScreen() {
     [activeOrders]
   )
 
-  const totalUnits = useMemo(
-    () =>
-      activeOrders.reduce((sum, order) => sum + Number(order.qty || 0), 0),
-    [activeOrders]
-  )
-
   return (
     <ScreenContainer>
       <View style={styles.screen}>
@@ -151,13 +144,6 @@ export default function IndexScreen() {
         ) : (
           <Text style={styles.emptyState}>No active orders found.</Text>
         )}
-
-          <SectionHeader title="Production Summary" />
-          <SummaryPanel
-            output={totalUnits.toLocaleString()}
-            target={Math.max(totalUnits, 1).toLocaleString()}
-            progressText={`${activeOrders.length} active orders`}
-          />
         </ScrollView>
         <BottomTabBar />
       </View>
