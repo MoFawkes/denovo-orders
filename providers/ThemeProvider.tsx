@@ -6,7 +6,7 @@ type ThemePreference = 'light' | 'dark' | 'system'
 type ResolvedTheme = 'light' | 'dark'
 
 type ThemeColors = {
-  // Legacy tokens (main-menu, nav)
+  // Core tokens (nav, shared surfaces)
   background: string
   card: string
   cardSoft: string
@@ -20,7 +20,7 @@ type ThemeColors = {
   blackButton: string
   blackButtonText: string
   danger: string
-  // Extended tokens (opo, settings, production-summary)
+  // Extended tokens (opo, settings)
   surface: string
   surfaceMuted: string
   surfaceStrong: string
