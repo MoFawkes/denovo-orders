@@ -177,22 +177,40 @@ export function getHeader(message, name) {
 // Sends a plain-text reply into an existing thread, threading it properly
 // (In-Reply-To/References) so Gmail shows it inside the conversation. The
 // gmail.modify scope already covers messages.send — no extra scope needed.
-export async function sendReply(accessToken, { threadId, replyTo, to, subject, body }) {
-  if (DRY_RUN) {
-    logDryRun('send Gmail reply', { threadId, to, subject, bodyPreview: body.slice(0, 160) });
-    return { id: 'dry-run-message', threadId };
-  }
-  const messageId = getHeader(replyTo, 'Message-ID');
-  const references = [getHeader(replyTo, 'References'), messageId].filter(Boolean).join(' ');
+export function buildReplyMime({ to, subject, messageId, references, body, attachments = [] }) {
   const headers = [
     `To: ${to}`,
     `Subject: ${subject.startsWith('Re:') ? subject : `Re: ${subject}`}`,
     messageId ? `In-Reply-To: ${messageId}` : null,
     references ? `References: ${references}` : null,
-    'Content-Type: text/plain; charset=UTF-8',
-    'MIME-Version: 1.0',
   ].filter(Boolean);
-  const raw = Buffer.from(`${headers.join('\r\n')}\r\n\r\n${body}`, 'utf-8').toString('base64url');
+  if (attachments.length === 0) {
+    headers.push('Content-Type: text/plain; charset=UTF-8', 'MIME-Version: 1.0');
+    return `${headers.join('\r\n')}\r\n\r\n${body}`;
+  }
+  const boundary = `denovo-${Date.now()}`;
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, 'MIME-Version: 1.0');
+  const parts = [
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${body}`,
+    ...attachments.map(({ filename, mimeType, buffer }) => {
+      const encoded = buffer.toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
+      return `--${boundary}\r\nContent-Type: ${mimeType}\r\nContent-Disposition: attachment; filename="${filename}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${encoded}`;
+    }),
+  ];
+  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}\r\n--${boundary}--`;
+}
+
+export async function sendReply(accessToken, { threadId, replyTo, to, subject, body, attachments = [] }) {
+  if (DRY_RUN) {
+    logDryRun('send Gmail reply', { threadId, to, subject, bodyPreview: body.slice(0, 160), attachments: attachments.map((a) => a.filename) });
+    return { id: 'dry-run-message', threadId };
+  }
+  const messageId = getHeader(replyTo, 'Message-ID');
+  const references = [getHeader(replyTo, 'References'), messageId].filter(Boolean).join(' ');
+  const raw = Buffer.from(
+    buildReplyMime({ to, subject, messageId, references, body, attachments }),
+    'utf-8',
+  ).toString('base64url');
   return apiFetch(`${GMAIL_BASE}/messages/send`, accessToken, {
     method: 'POST',
     body: JSON.stringify({ raw, threadId }),

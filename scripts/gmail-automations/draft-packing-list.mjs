@@ -49,6 +49,7 @@ import {
   DATA_MARKER,
   validateDocket,
   buildPackingListWorkbook,
+  buildStickerWorkbook,
   formatUk,
   addDaysUTC,
   findBooking,
@@ -319,15 +320,19 @@ async function processAwaitingThread(ctx, thread) {
   const internalCode = payload.groups.map((g) => g.sku).join('/');
   const description = combineDescriptions(payload.groups, payload.groups);
   const booking = payload.booking;
+  const poDisplay = payload.po.replace(/^0+/, '');
+  const groups = payload.groups.map((g) => ({
+    colour: (g.colour ?? '').toUpperCase(), sku: g.sku, cartons: g.cartons,
+  }));
   const workbook = buildPackingListWorkbook({
     invoice,
     dispatchDate: booking?.date ? formatUk(addDaysUTC(booking.date, -1)) : '',
     deliveryDate: booking?.date ? formatUk(booking.date) : '',
     bookingRef: booking?.ref ?? '',
-    poDisplay: payload.po.replace(/^0+/, ''),
+    poDisplay,
     internalCode,
     description,
-    groups: payload.groups.map((g) => ({ colour: (g.colour ?? '').toUpperCase(), sku: g.sku, cartons: g.cartons })),
+    groups,
   });
 
   const name = `INV ${invoice} ${description}.xlsx`;
@@ -379,6 +384,24 @@ async function processAwaitingThread(ctx, thread) {
   const confirmation = await getExecution(database, 'draft-packing-list', thread.id, confirmationStep);
   if (confirmation?.status !== 'completed') {
     const latest = replyMessage ?? full.messages[full.messages.length - 1];
+    const stickerFilename = `BOX_STICKERS_${poDisplay}_${internalCode.replace(/\//g, '-')}.xlsx`;
+    const attachments = [];
+    let stickerLine = '';
+    try {
+      const stickerWorkbook = buildStickerWorkbook({
+        po: poDisplay,
+        bookingRef: booking?.ref ?? '',
+        groups,
+      });
+      attachments.push({
+        filename: stickerFilename,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: Buffer.from(await stickerWorkbook.xlsx.writeBuffer()),
+      });
+      stickerLine = `\n\nBox stickers for this PO are attached (${stickerFilename}).`;
+    } catch (err) {
+      console.error(`  Box sticker generation failed for ${stickerFilename}: ${err.message} — sending confirmation without stickers.`);
+    }
     await sendReply(accessToken, {
       threadId: thread.id,
       replyTo: latest,
@@ -386,7 +409,9 @@ async function processAwaitingThread(ctx, thread) {
       subject: getHeader(latest, 'Subject') || 'Packing list',
       body:
         `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
-        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).`,
+        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).` +
+        stickerLine,
+      attachments,
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
       file_id: uploaded.id,

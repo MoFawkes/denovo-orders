@@ -377,6 +377,79 @@ export function buildPackingListWorkbook({
   return wb;
 }
 
+// ── Box-sticker workbook (mirrors the web Stickers page) ─────────────────────
+
+export function buildStickerWorkbook({ po, bookingRef, groups }) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Stickers');
+  const cartons = groups.flatMap((g) => g.cartons.map((c) => ({ ...c, colour: g.colour, sku: g.sku })));
+  const thick = { style: 'thick', color: { argb: 'FF000000' } };
+  const border = { top: thick, bottom: thick, left: thick, right: thick };
+  const bold14 = { name: 'Arial', size: 11, bold: true };
+  const center = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  [12.63, 13, 13, 17, 12.63, 13, 13].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  function sc(row, col, val, mergeSpan) {
+    if (mergeSpan > 1) ws.mergeCells(row, col, row, col + mergeSpan - 1);
+    const cell = ws.getCell(row, col);
+    cell.value = val;
+    cell.font = bold14;
+    cell.alignment = center;
+    cell.border = border;
+    return cell;
+  }
+
+  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty, cartonColour, cartonSku) {
+    const r = rowStart, c = colStart;
+    sc(r, c, 'SUPPLIER: DENOVO SOURCING', 3);
+    sc(r + 1, c, 'PO', 1); sc(r + 1, c + 1, po, 2);
+    sc(r + 2, c, 'SKU', 1); sc(r + 2, c + 1, cartonSku, 2);
+    sc(r + 3, c, 'Booking Ref', 1); sc(r + 3, c + 1, bookingRef ?? '', 2);
+    sc(r + 4, c, 'SIZE', 1); sc(r + 4, c + 1, size, 2);
+    sc(r + 5, c, 'COLOUR', 1); sc(r + 5, c + 1, cartonColour, 2);
+    sc(r + 6, c, 'QTY', 1); sc(r + 6, c + 1, qty, 2);
+    sc(r + 7, c, 'CARTON NO.', 1); sc(r + 7, c + 1, cartonNum, 1); sc(r + 7, c + 2, `OF ${totalCartons}`, 1);
+    ws.mergeCells(r + 8, c, r + 10, c + 2);
+    ws.getCell(r + 8, c).border = border;
+    sc(r + 11, c, 'Customer', 1); sc(r + 11, c + 1, 'PLT', 2);
+  }
+
+  const ROWS_PER_PAGE = 29;
+  const TOP_COLS = [1, 5];
+  const BOT_COLS = [1, 5];
+  const totalCartons = cartons.length;
+  cartons.forEach(({ size, qty, colour, sku: cartonSku }, i) => {
+    const page = Math.floor(i / 4), pos = i % 4, pageOffset = page * ROWS_PER_PAGE;
+    const rowStart = pos < 2 ? pageOffset + 1 : pageOffset + 15;
+    const colStart = pos < 2 ? TOP_COLS[pos] : BOT_COLS[pos - 2];
+    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty, colour, cartonSku);
+  });
+
+  ws.pageSetup = {
+    paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    margins: { left: 0.35, right: 0.05, top: 0.45, bottom: 0.18, header: 0, footer: 0 },
+  };
+  const pages = Math.ceil(totalCartons / 4);
+  for (let p = 0; p < pages; p++) {
+    const o = p * ROWS_PER_PAGE;
+    for (let r = 1; r <= 8; r++) ws.getRow(o + r).height = 37;
+    ws.getRow(o + 9).height = 20; ws.getRow(o + 10).height = 20; ws.getRow(o + 11).height = 20;
+    ws.getRow(o + 12).height = 37; ws.getRow(o + 13).height = 4; ws.getRow(o + 14).height = 4;
+    for (let r = 15; r <= 22; r++) ws.getRow(o + r).height = 37;
+    ws.getRow(o + 23).height = 20; ws.getRow(o + 24).height = 20; ws.getRow(o + 25).height = 20;
+    ws.getRow(o + 26).height = 37; ws.getRow(o + 27).height = 1; ws.getRow(o + 28).height = 1; ws.getRow(o + 29).height = 1;
+    if (p < pages - 1) {
+      try {
+        ws.getRow(o + ROWS_PER_PAGE).addPageBreak();
+      } catch (_) {
+        if (!ws.model.rowBreaks) ws.model.rowBreaks = [];
+        ws.model.rowBreaks.push({ id: o + ROWS_PER_PAGE, max: 16383, min: 1, man: true });
+      }
+    }
+  }
+  return wb;
+}
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
 export function formatUk(isoDate) {

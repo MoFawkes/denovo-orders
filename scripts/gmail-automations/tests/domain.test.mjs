@@ -15,6 +15,7 @@ import {
   extractPackingListFields,
   cartonRows,
   buildPackingListWorkbook,
+  buildStickerWorkbook,
   formatUk,
   addDaysUTC,
 } from '../lib/domain.mjs';
@@ -353,6 +354,40 @@ test('the totals row moves down only when a delivery overflows the template', ()
   const ws = wb.worksheets[0];
   assert.equal(ws.getCell('A46').value, 'Total Boxes/Pcs.'); // 15 + 30 rows + 1
   assert.equal(ws.getCell('D46').value.formula, 'SUM(D15:D45)');
+});
+
+// ── buildStickerWorkbook ───────────────────────────────────────────────────
+
+const stickerGroups = [
+  { colour: 'LEMON', sku: 'SKU-A', cartons: [{ size: '8', qty: 10 }, { size: '10', qty: 12 }] },
+  { colour: 'BLACK', sku: 'SKU-B', cartons: [{ size: '12', qty: 14 }, { size: '14', qty: 16 }, { size: '16', qty: 18 }] },
+];
+
+test('sticker workbook keeps the browser layout anchors across groups and pages', () => {
+  const ws = buildStickerWorkbook({ po: '70053828', bookingRef: 'EBUK21207-68', groups: stickerGroups }).worksheets[0];
+  assert.equal(ws.getCell(1, 1).value, 'SUPPLIER: DENOVO SOURCING');
+  assert.equal(ws.getCell(2, 2).value, '70053828');
+  assert.equal(ws.getCell(3, 2).value, 'SKU-A');
+  assert.equal(ws.getCell(4, 2).value, 'EBUK21207-68');
+  assert.equal(ws.getCell(5, 2).value, '8');
+  assert.equal(ws.getCell(6, 2).value, 'LEMON');
+  assert.equal(ws.getCell(8, 2).value, 1);
+  assert.equal(ws.getCell(8, 3).value, 'OF 5');
+  assert.equal(ws.getCell(12, 2).value, 'PLT');
+  assert.equal(ws.getCell(15, 1).value, 'SUPPLIER: DENOVO SOURCING');
+  assert.equal(ws.getCell(17, 2).value, 'SKU-B');
+  assert.equal(ws.getCell(20, 2).value, 'BLACK');
+  assert.equal(ws.getCell(30, 1).value, 'SUPPLIER: DENOVO SOURCING');
+  assert.equal(ws.getRow(1).height, 37);
+  assert.equal(ws.getRow(9).height, 20);
+  assert.equal(ws.getRow(13).height, 4);
+  assert.equal(ws.getRow(29).height, 1);
+  assert.equal(ws.pageSetup.fitToWidth, 1);
+});
+
+test('sticker workbook renders a missing booking reference as blank', () => {
+  const ws = buildStickerWorkbook({ po: '70053828', groups: stickerGroups }).worksheets[0];
+  assert.equal(ws.getCell(4, 2).value, '');
 });
 
 // ── date helpers ─────────────────────────────────────────────────────────────
