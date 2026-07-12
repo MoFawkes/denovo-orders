@@ -246,6 +246,10 @@
         <span class="material-symbols-outlined" style="font-size:20px;">bar_chart</span>
         <span class="sidebar-label">Reports</span>
       </button>
+      <button id="nav-costings" onclick="showView('costings')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+        <span class="material-symbols-outlined" style="font-size:20px;">sell</span>
+        <span class="sidebar-label">Costings</span>
+      </button>
       <button id="nav-import" onclick="showView('import')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>
         <span class="sidebar-label">Import</span>
@@ -321,6 +325,7 @@
         <button id="tab-cancelled-mobile" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Cancelled <span id="tab-cancelled-count-mobile" class="font-normal">(0)</span></button>
         <button id="samples-filter-mobile" onclick="toggleSamplesFilter()" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Needs Sample</button>
         <button id="tab-reports-mobile" onclick="showView('reports')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Reports</button>
+        <button id="tab-costings-mobile" onclick="showView('costings')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Costings</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
         <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
         <button id="tab-stickers-mobile" onclick="showView('stickers')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Stickers</button>
@@ -435,6 +440,7 @@
         <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
           <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Completed This Week</h3>
           <div id="report-orders-list" class="space-y-2 mb-4 max-h-64 overflow-y-auto"></div>
+          <div id="report-costing-warning" class="hidden mb-3 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"></div>
           <div class="grid grid-cols-2 gap-3 pt-3 border-t border-outline-variant/20">
             <div class="bg-surface-container-low rounded-lg p-4">
               <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Total Garments</p>
@@ -449,7 +455,7 @@
 
         <!-- Manual inputs -->
         <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
-          <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Labour Costs</h3>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">Labour &amp; Overheads</h3>
 
           <!-- Clock file drop zone -->
           <div id="attlog-drop" class="mb-3 border-2 border-dashed border-outline-variant/40 rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-surface-container-low transition-all"
@@ -470,6 +476,13 @@
               <label class="text-xs font-medium text-on-surface-variant">Total Wage Cost (£)</label>
               <input id="report-wages" type="number" min="0" step="0.01" placeholder="e.g. 850.00" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary" oninput="updateSummary()" />
             </div>
+          </div>
+          <div class="mt-4 space-y-1.5">
+            <label class="text-xs font-medium text-on-surface-variant">Overhead per garment (£)</label>
+            <input id="report-overhead" type="number" min="0" step="0.01" placeholder="1.00"
+              class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary"
+              oninput="onOverheadInput()" onchange="saveOverheadSetting()" />
+            <p class="text-[10px] text-on-surface-variant">Applied to every garment made this week. Saved as the default for future reports.</p>
           </div>
         </div>
 
@@ -493,17 +506,33 @@
               <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Wage Cost</p>
               <p id="sum-wages" class="text-xl font-extrabold">—</p>
             </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Fabric Cost</p>
+              <p id="sum-fabric" class="text-xl font-extrabold">—</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Trimmings Cost</p>
+              <p id="sum-trims" class="text-xl font-extrabold">—</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Overhead</p>
+              <p id="sum-overhead" class="text-xl font-extrabold">—</p>
+            </div>
           </div>
           <div class="border-t border-white/10 pt-3 mt-1">
-            <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Net (CMT – Wages)</p>
+            <p class="text-[10px] text-white/50 uppercase tracking-widest mb-1">Net Profit (CMT − Wages − Fabric − Trims − Overhead)</p>
             <p id="sum-net" class="text-2xl font-extrabold">—</p>
           </div>
         </div>
 
-        <!-- Save button -->
-        <button onclick="saveReport()" class="w-full h-11 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all">
-          Save Report
-        </button>
+        <div class="flex gap-3">
+          <button onclick="saveReport()" class="flex-1 h-11 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all">
+            Save Report
+          </button>
+          <button onclick="exportReportPdf()" class="flex-1 h-11 bg-inverse-surface text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined" style="font-size:16px;">picture_as_pdf</span> Export PDF
+          </button>
+        </div>
 
         <div id="report-empty" class="hidden text-center py-8 text-sm text-on-surface-variant">
           No orders set to ready in this date range.
@@ -518,6 +547,43 @@
       </div>
 
     </div>
+  </div>
+</div>
+
+<!-- ── Costings Screen (manager-only: per-style CMT, fabric & trims) ────── -->
+<div id="costings-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="top:0;left:0;">
+  <div class="flex items-center gap-3 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors md:hidden"><span class="material-symbols-outlined">arrow_back</span></button>
+    <div id="costings-sidebar-spacer" class="hidden md:block flex-shrink-0" style="width:224px;"><span class="text-sm font-bold text-on-surface tracking-tighter">Denovo Orders</span></div>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Style Costings</h2>
+    <button onclick="showView('orders')" class="hidden md:flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span> Back to Orders</button>
+  </div>
+  <div class="flex-1 overflow-auto p-4 md:p-8"><div class="max-w-3xl mx-auto space-y-4">
+    <div class="flex gap-3">
+      <div class="flex items-center bg-white border border-outline-variant/20 rounded-xl px-3 flex-1 shadow-sm"><span class="material-symbols-outlined text-on-surface-variant mr-2" style="font-size:18px;">search</span><input id="costings-search" type="text" placeholder="Search style no, SKU or description…" class="bg-transparent border-none focus:ring-0 text-sm w-full py-2.5 p-0 outline-none" oninput="renderCostingsList()" /></div>
+      <button onclick="openCostingModal(-1)" class="h-11 px-4 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all">New Style</button>
+    </div>
+    <div class="bg-white border border-outline-variant/20 rounded-xl shadow-sm overflow-hidden"><div id="costings-list" class="divide-y divide-outline-variant/10 text-sm"><p class="p-5 text-xs text-on-surface-variant">Loading…</p></div></div>
+  </div></div>
+</div>
+
+<!-- Costing edit modal -->
+<div id="costing-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20"><h3 id="costing-modal-title" class="text-sm font-bold text-on-surface">Edit Costing</h3><button onclick="closeCostingModal()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button></div>
+    <div class="p-5 overflow-y-auto space-y-4">
+      <div id="costing-key-fields" class="grid grid-cols-2 gap-3"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="space-y-1"><label class="text-xs text-on-surface-variant">CMT (£/garment)</label><input id="costing-cmt" type="number" min="0" step="0.01" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm" oninput="updateCostingPreview()"/></div>
+        <div class="space-y-1"><label class="text-xs text-on-surface-variant">Selling price (£)</label><input id="costing-price" type="number" min="0" step="0.01" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm"/></div>
+        <div class="space-y-1"><label class="text-xs text-on-surface-variant">Fabric (metres/garment)</label><input id="costing-fabric-metres" type="number" min="0" step="0.01" placeholder="e.g. 1.5" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm" oninput="updateCostingPreview()"/></div>
+        <div class="space-y-1"><label class="text-xs text-on-surface-variant">Fabric price (£/metre)</label><input id="costing-fabric-price" type="number" min="0" step="0.01" placeholder="e.g. 3.20" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm" oninput="updateCostingPreview()"/></div>
+      </div>
+      <div><div class="flex items-center justify-between mb-2"><label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Trimmings (per garment)</label><button onclick="addTrimRow()" class="text-xs font-bold text-primary hover:underline">+ Add trim</button></div><div class="grid grid-cols-[1fr_90px_70px_28px] gap-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1"><span>Name</span><span>Unit cost £</span><span>Qty</span><span></span></div><div id="costing-trims-rows" class="space-y-2"></div></div>
+      <div class="bg-surface-container-low rounded-lg p-3 text-xs text-on-surface-variant" id="costing-total-preview">—</div>
+      <div id="costing-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2"></div>
+    </div>
+    <div class="px-5 py-4 border-t border-outline-variant/20 flex gap-3"><button onclick="closeCostingModal()" class="flex-1 h-10 border border-outline-variant/30 text-on-surface-variant text-xs font-bold uppercase tracking-wider rounded">Cancel</button><button id="costing-save-btn" onclick="saveCosting()" class="flex-1 h-10 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded">Save</button></div>
   </div>
 </div>
 
@@ -827,10 +893,12 @@ async function showDashboard(user) {
 
   const isManager = canEditOrders
   document.getElementById('nav-reports').style.display = isManager ? '' : 'none'
+  document.getElementById('nav-costings').style.display = isManager ? '' : 'none'
   document.getElementById('nav-import').style.display = isManager ? '' : 'none'
   document.getElementById('nav-booking').style.display = isManager ? '' : 'none'
   document.getElementById('nav-stickers').style.display = isManager ? '' : 'none'
   document.getElementById('tab-reports-mobile').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-costings-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-import-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-booking-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-stickers-mobile').style.display = isManager ? '' : 'none'
@@ -1528,12 +1596,14 @@ function toggleSidebar() {
   const title = document.getElementById('sidebar-title')
   const icon = sidebar.querySelector('.material-symbols-outlined')
   const spacer = document.getElementById('sidebar-spacer')
+  const costingsSpacer = document.getElementById('costings-sidebar-spacer')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
   const stickersScreen = document.getElementById('stickers-screen')
   if (sidebarCollapsed) {
     sidebar.style.width = '48px'
     if (spacer) spacer.style.width = '48px'
+    if (costingsSpacer) costingsSpacer.style.width = '48px'
     if (importScreen) importScreen.style.left = '48px'
     if (bookingScreen) bookingScreen.style.left = '48px'
     if (stickersScreen) stickersScreen.style.left = '48px'
@@ -1543,6 +1613,7 @@ function toggleSidebar() {
   } else {
     sidebar.style.width = '224px'
     if (spacer) spacer.style.width = '224px'
+    if (costingsSpacer) costingsSpacer.style.width = '224px'
     if (importScreen) importScreen.style.left = '224px'
     if (bookingScreen) bookingScreen.style.left = '224px'
     if (stickersScreen) stickersScreen.style.left = '224px'
@@ -1555,16 +1626,43 @@ function toggleSidebar() {
 // ── View switching ────────────────────────────────────────────────────────────
 
 let currentView = 'orders'
-let reportData = { totalQty: 0, totalCmt: 0 }
+let reportData = { totalQty: 0, totalCmt: 0, fabricCost: 0, trimsCost: 0, missingCostings: 0, lines: [] }
+let overheadPerGarment = 1
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+function trimsPerGarment(trims) {
+  if (!Array.isArray(trims)) return 0
+  return trims.reduce((sum, trim) => {
+    const cost = parseFloat(trim?.cost), qty = parseFloat(trim?.qty)
+    return sum + ((isFinite(cost) && isFinite(qty)) ? cost * qty : 0)
+  }, 0)
+}
+
+function fabricPerGarment(costing) {
+  const metres = parseFloat(costing?.fabric_metres), price = parseFloat(costing?.fabric_price_per_metre)
+  if (!isFinite(metres) || !isFinite(price)) return null
+  return metres * price
+}
+
+function costingForOrder(order, byStyle, byStyleNo) {
+  const sku = (order.style || '').trim().toLowerCase()
+  const styleNo = (order.style_no || '').trim().toLowerCase()
+  return (sku && byStyle.get(sku)) || (styleNo && byStyleNo.get(styleNo)) || null
+}
 
 function showView(view) {
   currentView = view
   const reportsScreen = document.getElementById('reports-screen')
+  const costingsScreen = document.getElementById('costings-screen')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
   const stickersScreen = document.getElementById('stickers-screen')
 
   reportsScreen.classList.add('hidden')
+  costingsScreen.classList.add('hidden')
   importScreen.classList.add('hidden')
   bookingScreen.classList.add('hidden')
   stickersScreen.classList.add('hidden')
@@ -1576,10 +1674,12 @@ function showView(view) {
 
   document.getElementById('nav-orders').className = navIdle
   document.getElementById('nav-reports').className = navIdle
+  document.getElementById('nav-costings').className = navIdle
   document.getElementById('nav-import').className = navIdle
   document.getElementById('nav-booking').className = navIdle
   document.getElementById('nav-stickers').className = navIdle
   document.getElementById('tab-reports-mobile').className = tabIdle
+  document.getElementById('tab-costings-mobile').className = tabIdle
   document.getElementById('tab-import-mobile').className = tabIdle
   document.getElementById('tab-booking-mobile').className = tabIdle
   document.getElementById('tab-stickers-mobile').className = tabIdle
@@ -1588,8 +1688,14 @@ function showView(view) {
     reportsScreen.classList.remove('hidden')
     initReportDates()
     loadSavedReports()
+    loadOverheadSetting()
     document.getElementById('nav-reports').className = navActive
     document.getElementById('tab-reports-mobile').className = tabActive
+  } else if (view === 'costings') {
+    costingsScreen.classList.remove('hidden')
+    loadCostings()
+    document.getElementById('nav-costings').className = navActive
+    document.getElementById('tab-costings-mobile').className = tabActive
   } else if (view === 'import') {
     importScreen.classList.remove('hidden')
     document.getElementById('nav-import').className = navActive
@@ -1625,6 +1731,30 @@ function initReportDates() {
   if (!endEl.value) endEl.value = fmt(lastSun)
 }
 
+async function loadOverheadSetting() {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'overhead_per_garment').limit(1)
+  const value = parseFloat(data?.[0]?.value)
+  overheadPerGarment = isFinite(value) && value >= 0 ? value : 1
+  const input = document.getElementById('report-overhead')
+  if (!input.value) input.value = overheadPerGarment.toFixed(2)
+  updateSummary()
+}
+
+function onOverheadInput() {
+  const value = parseFloat(document.getElementById('report-overhead').value)
+  overheadPerGarment = isFinite(value) && value >= 0 ? value : 0
+  updateSummary()
+}
+
+async function saveOverheadSetting() {
+  const value = parseFloat(document.getElementById('report-overhead').value)
+  if (!isFinite(value) || value < 0) return
+  await sb.from('app_settings').upsert(
+    { key: 'overhead_per_garment', value, updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  )
+}
+
 async function loadReport() {
   const start = document.getElementById('report-week-start').value
   const end = document.getElementById('report-week-end').value
@@ -1649,7 +1779,8 @@ async function loadReport() {
     document.getElementById('report-orders-list').innerHTML = ''
     document.getElementById('report-total-qty').textContent = '0'
     document.getElementById('report-total-cmt').textContent = '£0.00'
-    reportData = { totalQty: 0, totalCmt: 0 }
+    reportData = { totalQty: 0, totalCmt: 0, fabricCost: 0, trimsCost: 0, missingCostings: 0, lines: [] }
+    document.getElementById('report-costing-warning').classList.add('hidden')
     document.getElementById('report-empty').classList.remove('hidden')
     updateSummary()
     return
@@ -1668,30 +1799,52 @@ async function loadReport() {
     document.getElementById('report-orders-list').innerHTML = ''
     document.getElementById('report-total-qty').textContent = '0'
     document.getElementById('report-total-cmt').textContent = '£0.00'
-    reportData = { totalQty: 0, totalCmt: 0 }
+    reportData = { totalQty: 0, totalCmt: 0, fabricCost: 0, trimsCost: 0, missingCostings: 0, lines: [] }
+    document.getElementById('report-costing-warning').classList.add('hidden')
     document.getElementById('report-empty').classList.remove('hidden')
     updateSummary()
     return
   }
 
-  let totalQty = 0
-  let totalCmt = 0
+  const { data: costings } = await sb.from('style_costings')
+    .select('style_no, style, cmt, fabric_metres, fabric_price_per_metre, trims')
+  const byStyle = new Map(), byStyleNo = new Map()
+  for (const costing of (costings || [])) {
+    const sku = (costing.style || '').trim().toLowerCase()
+    const styleNo = (costing.style_no || '').trim().toLowerCase()
+    if (sku && !byStyle.has(sku)) byStyle.set(sku, costing)
+    if (styleNo && !byStyleNo.has(styleNo)) byStyleNo.set(styleNo, costing)
+  }
+
+  let totalQty = 0, totalCmt = 0, fabricCost = 0, trimsCost = 0, missingCostings = 0
+  const lines = []
 
   const listHtml = orders.map(o => {
     const qty = o.qty || 0
     const cmt = o.cmt || 0
     const lineVal = qty * cmt
-    totalQty += qty
-    totalCmt += lineVal
+    const costing = costingForOrder(o, byStyle, byStyleNo)
+    const fabricPerItem = costing ? fabricPerGarment(costing) : null
+    const trimsPerItem = costing ? trimsPerGarment(costing.trims) : 0
+    const lineFabric = (fabricPerItem ?? 0) * qty
+    const lineTrims = trimsPerItem * qty
+    const missing = !costing || fabricPerItem === null
+    if (missing) missingCostings++
+    totalQty += qty; totalCmt += lineVal
+    fabricCost += lineFabric; trimsCost += lineTrims
+    lines.push({ po: o.po, description: o.description || o.style_no || o.style || '', colour: o.colour,
+      qty, cmt, lineVal, lineFabric, lineTrims, missing })
     return `<div class="flex items-center justify-between py-2 border-b border-outline-variant/10 last:border-0">
       <div>
         <span class="text-xs font-semibold text-on-surface">PO ${o.po||'—'}</span>
         <span class="text-xs text-on-surface-variant ml-2">${o.description||o.style_no||o.style||''}</span>
         ${o.colour ? `<span class="text-xs text-on-surface-variant ml-1">· ${o.colour}</span>` : ''}
+        ${missing ? `<span class="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 rounded-full px-2 py-0.5 ml-2">no costing</span>` : ''}
       </div>
       <div class="text-right flex-shrink-0 ml-4">
         <span class="text-xs font-semibold text-on-surface">${qty} pcs</span>
         ${cmt ? `<span class="text-xs text-on-surface-variant ml-2">× £${cmt.toFixed(2)} = <span class="font-semibold text-on-surface">£${lineVal.toFixed(2)}</span></span>` : '<span class="text-xs text-on-surface-variant ml-2">no CMT</span>'}
+        ${!missing ? `<div class="text-[10px] text-on-surface-variant mt-0.5">fabric £${lineFabric.toFixed(2)} · trims £${lineTrims.toFixed(2)}</div>` : ''}
       </div>
     </div>`
   }).join('')
@@ -1699,20 +1852,29 @@ async function loadReport() {
   document.getElementById('report-orders-list').innerHTML = listHtml
   document.getElementById('report-total-qty').textContent = totalQty.toLocaleString()
   document.getElementById('report-total-cmt').textContent = `£${totalCmt.toFixed(2)}`
-  reportData = { totalQty, totalCmt }
+  reportData = { totalQty, totalCmt, fabricCost, trimsCost, missingCostings, lines }
+  const warning = document.getElementById('report-costing-warning')
+  if (missingCostings > 0) {
+    warning.textContent = `⚠️ ${missingCostings} of ${orders.length} orders have no fabric costing — fabric/trims totals are understated. Add them in the Costings screen.`
+    warning.classList.remove('hidden')
+  } else warning.classList.add('hidden')
   updateSummary()
 }
 
 function updateSummary() {
   const hours = parseFloat(document.getElementById('report-hours').value) || 0
   const wages = parseFloat(document.getElementById('report-wages').value) || 0
-  const { totalQty, totalCmt } = reportData
-  const net = totalCmt - wages
+  const { totalQty, totalCmt, fabricCost, trimsCost } = reportData
+  const overheadCost = totalQty * overheadPerGarment
+  const net = totalCmt - wages - fabricCost - trimsCost - overheadCost
 
   document.getElementById('sum-qty').textContent = totalQty ? totalQty.toLocaleString() : '—'
   document.getElementById('sum-cmt').textContent = totalCmt ? `£${totalCmt.toFixed(2)}` : '—'
   document.getElementById('sum-hours').textContent = hours ? `${hours}h` : '—'
   document.getElementById('sum-wages').textContent = wages ? `£${wages.toFixed(2)}` : '—'
+  document.getElementById('sum-fabric').textContent = totalQty ? `£${fabricCost.toFixed(2)}` : '—'
+  document.getElementById('sum-trims').textContent = totalQty ? `£${trimsCost.toFixed(2)}` : '—'
+  document.getElementById('sum-overhead').textContent = totalQty ? `£${overheadCost.toFixed(2)}` : '—'
 
   const netEl = document.getElementById('sum-net')
   if (totalCmt && wages) {
@@ -1920,7 +2082,8 @@ async function saveReport() {
   const end = document.getElementById('report-week-end').value
   const hours = parseFloat(document.getElementById('report-hours').value) || 0
   const wages = parseFloat(document.getElementById('report-wages').value) || 0
-  const { totalQty, totalCmt } = reportData
+  const { totalQty, totalCmt, fabricCost, trimsCost } = reportData
+  const overheadCost = totalQty * overheadPerGarment
 
   if (!start || !end) return alert('Load a report first.')
 
@@ -1931,7 +2094,10 @@ async function saveReport() {
     total_cmt: totalCmt,
     hours_worked: hours,
     wage_cost: wages,
-    net: totalCmt - wages,
+    fabric_cost: fabricCost,
+    trims_cost: trimsCost,
+    overhead_cost: overheadCost,
+    net: totalCmt - wages - fabricCost - trimsCost - overheadCost,
   }, { onConflict: 'week_start' })
 
   if (error) return alert('Failed to save: ' + error.message)
@@ -1953,7 +2119,7 @@ async function loadSavedReports() {
   }
 
   el.innerHTML = data.map(r => {
-    const net = r.net ?? (r.total_cmt - r.wage_cost)
+    const net = r.net ?? (r.total_cmt - r.wage_cost - (r.fabric_cost||0) - (r.trims_cost||0) - (r.overhead_cost||0))
     const netColor = net >= 0 ? 'text-green-600' : 'text-red-500'
     const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })
     return `<div class="flex items-center justify-between py-3 border-b border-outline-variant/10 last:border-0 cursor-pointer hover:bg-surface-container-low rounded px-2 -mx-2" onclick="restoreReport(${JSON.stringify(r).replace(/"/g,'&quot;')})">
@@ -1975,6 +2141,135 @@ function restoreReport(r) {
 }
 
 // ── Import ────────────────────────────────────────────────────────────────────
+
+// ── Style Costings screen (manager-only) ────────────────────────────────────
+let costingsRows = []
+let costingEditIndex = -1
+let costingEditTrims = []
+
+async function loadCostings() {
+  const el = document.getElementById('costings-list')
+  el.innerHTML = '<p class="p-5 text-xs text-on-surface-variant">Loading…</p>'
+  const { data, error } = await sb.from('style_costings')
+    .select('style_no, style, description, cmt, price, fabric_metres, fabric_price_per_metre, trims')
+    .order('style_no', { ascending: true })
+  if (error) { el.innerHTML = `<p class="p-5 text-xs text-red-600">Failed to load: ${escHtml(error.message)}</p>`; return }
+  costingsRows = data || []
+  renderCostingsList()
+}
+
+function renderCostingsList() {
+  const query = (document.getElementById('costings-search').value || '').trim().toLowerCase()
+  const el = document.getElementById('costings-list')
+  const rows = costingsRows.map((costing, index) => ({ costing, index })).filter(({ costing }) => !query ||
+    (costing.style_no || '').toLowerCase().includes(query) ||
+    (costing.style || '').toLowerCase().includes(query) ||
+    (costing.description || '').toLowerCase().includes(query))
+  if (!rows.length) { el.innerHTML = '<p class="p-5 text-xs text-on-surface-variant">No styles found.</p>'; return }
+  el.innerHTML = rows.map(({ costing, index }) => {
+    const fabric = fabricPerGarment(costing)
+    const trims = trimsPerGarment(costing.trims)
+    const editable = !!(costing.style_no || costing.style)
+    return `<div class="flex items-center justify-between gap-3 px-5 py-3">
+      <div class="min-w-0">
+        <p class="text-xs font-semibold text-on-surface truncate">${escHtml(costing.style_no || costing.style || '(no style key)')}${costing.style_no && costing.style ? ` <span class="font-normal text-on-surface-variant">· ${escHtml(costing.style)}</span>` : ''}</p>
+        <p class="text-[11px] text-on-surface-variant truncate">${escHtml(costing.description || '')}</p>
+      </div>
+      <div class="text-right flex-shrink-0 text-[11px] text-on-surface-variant">
+        <span class="font-semibold text-on-surface">CMT ${costing.cmt != null ? '£'+Number(costing.cmt).toFixed(2) : '—'}</span>
+        · fabric ${fabric != null ? '£'+fabric.toFixed(2) : '<span class="text-amber-700 font-semibold">not set</span>'}
+        · trims £${trims.toFixed(2)}
+      </div>
+      ${editable ? `<button onclick="openCostingModal(${index})" class="flex-shrink-0 text-xs font-bold text-primary hover:underline">Edit</button>` : `<span class="flex-shrink-0 text-[10px] text-on-surface-variant" title="Row has no style_no or SKU so it cannot be updated">read-only</span>`}
+    </div>`
+  }).join('')
+}
+
+function openCostingModal(index) {
+  costingEditIndex = index
+  const costing = index >= 0 ? costingsRows[index] : {}
+  costingEditTrims = Array.isArray(costing.trims) ? costing.trims.map(trim => ({ name: trim?.name || '', cost: trim?.cost ?? '', qty: trim?.qty ?? 1 })) : []
+  document.getElementById('costing-modal-title').textContent = index >= 0 ? `Edit Costing — ${costing.style_no || costing.style}` : 'New Style Costing'
+  document.getElementById('costing-key-fields').innerHTML = index >= 0
+    ? `<div class="space-y-1"><label class="text-xs text-on-surface-variant">Style No</label><p class="h-10 flex items-center px-3 bg-surface-container-low rounded text-sm">${escHtml(costing.style_no || '—')}</p></div><div class="space-y-1"><label class="text-xs text-on-surface-variant">SKU</label><p class="h-10 flex items-center px-3 bg-surface-container-low rounded text-sm">${escHtml(costing.style || '—')}</p></div>`
+    : `<div class="space-y-1"><label class="text-xs text-on-surface-variant">Style No</label><input id="costing-new-style-no" type="text" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm"/></div><div class="space-y-1"><label class="text-xs text-on-surface-variant">SKU</label><input id="costing-new-style" type="text" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm"/></div>`
+  document.getElementById('costing-cmt').value = costing.cmt ?? ''
+  document.getElementById('costing-price').value = costing.price ?? ''
+  document.getElementById('costing-fabric-metres').value = costing.fabric_metres ?? ''
+  document.getElementById('costing-fabric-price').value = costing.fabric_price_per_metre ?? ''
+  document.getElementById('costing-error').classList.add('hidden')
+  renderTrimRows()
+  updateCostingPreview()
+  document.getElementById('costing-modal').classList.remove('hidden')
+}
+
+function closeCostingModal() { document.getElementById('costing-modal').classList.add('hidden') }
+
+function renderTrimRows() {
+  document.getElementById('costing-trims-rows').innerHTML = costingEditTrims.map((trim, index) => `
+    <div class="grid grid-cols-[1fr_90px_70px_28px] gap-2 items-center">
+      <input type="text" value="${escHtml(trim.name)}" placeholder="e.g. Zip" class="h-9 bg-surface-container border-none rounded px-2.5 text-xs" oninput="costingEditTrims[${index}].name = this.value"/>
+      <input type="number" min="0" step="0.01" value="${trim.cost}" placeholder="0.40" class="h-9 bg-surface-container border-none rounded px-2.5 text-xs" oninput="costingEditTrims[${index}].cost = this.value; updateCostingPreview()"/>
+      <input type="number" min="0" step="1" value="${trim.qty}" placeholder="1" class="h-9 bg-surface-container border-none rounded px-2.5 text-xs" oninput="costingEditTrims[${index}].qty = this.value; updateCostingPreview()"/>
+      <button onclick="removeTrimRow(${index})" class="text-on-surface-variant hover:text-red-600"><span class="material-symbols-outlined" style="font-size:18px;">delete</span></button>
+    </div>`).join('') || '<p class="text-[11px] text-on-surface-variant">No trims — click “+ Add trim”.</p>'
+}
+
+function addTrimRow() { costingEditTrims.push({ name: '', cost: '', qty: 1 }); renderTrimRows(); updateCostingPreview() }
+function removeTrimRow(index) { costingEditTrims.splice(index, 1); renderTrimRows(); updateCostingPreview() }
+
+function updateCostingPreview() {
+  const metres = parseFloat(document.getElementById('costing-fabric-metres').value)
+  const price = parseFloat(document.getElementById('costing-fabric-price').value)
+  const fabric = isFinite(metres) && isFinite(price) ? metres * price : null
+  const trims = trimsPerGarment(costingEditTrims)
+  const cmt = parseFloat(document.getElementById('costing-cmt').value) || 0
+  document.getElementById('costing-total-preview').innerHTML = `Per garment: fabric <b>${fabric != null ? '£'+fabric.toFixed(2) : 'not set'}</b> · trims <b>£${trims.toFixed(2)}</b> · CMT <b>£${cmt.toFixed(2)}</b> → total cost <b>£${((fabric||0) + trims).toFixed(2)}</b> + overhead (set on Reports screen)`
+}
+
+async function saveCosting() {
+  const errorEl = document.getElementById('costing-error')
+  errorEl.classList.add('hidden')
+  const numberFrom = id => { const value = parseFloat(document.getElementById(id).value); return isFinite(value) ? value : null }
+  const trims = costingEditTrims.map(trim => ({ name: String(trim.name || '').trim(), cost: parseFloat(trim.cost), qty: parseFloat(trim.qty) })).filter(trim => trim.name && isFinite(trim.cost) && isFinite(trim.qty) && trim.qty > 0)
+  const payload = { cmt: numberFrom('costing-cmt'), price: numberFrom('costing-price'), fabric_metres: numberFrom('costing-fabric-metres'), fabric_price_per_metre: numberFrom('costing-fabric-price'), trims }
+  let error
+  if (costingEditIndex >= 0) {
+    const costing = costingsRows[costingEditIndex]
+    let query = sb.from('style_costings').update(payload)
+    if (costing.style_no) query = query.ilike('style_no', costing.style_no)
+    else query = query.ilike('style', costing.style)
+    ;({ error } = await query)
+  } else {
+    const style_no = (document.getElementById('costing-new-style-no').value || '').trim() || null
+    const style = (document.getElementById('costing-new-style').value || '').trim() || null
+    if (!style_no && !style) { errorEl.textContent = 'Enter a Style No or SKU.'; errorEl.classList.remove('hidden'); return }
+    ;({ error } = await sb.from('style_costings').insert({ style_no, style, ...payload }))
+  }
+  if (error) { errorEl.textContent = 'Failed to save: ' + error.message; errorEl.classList.remove('hidden'); return }
+  closeCostingModal()
+  loadCostings()
+}
+
+function exportReportPdf() {
+  const { totalQty, totalCmt, fabricCost, trimsCost, missingCostings, lines } = reportData
+  if ((!lines || !lines.length) && !totalQty) { alert('Load a report first.'); return }
+  const start = document.getElementById('report-week-start').value
+  const end = document.getElementById('report-week-end').value
+  const hours = parseFloat(document.getElementById('report-hours').value) || 0
+  const wages = parseFloat(document.getElementById('report-wages').value) || 0
+  const overheadCost = totalQty * overheadPerGarment
+  const net = totalCmt - wages - fabricCost - trimsCost - overheadCost
+  const formatDate = date => new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const rows = lines.map(line => `<tr><td>${escHtml(line.po || '—')}</td><td>${escHtml(line.description)}${line.colour ? ' · ' + escHtml(line.colour) : ''}${line.missing ? ' <span class="chip">no costing</span>' : ''}</td><td class="r">${line.qty}</td><td class="r">${line.cmt ? '£'+line.cmt.toFixed(2) : '—'}</td><td class="r">£${line.lineVal.toFixed(2)}</td><td class="r">£${line.lineFabric.toFixed(2)}</td><td class="r">£${line.lineTrims.toFixed(2)}</td><td class="r">£${(line.qty * overheadPerGarment).toFixed(2)}</td></tr>`).join('')
+  const stat = (label, value) => `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`
+  const win = window.open('', '_blank')
+  if (!win) { alert('Allow pop-ups to export the report.'); return }
+  win.document.write(`<!DOCTYPE html><html><head><title>Weekly Report ${start} — Denovo Apparel</title><style>
+    @page{size:A4 portrait;margin:14mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,sans-serif;font-size:12px;color:#111}.header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #0e0e0e;padding-bottom:10px;margin-bottom:14px}.eyebrow{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#576062;margin-bottom:3px}.title{font-size:20px;font-weight:900}.header-right{font-size:10px;color:#888;text-align:right}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}.stat{border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px}.label{font-size:8px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#888;margin-bottom:3px}.value{font-size:15px;font-weight:800}.net{border:2px solid #0e0e0e;border-radius:8px;padding:10px 12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}.net .value{font-size:20px}.pos{color:#1e8e3e}.neg{color:#c5221f}table{width:100%;border-collapse:collapse;font-size:10px}thead tr{background:#0e0e0e;color:#fff}th{padding:6px 7px;text-align:left;font-size:8px;text-transform:uppercase}th.r,td.r{text-align:right}tbody tr:nth-child(even){background:#f6f3f2}td{padding:6px 7px;border-bottom:1px solid #e5e5e5}.chip{background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:999px;font-size:8px;font-weight:800}.warn{margin-top:10px;font-size:10px;color:#92400e}.foot{margin-top:10px;font-size:9px;color:#888}
+  </style></head><body><div class="header"><div><div class="eyebrow">Denovo Apparel Ltd</div><div class="title">Weekly Production Report</div></div><div class="header-right">Week: ${formatDate(start)} – ${formatDate(end)}<br>Generated: ${new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })}</div></div><div class="stats">${stat('Garments Made', totalQty.toLocaleString())}${stat('CMT Earned', '£'+totalCmt.toFixed(2))}${stat('Hours Worked', hours ? hours+'h' : '—')}${stat('Wage Cost', '£'+wages.toFixed(2))}${stat('Fabric Cost', '£'+fabricCost.toFixed(2))}${stat('Trimmings Cost', '£'+trimsCost.toFixed(2))}${stat('Overhead (£'+overheadPerGarment.toFixed(2)+'/garment)', '£'+overheadCost.toFixed(2))}</div><div class="net"><div class="label">Net Profit = CMT − Wages − Fabric − Trims − Overhead</div><div class="value ${net >= 0 ? 'pos' : 'neg'}">£${net.toFixed(2)}</div></div><table><thead><tr><th>PO</th><th>Description</th><th class="r">Qty</th><th class="r">CMT/pc</th><th class="r">CMT £</th><th class="r">Fabric £</th><th class="r">Trims £</th><th class="r">Overhead £</th></tr></thead><tbody>${rows}</tbody></table>${missingCostings ? `<p class="warn">⚠️ ${missingCostings} order(s) have no fabric costing — fabric/trims figures are understated for those lines.</p>` : ''}<p class="foot">Overhead applied at £${overheadPerGarment.toFixed(2)} per garment across all garments made.</p><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}<\/script></body></html>`)
+  win.document.close()
+}
 
 let importFiles = { pdf: null, csv: null }
 
