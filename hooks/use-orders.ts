@@ -30,7 +30,7 @@ export function useOrders(callbacks: RealtimeCallbacks = {}): {
       console.error('Load orders error:', error)
       Alert.alert('Error', 'Could not load orders.')
     } else {
-      setOrders((data as Order[]) || [])
+      setOrders(((data as Order[]) || []).sort(sortOrders))
     }
     if (isRefresh) setRefreshing(false)
     else setLoading(false)

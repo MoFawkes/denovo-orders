@@ -44,6 +44,8 @@ import OrderCard from '../components/orders/OrderCard'
 import OrderNotesCard from '../components/orders/OrderNotesCard'
 import PackingListLinkCard from '../components/orders/PackingListLinkCard'
 import StageSelector from '../components/orders/StageSelector'
+import OrderTimeline from '../components/orders/OrderTimeline'
+import { useOrderEvents } from '../hooks/use-order-events'
 import { colors, radius, spacing, typography } from '../theme/tokens'
 
 // Persists search and tab state across navigation (component remounts)
@@ -76,6 +78,7 @@ export default function OpoScreen() {
       setSelectedOrder((previous) => previous?.id === deletedOrder.id ? null : previous)
     },
   })
+  const { events: orderEvents, loading: eventsLoading, reload: reloadOrderEvents } = useOrderEvents(selectedOrder?.id ?? null)
 
   function updateSearchQuery(q: string) {
     _savedSearchQuery = q
@@ -313,6 +316,7 @@ export default function OpoScreen() {
         userId: user?.id ?? null,
         packingListUrl,
       })
+      await reloadOrderEvents()
 
       if (newStage === 'Completed') {
         setSelectedOrder(null)
@@ -766,6 +770,8 @@ export default function OpoScreen() {
                 canAdvanceStage={canAdvanceStage}
                 onStagePress={(stage) => handleStagePress(selectedOrder, stage)}
               />
+
+              <OrderTimeline events={orderEvents} loading={eventsLoading} />
 
               {canEdit &&
               selectedOrder.stage !== 'Completed' &&

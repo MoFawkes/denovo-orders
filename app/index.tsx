@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import ScreenContainer from '../components/layout/ScreenContainer'
@@ -6,56 +6,15 @@ import OperationalHeader from '../components/OperationalHeader'
 import KpiCard from '../components/KpiCard'
 import SectionHeader from '../components/SectionHeader'
 import OrderRow from '../components/OrderRow'
+import StageBreakdownCard from '../components/StageBreakdownCard'
+import DueOrderRow from '../components/DueOrderRow'
 import BottomTabBar from '../components/navigation/BottomTabBar'
-import { supabase } from '../lib/supabase'
-import type { Order } from '../lib/types'
+import { useOrders } from '../hooks/use-orders'
+import { parseExFactory } from '../lib/order-workflow'
 import { colors, spacing, typography } from '../theme/tokens'
 
-function getStageRank(stage: Order['stage']) {
-  switch (stage) {
-    case 'Booked':
-      return 0
-    case 'Ready':
-      return 1
-    case 'Packing':
-      return 2
-    case 'Production':
-      return 3
-    case 'Cutting':
-      return 4
-    case 'Pending':
-      return 5
-    case 'Completed':
-      return 6
-    case 'Cancelled':
-      return 7
-    default:
-      return 5
-  }
-}
-
 export default function IndexScreen() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    loadOrders()
-  }, [])
-
-  async function loadOrders() {
-    setLoading(true)
-
-    const { data, error } = await supabase.from('orders').select('*')
-
-    if (error) {
-      console.log('Load dashboard orders error:', error)
-      setOrders([])
-    } else {
-      setOrders(((data as Order[]) || []).sort((a, b) => getStageRank(a.stage) - getStageRank(b.stage)))
-    }
-
-    setLoading(false)
-  }
+  const { orders, loading } = useOrders()
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.stage !== 'Completed' && order.stage !== 'Cancelled'),
@@ -76,6 +35,20 @@ export default function IndexScreen() {
       ).length,
     [activeOrders]
   )
+
+  const dueOrders = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dayMs = 24 * 60 * 60 * 1000
+
+    return activeOrders
+      .map((order) => ({ order, timestamp: parseExFactory(order.ex_factory) }))
+      .filter(({ timestamp }) => timestamp > 0)
+      .map(({ order, timestamp }) => ({ order, timestamp, days: Math.round((timestamp - today.getTime()) / dayMs) }))
+      .filter(({ days }) => days <= 7)
+      .sort((a, b) => Number(b.order.stage === 'Booked') - Number(a.order.stage === 'Booked') || a.timestamp - b.timestamp)
+      .slice(0, 5)
+  }, [activeOrders])
 
   return (
     <ScreenContainer>
@@ -109,6 +82,22 @@ export default function IndexScreen() {
             tone="warning"
           />
         </View>
+
+        <StageBreakdownCard orders={activeOrders} />
+
+        <SectionHeader
+          title="Due Soon / Overdue"
+          actionText="View All Orders"
+          onPress={() => router.push('/opo')}
+        />
+        {dueOrders.length ? dueOrders.map(({ order, days }) => (
+          <DueOrderRow
+            key={order.id}
+            order={order}
+            days={days}
+            onPress={() => router.push({ pathname: '/opo', params: { orderId: order.id } })}
+          />
+        )) : <Text style={styles.emptyState}>No orders due within seven days.</Text>}
 
         <SectionHeader
           title="Recent Active Orders"
