@@ -26,3 +26,24 @@ alter table public.orders enable row level security;
 
 create table public.style_costings (id uuid primary key);
 
+create table public.order_events (
+  id uuid primary key,
+  order_id uuid references public.orders (id) on delete cascade,
+  old_stage text,
+  new_stage text,
+  changed_by uuid references public.profiles (id),
+  created_at timestamptz default now()
+);
+
+create table public.weekly_reports (
+  id uuid primary key,
+  week_start date,
+  week_end date,
+  total_qty integer,
+  total_cmt numeric,
+  hours_worked numeric,
+  wage_cost numeric,
+  net numeric,
+  created_at timestamptz default now()
+);
+
