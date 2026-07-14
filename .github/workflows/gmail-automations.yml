@@ -8,7 +8,15 @@ name: Gmail automations
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # Deliberately not "0 * * * *": the top of the hour is the single most
+    # congested minute across all of GitHub Actions (everyone schedules
+    # there), and GitHub's own docs warn scheduled runs get delayed or
+    # dropped under that load. Measured via the Actions API: with "0 * * *
+    # *" this workflow's actual median gap between runs was ~97 minutes,
+    # not 60, with some gaps over 4 hours -- not caused by job runtime
+    # (every job here finishes in under a minute). Picking an off-the-hour
+    # minute avoids that contention.
+    - cron: "13 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
