@@ -242,12 +242,21 @@ export function buildPackingListWorkbook({
     { width: 18.43 }, { width: 11.71 }, { width: 23.57 }, { width: 13 }, { width: 20 }, { width: 19.71 },
   ];
 
-  const M = { style: 'medium', color: { argb: 'FF000000' } };
-  const T = { style: 'thin', color: { argb: 'FF000000' } };
-  const RED = { argb: 'FFFF0000' };
-  const georgia = (size, extra = {}) => ({ name: 'Georgia', size, ...extra });
-  const arial = (extra = {}) => ({ name: 'Arial', ...extra });
-  const calibri = { name: 'Calibri', size: 11 };
+  // "Shipping manifest" palette: navy carries the identity through text and
+  // rules rather than the old solid red/black fills, so the reserved
+  // 25-row table doesn't drown the page (or the printer) in ink. Oswald
+  // (condensed, uppercase) reads as a stencilled label; Roboto Mono
+  // (tabular figures) reads as typed data -- both are standard Google
+  // Fonts, so Sheets renders them without the file embedding anything.
+  const INK = { argb: 'FF16233F' };
+  const ACCENT = { argb: 'FF1B3A66' };
+  const MUTED = { argb: 'FF5E6F8C' };
+  const LINE = { argb: 'FFC3D0E3' };
+
+  const M = { style: 'medium', color: ACCENT };
+  const T = { style: 'thin', color: LINE };
+  const oswald = (size, extra = {}) => ({ name: 'Oswald', size, color: ACCENT, ...extra });
+  const mono = (size, extra = {}) => ({ name: 'Roboto Mono', size, color: INK, ...extra });
   const centre = { horizontal: 'center', vertical: 'bottom' };
   const middle = { horizontal: 'center', vertical: 'middle' };
   const asNumber = (v) => (/^\d+$/.test(String(v)) ? Number(v) : v);
@@ -262,42 +271,39 @@ export function buildPackingListWorkbook({
     if (fill) cell.fill = fill;
   };
 
-  // Title, plus the top edge of the boxed Delivery Note table in column F.
+  // Title, plus a navy rule under the whole header band.
   ws.mergeCells('C1:D1');
-  set('C1', 'PACKING LIST', { font: georgia(16, { bold: true, color: RED }), alignment: centre });
-  set('F1', ' ', { border: { bottom: M } });
+  set('C1', 'PACKING LIST', { font: { name: 'Oswald', size: 18, bold: true, color: ACCENT }, alignment: { horizontal: 'left', vertical: 'bottom' } });
+  ['A1', 'B1', 'C1', 'D1', 'E1', 'F1'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
 
-  // Left header block (Georgia) and the medium-boxed E/F fields (Arial).
+  // Left header block (Oswald labels / Roboto Mono values) and the
+  // left-accent-barred Delivery Note fields (E/F).
   ws.mergeCells('B2:C2');
-  set('A2', 'Customer:', { font: georgia(13, { bold: true }), alignment: centre });
-  set('B2', 'Pretty Little Thing', { font: georgia(13) });
-  set('E2', 'Delivery Note No.', { font: arial({ bold: true }), border: { top: M, bottom: M, left: M, right: M }, alignment: centre });
-  set('F2', asNumber(invoice), { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+  set('A2', 'Customer:', { font: oswald(10, { bold: true }), alignment: centre });
+  set('B2', 'Pretty Little Thing', { font: mono(10, { bold: true }) });
+  set('E2', 'Delivery Note No.', { font: oswald(9), border: { top: T, left: M, right: T, bottom: T }, alignment: centre });
+  set('F2', asNumber(invoice), { font: mono(10, { bold: true }), border: { top: T, right: T, bottom: T }, alignment: { horizontal: 'right' } });
 
   ws.mergeCells('B3:D3');
-  set('A3', 'Delivery Address :', { font: georgia(9, { bold: true }) });
-  set('B3', 'Shepcote Lane, Sheffield  S9 1RF', {
-    font: georgia(9, { color: { argb: 'FF222222' } }),
-    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' }, bgColor: { argb: 'FFFFFFFF' } },
-  });
-  set('D3', undefined, { border: { right: M } });
-  set('E3', 'Dispatch Date', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
-  set('F3', dispatchDate ?? '', { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+  set('A3', 'Delivery Address :', { font: oswald(9, { bold: true }) });
+  set('B3', 'Shepcote Lane, Sheffield  S9 1RF', { font: mono(9) });
+  set('E3', 'Dispatch Date', { font: oswald(9), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('F3', dispatchDate ?? '', { font: mono(10, { bold: true }), border: { right: T, bottom: T }, alignment: { horizontal: 'right' } });
 
   ws.mergeCells('B4:C4');
-  set('E4', 'Delivery Date', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
-  set('F4', deliveryDate ?? '', { font: arial(), border: { right: M, bottom: M }, alignment: { horizontal: 'center' } });
+  set('E4', 'Delivery Date', { font: oswald(9), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('F4', deliveryDate ?? '', { font: mono(10, { bold: true }), border: { right: T, bottom: T }, alignment: { horizontal: 'right' } });
 
   ws.mergeCells('B5:C5');
-  set('A5', 'SUPPLIER:', { font: georgia(13, { bold: true }), alignment: centre });
-  set('B5', 'DENOVO SOURCING', { font: georgia(13) });
-  set('E5', 'Booking Ref.', { font: arial({ bold: true }), border: { right: M, bottom: M }, alignment: centre });
-  set('F5', bookingRef ?? '', { font: arial(), border: { top: M, bottom: M, left: M, right: M }, alignment: { horizontal: 'center' } });
+  set('A5', 'SUPPLIER:', { font: oswald(10, { bold: true }), alignment: centre });
+  set('B5', 'DENOVO SOURCING', { font: mono(10, { bold: true }) });
+  set('E5', 'Booking Ref.', { font: oswald(9), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('F5', bookingRef ?? '', { font: mono(10, { bold: true }), border: { top: T, right: T, bottom: T }, alignment: { horizontal: 'right' } });
 
-  set('B6', '25 Temple Building, Temple Road', { font: georgia(9) });
+  set('B6', 'Unit 1 Ali House, Frisby Road', { font: mono(9) });
   ws.mergeCells('B7:C7');
-  set('B7', 'Leicester', { font: georgia(9) });
-  set('B8', 'LE5 4JG', { font: georgia(9) });
+  set('B7', 'Leicester', { font: mono(9) });
+  set('B8', 'LE5 0DP', { font: mono(9) });
 
   // Separator rule under the supplier block.
   ws.mergeCells('A9:B9');
@@ -307,31 +313,32 @@ export function buildPackingListWorkbook({
   // Labelled field rows — label with the value in the next cell; this shape
   // is what extractPackingListFields matches on, do not change.
   ws.mergeCells('B10:C10');
-  set('A10', 'PO Reference', { font: arial(), border: { left: M, right: M, bottom: T }, alignment: centre });
-  set('B10', asNumber(poDisplay), { font: arial(), border: { bottom: T }, alignment: centre });
-  set('C10', undefined, { border: { right: M, bottom: T } });
+  set('A10', 'PO Reference', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('B10', asNumber(poDisplay), { font: mono(10), border: { bottom: T }, alignment: centre });
+  set('C10', undefined, { border: { right: T, bottom: T } });
 
   ws.mergeCells('B11:C11');
   ws.mergeCells('D11:E11');
-  set('A11', 'Internal Code', { font: arial(), border: { left: M, right: T, bottom: T }, alignment: centre });
-  set('B11', internalCode, { font: arial(), border: { bottom: T }, alignment: centre });
+  set('A11', 'Internal Code', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('B11', internalCode, { font: mono(10), border: { bottom: T }, alignment: centre });
   set('C11', undefined, { border: { right: T, bottom: T } });
   set('E11', undefined, { border: { right: T, bottom: T } });
 
   ws.mergeCells('B12:E12');
-  set('A12', 'Description', { font: arial(), border: { left: M, right: T, bottom: T }, alignment: centre });
-  set('B12', description, { font: arial(), border: { bottom: T }, alignment: { vertical: 'bottom', wrapText: true } });
+  set('A12', 'Description', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
+  set('B12', description, { font: mono(10), border: { bottom: T }, alignment: { vertical: 'bottom', wrapText: true } });
   set('C12', undefined, { border: { bottom: T } });
   set('D12', undefined, { border: { bottom: T } });
   set('E12', undefined, { border: { right: T, bottom: T } });
 
-  // Carton table header (row 14; row 13 stays blank).
-  set('A14', 'Colour Breakdown', { font: arial({ bold: true }), border: { left: M, right: M, bottom: M }, alignment: centre });
-  set('B14', 'Size', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
-  set('C14', 'Qty per Box', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
-  set('D14', 'No of Boxes', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
-  set('E14', 'Total Pcs', { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
-  set('F14', 'Carton Nos.', { font: arial({ bold: true }), border: { right: M, bottom: T }, alignment: centre });
+  // Carton table header (row 14; row 13 stays blank), with a heavier navy
+  // rule under it instead of a solid fill.
+  set('A14', 'Colour Breakdown', { font: oswald(9, { bold: true }), border: { left: T, right: T, bottom: M }, alignment: centre });
+  set('B14', 'Size', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('C14', 'Qty per Box', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('D14', 'No of Boxes', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('E14', 'Total Pcs', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('F14', 'Carton Nos.', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
 
   // Data rows: sizes/qty-per-box/carton numbers are stored as text (like the
   // hand-made sheets); Total Pcs is a live formula so edits recompute.
@@ -340,22 +347,23 @@ export function buildPackingListWorkbook({
   rows.forEach((r, i) => {
     const rn = dataStart + i;
     if (r.colourLabel) {
-      set(`A${rn}`, r.colourLabel, { font: calibri, border: { left: T, right: T, bottom: T }, alignment: middle });
+      set(`A${rn}`, r.colourLabel, { font: mono(10, { bold: true }), border: { left: T, right: T, bottom: T }, alignment: middle });
     }
-    set(`B${rn}`, r.size, { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
-    set(`C${rn}`, String(r.qty), { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
-    set(`D${rn}`, r.boxes, { font: calibri, border: { right: T, bottom: T }, alignment: middle });
-    set(`E${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: calibri, border: { right: T, bottom: T }, alignment: middle });
-    set(`F${rn}`, r.cartons, { font: calibri, border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`B${rn}`, r.size, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`C${rn}`, String(r.qty), { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`D${rn}`, r.boxes, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
+    set(`E${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
+    set(`F${rn}`, r.cartons, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
   });
 
   // Totals sit at row 40 like the hand-made template (the gap rows stay
-  // blank), pushed down only if a delivery overflows the template area.
+  // blank), pushed down only if a delivery overflows the template area. A
+  // navy rule above the row stands in for the old solid fill.
   const totalRowNum = Math.max(40, dataStart + rows.length + 1);
   const sumBottom = totalRowNum - 1;
-  set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: arial({ bold: true }), border: { left: T, right: T, bottom: T }, alignment: centre });
-  set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
-  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: arial({ bold: true, color: RED }), border: { right: T, bottom: T }, alignment: centre });
+  set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: oswald(9, { bold: true }), border: { left: T, right: T, top: M }, alignment: centre });
+  set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
+  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
   ws.getRow(totalRowNum).height = 15.75;
 
   const footerStart = totalRowNum + 2;
@@ -370,7 +378,7 @@ export function buildPackingListWorkbook({
   footer.forEach((line, i) => {
     const rn = footerStart + i;
     ws.mergeCells(`A${rn}:F${rn}`);
-    set(`A${rn}`, line, { font: arial({ size: 9 }), alignment: centre });
+    set(`A${rn}`, line, { font: { name: 'Roboto Mono', size: 8, color: MUTED }, alignment: centre });
     ws.getRow(rn).height = 12;
   });
 

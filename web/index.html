@@ -2701,10 +2701,13 @@ async function onStickerFileChange(input) {
     // Split combined SKU (e.g. "CNQ6176/CNQ6177") into per-colour parts
     const skuParts = String(sku).split('/')
 
-    // Parse colour sections — col A starts a new section when non-empty
+    // Parse colour sections — col A starts a new section when non-empty.
+    // Rows 15-39 is the sheet's full reserved table capacity (see
+    // buildPackingListWorkbook in scripts/gmail-automations/lib/domain.mjs)
+    // — stopping at 38 would silently drop a 25th carton.
     const sections = []
     let totalPcs = 0
-    for (let r = 15; r <= 38; r++) {
+    for (let r = 15; r <= 39; r++) {
       const colA = ws.getCell(r, 1).value
       if (colA && typeof colA === 'string' && colA.trim()) {
         const idx = sections.length
