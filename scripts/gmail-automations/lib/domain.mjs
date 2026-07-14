@@ -356,11 +356,18 @@ export function buildPackingListWorkbook({
     set(`F${rn}`, r.cartons, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
   });
 
-  // Totals sit at row 40 like the hand-made template (the gap rows stay
-  // blank), pushed down only if a delivery overflows the template area. A
-  // navy rule above the row stands in for the old solid fill.
+  // Totals sit at row 40 like the hand-made template, pushed down only if a
+  // delivery overflows the template area. The rows between the last real
+  // carton and the totals stay valueless but still get the grid -- without
+  // it the table visually dead-ends after the last order line, leaving a
+  // blank gap before the totals rather than reading as a reserved,
+  // consistently-sized table regardless of order size.
   const totalRowNum = Math.max(40, dataStart + rows.length + 1);
   const sumBottom = totalRowNum - 1;
+  for (let rn = dataStart + rows.length; rn <= sumBottom; rn++) {
+    set(`A${rn}`, undefined, { border: { left: T, right: T, bottom: T } });
+    ['B', 'C', 'D', 'E', 'F'].forEach((col) => set(`${col}${rn}`, undefined, { border: { right: T, bottom: T } }));
+  }
   set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: oswald(9, { bold: true }), border: { left: T, right: T, top: M }, alignment: centre });
   set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
   set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
