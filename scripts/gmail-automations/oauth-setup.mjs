@@ -42,7 +42,8 @@ authUrl.searchParams.set('scope', SCOPES);
 authUrl.searchParams.set('access_type', 'offline');
 authUrl.searchParams.set('prompt', 'consent'); // force a refresh_token even on re-auth
 
-console.log('Open this URL in your browser and grant access to denovogb@gmail.com:\n');
+console.log('Open this URL in your browser and sign in as the mailbox you are minting a token for');
+console.log('(denovogb@gmail.com or denovosourcing@gmail.com — one run per mailbox):\n');
 console.log(authUrl.toString());
 console.log('\nWaiting for the redirect back to localhost...\n');
 
@@ -86,7 +87,10 @@ const server = http.createServer(async (req, res) => {
     process.exit(1);
   }
 
-  console.log('Success. Add this as the GMAIL_OAUTH_REFRESH_TOKEN secret in GitHub (Settings > Secrets and variables > Actions):\n');
+  console.log('Success. Add this as a GitHub secret (Settings > Secrets and variables > Actions).');
+  console.log('The secret name depends on which account you just signed in as:\n');
+  console.log('  denovogb@gmail.com        -> GMAIL_OAUTH_REFRESH_TOKEN');
+  console.log('  denovosourcing@gmail.com  -> GMAIL_SOURCING_OAUTH_REFRESH_TOKEN\n');
   console.log(tokenJson.refresh_token);
   console.log('\nThis value is only shown here, in your own terminal — copy it now.');
 });

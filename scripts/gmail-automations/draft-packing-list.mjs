@@ -27,6 +27,7 @@
 // Requires the drive.file scope on the denovogb refresh token (upload); see
 // oauth-setup.mjs — tokens issued before that scope was added need a re-run.
 import { pathToFileURL } from 'node:url';
+import sharp from 'sharp';
 import {
   getAccessToken,
   searchThreads,
@@ -63,6 +64,21 @@ import {
 const VISION_MODEL = 'claude-sonnet-5';
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// The Claude API rejects images over 8000px on a side or 10 MB encoded, and
+// full-resolution phone photos forwarded by email hit both (issue #24). The
+// model downsamples to ~1568px on the long edge anyway, so shrinking to that
+// bound loses nothing while guaranteeing both limits.
+const MAX_IMAGE_EDGE = 1568;
+
+async function prepareImage(buffer) {
+  const resized = await sharp(buffer)
+    .rotate() // bake in EXIF orientation before re-encoding strips it
+    .resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  return { mediaType: 'image/jpeg', data: resized.toString('base64') };
+}
 
 const SYSTEM_PROMPT = `You extract packing data from photos of printed "DOCKET SHEET" pages with handwritten quantities, for Denovo Apparel's order tracker.
 
@@ -120,7 +136,14 @@ async function processNewThread(ctx, thread) {
     for (const att of listAttachments(message)) {
       if (IMAGE_TYPES.has(att.mimeType)) {
         const buffer = await getAttachment(accessToken, message.id, att.attachmentId);
-        images.push({ mediaType: att.mimeType, data: buffer.toString('base64') });
+        try {
+          images.push(await prepareImage(buffer));
+        } catch (err) {
+          // A corrupt attachment won't fix itself on retry — hand it to a human.
+          console.error(`  undecodable ${att.mimeType} attachment on thread ${thread.id}: ${err.message}`);
+          await modifyThreadLabels(accessToken, thread.id, { add: [labels.needsReview] });
+          return { outcome: 'needs_review', reason: 'undecodable photo attachment' };
+        }
       }
     }
   }

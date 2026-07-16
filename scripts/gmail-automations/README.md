@@ -46,10 +46,15 @@ running hourly on a normal GitHub-hosted runner with full internet access
 2. Enable the **Gmail API**, **Google Tasks API** and **Google Drive API**
    (APIs & Services > Library).
 3. Configure the **OAuth consent screen** (APIs & Services > OAuth consent
-   screen): External, Testing mode. Add `denovogb@gmail.com` **and**
-   `denovosourcing@gmail.com` as test users — the client is shared across
-   both mailboxes (it identifies the app, not the mailbox; the mailbox
-   binding only happens when you sign in during step 2).
+   screen): External, then **Publish app** so the publishing status is
+   **In production** — do NOT leave it in Testing mode. Testing-mode
+   external apps get refresh tokens that Google expires after **7 days**
+   (this took the docket automation down on 2026-07-16), which defeats the
+   whole setup. Don't submit for verification: unverified is fine for our
+   two accounts; the only effect is an "unverified app" warning during the
+   sign-in in step 2 (click Advanced > Go to app). The client is shared
+   across both mailboxes (it identifies the app, not the mailbox; the
+   mailbox binding only happens when you sign in during step 2).
 4. Create credentials (APIs & Services > Credentials > Create Credentials >
    OAuth client ID) of type **Desktop app**. Note the Client ID and Client
    Secret — you'll need them in the next step and to add as GitHub secrets.
@@ -113,11 +118,19 @@ is replaced by a `[dry-run]` log line.
 Runs hourly via cron (`0 * * * *`, UTC) automatically once the secrets above
 are in place. No further action needed.
 
-If Google ever revokes a refresh token (rare — happens after ~6 months of
-inactivity in Testing-mode consent screens, or if you change the account
-password), re-run step 2 for that mailbox and update the matching secret
+If a job fails with `invalid_grant: Token has been expired or revoked`,
+re-run step 2 for that mailbox and update the matching secret
 (`GMAIL_OAUTH_REFRESH_TOKEN` for `denovogb`, `GMAIL_SOURCING_OAUTH_REFRESH_TOKEN`
-for `denovosourcing`).
+for `denovosourcing`). Causes, most likely first:
+
+- The consent screen slipped back to (or never left) **Testing** publishing
+  status — Testing-mode refresh tokens expire after 7 days, and tokens
+  minted *while* in Testing keep that 7-day expiry even after the app is
+  published. Publish to production (step 1.3), then re-mint **both** tokens.
+- The account password was changed, or access was revoked from the
+  account's Security > Third-party access page.
+- ~6 months of complete inactivity (won't happen while the hourly cron is
+  running).
 
 ## Retry safety and recovery
 
