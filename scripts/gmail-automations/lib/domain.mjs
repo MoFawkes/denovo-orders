@@ -241,6 +241,21 @@ export function buildPackingListWorkbook({
   ws.columns = [
     { width: 18.43 }, { width: 11.71 }, { width: 23.57 }, { width: 13 }, { width: 20 }, { width: 19.71 },
   ];
+  // The hand-made template this mirrors is locked to A4 with tight 0.25"
+  // side margins; without it, export falls back to whatever default paper
+  // size/margins Google Sheets picks (not necessarily A4), which is why it
+  // wasn't fitting on one page without the user manually scaling in the
+  // print dialog. fitToPage is a safety net on top of that for the same
+  // reason -- font-metric differences between Oswald/Roboto Mono and the
+  // old Georgia/Arial can shift things by a hair even with correct margins.
+  ws.pageSetup = {
+    paperSize: 9, // A4
+    orientation: 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    margins: { left: 0.25, right: 0.25, top: 0.75, bottom: 0.75, header: 0, footer: 0 },
+  };
 
   // "Shipping manifest" palette: navy carries the identity through text and
   // rules rather than the old solid red/black fills, so the reserved
@@ -271,9 +286,10 @@ export function buildPackingListWorkbook({
     if (fill) cell.fill = fill;
   };
 
-  // Title, plus a navy rule under the whole header band.
-  ws.mergeCells('C1:D1');
-  set('C1', 'PACKING LIST', { font: { name: 'Oswald', size: 18, bold: true, color: ACCENT }, alignment: { horizontal: 'left', vertical: 'bottom' } });
+  // Title, centred across the sheet, plus a navy rule under the whole
+  // header band.
+  ws.mergeCells('A1:F1');
+  set('A1', 'PACKING LIST', { font: { name: 'Oswald', size: 18, bold: true, color: ACCENT }, alignment: { horizontal: 'center', vertical: 'bottom' } });
   ['A1', 'B1', 'C1', 'D1', 'E1', 'F1'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
 
   // Left header block (Oswald labels / Roboto Mono values) and the
@@ -305,31 +321,36 @@ export function buildPackingListWorkbook({
   set('B7', 'Leicester', { font: mono(9) });
   set('B8', 'LE5 0DP', { font: mono(9) });
 
-  // Separator rule under the supplier block.
+  // Separator rule under the supplier block, full width to match the rule
+  // under the title and the table below -- it used to stop after column B,
+  // leaving the right two-thirds of the sheet without a line here.
   ws.mergeCells('A9:B9');
-  set('A9', undefined, { border: { bottom: M } });
-  set('B9', undefined, { border: { bottom: M } });
+  ['A9', 'B9', 'C9', 'D9', 'E9', 'F9'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
 
   // Labelled field rows — label with the value in the next cell; this shape
-  // is what extractPackingListFields matches on, do not change.
+  // is what extractPackingListFields matches on, do not change. Box spans
+  // A-E (stopping before the Carton Nos. column, per the reference
+  // template) with a medium outer edge on all four sides.
   ws.mergeCells('B10:C10');
-  set('A10', 'PO Reference', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
-  set('B10', asNumber(poDisplay), { font: mono(10), border: { bottom: T }, alignment: centre });
-  set('C10', undefined, { border: { right: T, bottom: T } });
+  set('A10', 'PO Reference', { font: oswald(9, { bold: true }), border: { top: M, left: M, right: T, bottom: T }, alignment: centre });
+  set('B10', asNumber(poDisplay), { font: mono(10), border: { top: M, bottom: T }, alignment: centre });
+  set('C10', undefined, { border: { top: M, right: T, bottom: T } });
+  set('D10', undefined, { border: { top: M, right: T, bottom: T } });
+  set('E10', undefined, { border: { top: M, right: M, bottom: T } });
 
   ws.mergeCells('B11:C11');
   ws.mergeCells('D11:E11');
   set('A11', 'Internal Code', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
   set('B11', internalCode, { font: mono(10), border: { bottom: T }, alignment: centre });
   set('C11', undefined, { border: { right: T, bottom: T } });
-  set('E11', undefined, { border: { right: T, bottom: T } });
+  set('E11', undefined, { border: { right: M, bottom: T } });
 
   ws.mergeCells('B12:E12');
-  set('A12', 'Description', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: T }, alignment: centre });
-  set('B12', description, { font: mono(10), border: { bottom: T }, alignment: { vertical: 'bottom', wrapText: true } });
-  set('C12', undefined, { border: { bottom: T } });
-  set('D12', undefined, { border: { bottom: T } });
-  set('E12', undefined, { border: { right: T, bottom: T } });
+  set('A12', 'Description', { font: oswald(9, { bold: true }), border: { left: M, right: T, bottom: M }, alignment: centre });
+  set('B12', description, { font: mono(10), border: { bottom: M }, alignment: { vertical: 'bottom', wrapText: true } });
+  set('C12', undefined, { border: { bottom: M } });
+  set('D12', undefined, { border: { bottom: M } });
+  set('E12', undefined, { border: { right: M, bottom: M } });
 
   // Carton table header (row 14; row 13 stays blank), with a heavier navy
   // rule under it instead of a solid fill.
@@ -346,9 +367,11 @@ export function buildPackingListWorkbook({
   const dataStart = 15;
   rows.forEach((r, i) => {
     const rn = dataStart + i;
-    if (r.colourLabel) {
-      set(`A${rn}`, r.colourLabel, { font: mono(10, { bold: true }), border: { left: T, right: T, bottom: T }, alignment: middle });
-    }
+    // Column A only carries a value on a group's first row, but every row
+    // needs the border regardless -- otherwise the left column's grid line
+    // breaks on every row after the first (skipping the whole set() call
+    // when there's no colourLabel skips its border too).
+    set(`A${rn}`, r.colourLabel || undefined, { font: mono(10, { bold: true }), border: { left: T, right: T, bottom: T }, alignment: middle });
     set(`B${rn}`, r.size, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`C${rn}`, String(r.qty), { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`D${rn}`, r.boxes, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
@@ -368,9 +391,15 @@ export function buildPackingListWorkbook({
     set(`A${rn}`, undefined, { border: { left: T, right: T, bottom: T } });
     ['B', 'C', 'D', 'E', 'F'].forEach((col) => set(`${col}${rn}`, undefined, { border: { right: T, bottom: T } }));
   }
-  set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: oswald(9, { bold: true }), border: { left: T, right: T, top: M }, alignment: centre });
-  set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
-  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: T, top: M }, alignment: centre });
+  // A-E box, same width as the PO Reference block above -- it used to have
+  // only a top rule and no border at all on B/C/E, so the row trailed off
+  // with nothing closing it on the sides or bottom. Carton Nos. (F) is left
+  // out, same as the reference template -- totals don't have a carton range.
+  set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: oswald(9, { bold: true }), border: { left: M, right: T, top: M, bottom: M }, alignment: centre });
+  set(`B${totalRowNum}`, undefined, { border: { right: T, top: M, bottom: M } });
+  set(`C${totalRowNum}`, undefined, { border: { right: T, top: M, bottom: M } });
+  set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: mono(10, { bold: true }), border: { right: T, top: M, bottom: M }, alignment: centre });
+  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: M, top: M, bottom: M }, alignment: centre });
   ws.getRow(totalRowNum).height = 15.75;
 
   const footerStart = totalRowNum + 2;
