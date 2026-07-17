@@ -22,6 +22,7 @@ import ExcelJS from 'exceljs';
 // glued adjacent table cells together with no separator at all (e.g.
 // "CNJ8909/4/72Bengaline", "20Each7.50"), breaking those regexes.
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { pathToFileURL } from 'node:url';
 import {
   getAccessToken,
   searchThreads,
@@ -39,6 +40,13 @@ const DRY_RUN = process.env.DRY_RUN === '1';
 
 const DEFAULT_FABRIC = 'Bengaline';
 const FALLBACK_DOCKET_BASE = 241; // matches nextDocketNumber() in web/index.html
+
+// PLT product names carry the UK size as a trailing suffix on productName. The
+// export used `...Colour-2` originally, then changed (mid-July 2026) to
+// `...Colour - UK 2`, which broke a bare `/-(\d+)$/`: no size parsed meant zero
+// order rows and a rejected docket save. Make the "UK" word and the spaces
+// around it optional so both forms parse; the capture group is the size.
+const SIZE_SUFFIX = /-\s*(?:UK\s*)?(\d+)\s*$/i;
 
 // ── Ported from web/index.html (runImport / buildDocketWorkbook et al.) ──────
 // Kept as a self-contained copy rather than a shared module: the website has
@@ -79,12 +87,12 @@ function pickColourCol(row) {
 }
 
 function extractSizeFromName(name) {
-  const m = String(name).match(/-(\d+)\s*$/);
+  const m = String(name).match(SIZE_SUFFIX);
   return m ? m[1] : null;
 }
 
 function extractColourFromName(name) {
-  const parts = String(name).replace(/-\d+\s*$/, '').trim().split(/\s+/);
+  const parts = String(name).replace(SIZE_SUFFIX, '').trim().split(/\s+/);
   return parts[parts.length - 1] || 'Unknown';
 }
 
@@ -387,7 +395,7 @@ async function processThread(accessToken, database, thread) {
     return result;
   };
   const baseDesc = rows.map((r) => {
-    const n = String(r['productName'] || '').replace(/-\d+\s*$/, '').trim();
+    const n = String(r['productName'] || '').replace(SIZE_SUFFIX, '').trim();
     return stripColours(n);
   }).sort((a, b) => rows.filter((r) => r.productName?.includes(b)).length - rows.filter((r) => r.productName?.includes(a)).length)[0] || '';
 
@@ -472,6 +480,15 @@ async function processThread(accessToken, database, thread) {
       if (costingCmt !== null) row.cmt = costingCmt;
       dbRows.push(row);
     }
+  }
+
+  // A CSV that parses into rows but yields no size-bearing order lines (e.g. an
+  // unexpected productName format) would otherwise POST an empty `rows` array to
+  // docket-db, which 400s -- and the thrown error leaves the thread unlabelled,
+  // so it's retried every run forever. Flag it for a human instead, same as the
+  // other unprocessable-input cases above.
+  if (!dbRows.length) {
+    return { status: 'needs_review', poNumber, reason: 'CSV parsed but produced no order rows -- could not read a size from productName' };
   }
 
   const docketBuffer = await buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, descDisplay, docketRows);
@@ -595,7 +612,13 @@ async function main() {
   console.log(`  Failed (left for retry next run): ${failed}`);
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+// Only run the automation when invoked as the entry point, so tests can import
+// the pure CSV-parsing helpers without kicking off Gmail/Supabase calls.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
+
+export { extractSizeFromName, extractColourFromName };
