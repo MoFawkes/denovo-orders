@@ -6,10 +6,10 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.2",
+    "@supabase/supabase-js": "^2.110.8",
     "exceljs": "^4.4.0",
     "pdfjs-dist": "^6.1.200",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "overrides": {
     "exceljs": {
