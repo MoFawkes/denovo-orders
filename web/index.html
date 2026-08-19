@@ -7,6 +7,7 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
+<script src="./carton-upload-rows.mjs" type="module"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -258,9 +259,9 @@
         <span class="material-symbols-outlined" style="font-size:20px;">local_shipping</span>
         <span class="sidebar-label">Booking</span>
       </button>
-      <button id="nav-stickers" onclick="showView('stickers')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
+      <button id="nav-carton-upload" onclick="showView('carton-upload')" class="flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left">
         <span class="material-symbols-outlined" style="font-size:20px;">label</span>
-        <span class="sidebar-label">Stickers</span>
+        <span class="sidebar-label">Portal Upload</span>
       </button>
     </div>
     <div class="px-3 pb-4 flex flex-col gap-1">
@@ -328,7 +329,7 @@
         <button id="tab-costings-mobile" onclick="showView('costings')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Costings</button>
         <button id="tab-import-mobile" onclick="showView('import')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Import</button>
         <button id="tab-booking-mobile" onclick="showView('booking')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Booking</button>
-        <button id="tab-stickers-mobile" onclick="showView('stickers')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Stickers</button>
+        <button id="tab-carton-upload-mobile" onclick="showView('carton-upload')" class="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container text-on-surface-variant">Portal Upload</button>
       </div>
     </div>
 
@@ -645,45 +646,29 @@
   </div>
 </div>
 
-<!-- ── Stickers Screen ────────────────────────────────────────────────────── -->
-<div id="stickers-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
+<!-- ── Portal Carton Upload Screen ─────────────────────────────────────── -->
+<div id="carton-upload-screen" class="hidden fixed inset-0 z-30 bg-background flex flex-col" style="left:224px;">
   <div class="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20 bg-white flex-shrink-0">
-    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface">
-      <span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span>
-    </button>
-    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Box Stickers</h2>
+    <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span></button>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Portal Carton Upload</h2>
   </div>
-
   <div class="flex-1 overflow-auto p-6 md:p-10">
-    <div class="max-w-2xl mx-auto space-y-6">
-
-      <!-- Upload packing list -->
+    <div class="max-w-6xl mx-auto space-y-6">
       <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
-        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block">Upload Packing List (.xlsx)</label>
-        <input id="sticker-file" type="file" accept=".xlsx" onchange="onStickerFileChange(this)" class="block w-full text-sm text-on-surface-variant file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-bold file:bg-surface-container file:text-on-surface cursor-pointer"/>
+        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block">1. Upload Packing List (.xlsx)</label>
+        <input id="carton-upload-file" type="file" accept=".xlsx" onchange="onCartonUploadFileChange(this)" class="block w-full text-sm text-on-surface-variant file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-bold file:bg-surface-container file:text-on-surface cursor-pointer"/>
       </div>
-
-      <!-- Parsed preview -->
-      <div id="sticker-preview" class="hidden bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
-        <h3 class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Parsed Details</h3>
-        <div class="grid grid-cols-2 gap-3 text-sm">
-          <div><span class="text-on-surface-variant">PO</span><div id="sp-po" class="font-semibold text-on-surface mt-0.5"></div></div>
-          <div><span class="text-on-surface-variant">SKU</span><div id="sp-sku" class="font-semibold text-on-surface mt-0.5"></div></div>
-          <div><span class="text-on-surface-variant">Booking Ref</span><div id="sp-ref" class="font-semibold text-on-surface mt-0.5"></div></div>
-          <div><span class="text-on-surface-variant">Colour</span><div id="sp-colour" class="font-semibold text-on-surface mt-0.5"></div></div>
-          <div><span class="text-on-surface-variant">Total Cartons</span><div id="sp-cartons" class="font-semibold text-on-surface mt-0.5"></div></div>
-          <div><span class="text-on-surface-variant">Total Pcs</span><div id="sp-pcs" class="font-semibold text-on-surface mt-0.5"></div></div>
-        </div>
+      <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-3">
+        <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block">2. Load buyer PO reference (optional CSV)</label>
+        <p class="text-xs text-on-surface-variant">Buyer exports can be stale. Check every full per-size SKU and expected PO quantity below against the current PO confirmation.</p>
+        <input id="buyer-reference-file" type="file" accept=".csv,text/csv" onchange="onBuyerReferenceFileChange(this)" class="block w-full text-sm text-on-surface-variant file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-bold file:bg-surface-container file:text-on-surface cursor-pointer"/>
       </div>
-
-      <!-- Error -->
-      <div id="sticker-error" class="hidden text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-4 py-3"></div>
-
-      <!-- Generate -->
-      <button id="stickers-btn" onclick="generateStickers()" disabled class="w-full h-12 bg-primary text-on-primary text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-        Download Box Stickers
-      </button>
-
+      <div id="carton-upload-preview" class="hidden bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-wrap gap-6 text-sm"><div><span class="text-on-surface-variant">PO</span><div id="cup-po" class="font-semibold"></div></div><div><span class="text-on-surface-variant">Cartons</span><div id="cup-cartons" class="font-semibold"></div></div><div><span class="text-on-surface-variant">Total pieces</span><div id="cup-pcs" class="font-semibold"></div></div></div>
+        <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-left text-on-surface-variant border-b"><th class="p-2">Carton</th><th class="p-2">Size</th><th class="p-2">Colour</th><th class="p-2">Quantity</th><th class="p-2">Carton type</th><th class="p-2 min-w-48">Full buyer SKU</th><th class="p-2">Expected PO qty</th><th class="p-2">Note</th></tr></thead><tbody id="carton-upload-rows"></tbody></table></div>
+      </div>
+      <div id="carton-upload-error" class="hidden text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-4 py-3 whitespace-pre-line"></div>
+      <button id="carton-upload-btn" onclick="downloadCartonUpload()" disabled class="w-full h-12 bg-primary text-on-primary text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm hover:bg-primary-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">Download Portal CSV</button>
     </div>
   </div>
 </div>
@@ -896,12 +881,12 @@ async function showDashboard(user) {
   document.getElementById('nav-costings').style.display = isManager ? '' : 'none'
   document.getElementById('nav-import').style.display = isManager ? '' : 'none'
   document.getElementById('nav-booking').style.display = isManager ? '' : 'none'
-  document.getElementById('nav-stickers').style.display = isManager ? '' : 'none'
+  document.getElementById('nav-carton-upload').style.display = isManager ? '' : 'none'
   document.getElementById('tab-reports-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-costings-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-import-mobile').style.display = isManager ? '' : 'none'
   document.getElementById('tab-booking-mobile').style.display = isManager ? '' : 'none'
-  document.getElementById('tab-stickers-mobile').style.display = isManager ? '' : 'none'
+  document.getElementById('tab-carton-upload-mobile').style.display = isManager ? '' : 'none'
 
   await loadOrders()
   subscribeRealtime()
@@ -1599,14 +1584,14 @@ function toggleSidebar() {
   const costingsSpacer = document.getElementById('costings-sidebar-spacer')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
-  const stickersScreen = document.getElementById('stickers-screen')
+  const cartonUploadScreen = document.getElementById('carton-upload-screen')
   if (sidebarCollapsed) {
     sidebar.style.width = '48px'
     if (spacer) spacer.style.width = '48px'
     if (costingsSpacer) costingsSpacer.style.width = '48px'
     if (importScreen) importScreen.style.left = '48px'
     if (bookingScreen) bookingScreen.style.left = '48px'
-    if (stickersScreen) stickersScreen.style.left = '48px'
+    if (cartonUploadScreen) cartonUploadScreen.style.left = '48px'
     labels.forEach(el => el.classList.add('hidden'))
     title.classList.add('hidden')
     icon.textContent = 'menu'
@@ -1616,7 +1601,7 @@ function toggleSidebar() {
     if (costingsSpacer) costingsSpacer.style.width = '224px'
     if (importScreen) importScreen.style.left = '224px'
     if (bookingScreen) bookingScreen.style.left = '224px'
-    if (stickersScreen) stickersScreen.style.left = '224px'
+    if (cartonUploadScreen) cartonUploadScreen.style.left = '224px'
     labels.forEach(el => el.classList.remove('hidden'))
     title.classList.remove('hidden')
     icon.textContent = 'menu_open'
@@ -1659,13 +1644,13 @@ function showView(view) {
   const costingsScreen = document.getElementById('costings-screen')
   const importScreen = document.getElementById('import-screen')
   const bookingScreen = document.getElementById('booking-screen')
-  const stickersScreen = document.getElementById('stickers-screen')
+  const cartonUploadScreen = document.getElementById('carton-upload-screen')
 
   reportsScreen.classList.add('hidden')
   costingsScreen.classList.add('hidden')
   importScreen.classList.add('hidden')
   bookingScreen.classList.add('hidden')
-  stickersScreen.classList.add('hidden')
+  cartonUploadScreen.classList.add('hidden')
 
   const navActive = 'flex items-center gap-3 px-3 py-2 text-white font-medium bg-white/10 rounded-md text-sm w-full text-left'
   const navIdle = 'flex items-center gap-3 px-3 py-2 text-[#9e9c9c] hover:text-white hover:bg-white/5 rounded-md transition-all text-sm w-full text-left'
@@ -1677,12 +1662,12 @@ function showView(view) {
   document.getElementById('nav-costings').className = navIdle
   document.getElementById('nav-import').className = navIdle
   document.getElementById('nav-booking').className = navIdle
-  document.getElementById('nav-stickers').className = navIdle
+  document.getElementById('nav-carton-upload').className = navIdle
   document.getElementById('tab-reports-mobile').className = tabIdle
   document.getElementById('tab-costings-mobile').className = tabIdle
   document.getElementById('tab-import-mobile').className = tabIdle
   document.getElementById('tab-booking-mobile').className = tabIdle
-  document.getElementById('tab-stickers-mobile').className = tabIdle
+  document.getElementById('tab-carton-upload-mobile').className = tabIdle
 
   if (view === 'reports') {
     reportsScreen.classList.remove('hidden')
@@ -1705,10 +1690,10 @@ function showView(view) {
     renderBookingOrders()
     document.getElementById('nav-booking').className = navActive
     document.getElementById('tab-booking-mobile').className = tabActive
-  } else if (view === 'stickers') {
-    stickersScreen.classList.remove('hidden')
-    document.getElementById('nav-stickers').className = navActive
-    document.getElementById('tab-stickers-mobile').className = tabActive
+  } else if (view === 'carton-upload') {
+    cartonUploadScreen.classList.remove('hidden')
+    document.getElementById('nav-carton-upload').className = navActive
+    document.getElementById('tab-carton-upload-mobile').className = tabActive
   } else {
     document.getElementById('nav-orders').className = navActive
   }
@@ -2367,7 +2352,7 @@ function ukDateToIso(d) {
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim())
   const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim())
   return lines.slice(1).map(line => {
     // Handle quoted commas
@@ -2396,7 +2381,7 @@ function pickColourCol(row) {
 }
 
 function extractSizeFromName(name) {
-  const m = String(name).match(/-(\d+)\s*$/)
+  const m = String(name).match(/-\s*(?:UK\s*)?(\d+)\s*$/i)
   return m ? m[1] : null
 }
 
@@ -2674,204 +2659,144 @@ function formatDateUk(isoDate) {
   return `${d}/${m}/${y}`
 }
 
-// ── Box Stickers ─────────────────────────────────────────────────────────────
+// ── Portal carton upload ───────────────────────────────────────────────────
 
-let stickerData = null
+let cartonUploadData = null
+let buyerSkuBySize = {}
+let buyerReferenceError = null
 
-async function onStickerFileChange(input) {
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character])
+}
+
+function sanitizeDownloadPart(value) {
+  return String(value ?? '').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '_').replace(/-+/g, '-').replace(/^[-_.]+|[-_.]+$/g, '') || 'UNKNOWN'
+}
+
+function showCartonUploadError(messages) {
+  const element = document.getElementById('carton-upload-error')
+  const list = Array.isArray(messages) ? messages : [messages]
+  element.textContent = list.filter(Boolean).join('\n')
+  element.classList.toggle('hidden', !element.textContent)
+}
+
+async function onCartonUploadFileChange(input) {
+  cartonUploadData = null
+  buyerSkuBySize = {}
+  buyerReferenceError = null
+  document.getElementById('buyer-reference-file').value = ''
+  document.getElementById('carton-upload-preview').classList.add('hidden')
+  document.getElementById('carton-upload-btn').disabled = true
+  showCartonUploadError([])
   const file = input.files[0]
-  const errorEl = document.getElementById('sticker-error')
-  const previewEl = document.getElementById('sticker-preview')
-  const btn = document.getElementById('stickers-btn')
-  errorEl.classList.add('hidden')
-  previewEl.classList.add('hidden')
-  btn.disabled = true
-  stickerData = null
   if (!file) return
   try {
-    const buf = await file.arrayBuffer()
-    const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(buf)
-    const ws = wb.worksheets[0]
-
-    const po = ws.getCell('B10').value
-    const sku = ws.getCell('B11').value
-    const bookingRef = ws.getCell('F5').value
-
-    // Split combined SKU (e.g. "CNQ6176/CNQ6177") into per-colour parts
-    const skuParts = String(sku).split('/')
-
-    // Parse colour sections — col A starts a new section when non-empty.
-    // Rows 15-39 is the sheet's full reserved table capacity (see
-    // buildPackingListWorkbook in scripts/gmail-automations/lib/domain.mjs)
-    // — stopping at 38 would silently drop a 25th carton.
-    const sections = []
-    let totalPcs = 0
-    for (let r = 15; r <= 39; r++) {
-      const colA = ws.getCell(r, 1).value
-      if (colA && typeof colA === 'string' && colA.trim()) {
-        const idx = sections.length
-        sections.push({ colour: colA.trim(), sku: skuParts[idx] || String(sku), cartons: [] })
-      }
-      const size = ws.getCell(r, 2).value
-      const qtyPerBox = ws.getCell(r, 3).value
-      const numBoxes = ws.getCell(r, 4).value
-      if (size == null || qtyPerBox == null || numBoxes == null || numBoxes === 0) continue
-      const n = parseInt(numBoxes) || 0
-      const q = parseInt(qtyPerBox) || 0
-      if (sections.length === 0) sections.push({ colour: 'BLACK', sku: String(sku), cartons: [] })
-      for (let b = 0; b < n; b++) sections[sections.length - 1].cartons.push({ size: String(size), qty: q })
-      totalPcs += n * q
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(await file.arrayBuffer())
+    const sheet = workbook.worksheets[0]
+    const po = String(sheet.getCell('B10').value ?? '').trim()
+    const legacyColour = String(sheet.getCell('A15').value ?? 'BLACK').trim()
+    const hasCartonTypeColumn = String(sheet.getCell('E14').value ?? '').trim().toLowerCase() === 'carton type'
+    const cartons = []
+    let colour = legacyColour
+    // Read through the totals marker rather than assuming the reserved table
+    // ends at row 39; large packing lists push totals farther down.
+    for (let row = 15; row <= sheet.rowCount; row++) {
+      if (String(sheet.getCell(row, 1).value ?? '').includes('Total Boxes/Pcs')) break
+      const nextColour = String(sheet.getCell(row, 1).value ?? '').trim()
+      if (nextColour) colour = nextColour
+      const size = sheet.getCell(row, 2).value
+      const quantity = Number(sheet.getCell(row, 3).value)
+      const boxes = Number(sheet.getCell(row, 4).value)
+      if (size == null || !Number.isInteger(quantity) || !Number.isInteger(boxes) || boxes <= 0) continue
+      const cartonType = hasCartonTypeColumn ? String(sheet.getCell(row, 5).value ?? 'BDCM1') : 'BDCM1'
+      for (let box = 0; box < boxes; box++) cartons.push({ size: String(size), colour, quantity, cartonType, sku: '', expectedQuantity: '', cartonNote: '' })
     }
-
-    // Flatten cartons, each carrying its own colour and sku
-    const cartons = sections.flatMap(({ colour, sku: s, cartons: c }) =>
-      c.map(carton => ({ ...carton, colour, sku: s }))
-    )
-
-    if (!po || !sku || cartons.length === 0) throw new Error('Could not parse packing list — check file format.')
-
-    const allColours = sections.map(s => s.colour).join(' / ')
-    stickerData = { po: String(po), sku: String(sku), bookingRef: bookingRef || '', colour: allColours, cartons, totalPcs }
-
-    document.getElementById('sp-po').textContent = stickerData.po
-    document.getElementById('sp-sku').textContent = stickerData.sku
-    document.getElementById('sp-ref').textContent = stickerData.bookingRef || '—'
-    document.getElementById('sp-colour').textContent = stickerData.colour
-    document.getElementById('sp-cartons').textContent = stickerData.cartons.length
-    document.getElementById('sp-pcs').textContent = stickerData.totalPcs
-    previewEl.classList.remove('hidden')
-    btn.disabled = false
-  } catch (e) {
-    errorEl.textContent = e.message || 'Failed to read file.'
-    errorEl.classList.remove('hidden')
+    if (!po || cartons.length === 0) throw new Error('Could not parse the packing list. Check that it uses the Denovo packing-list format.')
+    cartonUploadData = { po, cartons }
+    renderCartonUploadPreview()
+  } catch (error) {
+    showCartonUploadError(error.message || 'Failed to read packing list.')
   }
 }
 
-async function generateStickers() {
-  if (!stickerData) return
-  const btn = document.getElementById('stickers-btn')
-  btn.disabled = true
-  btn.textContent = 'Generating…'
+async function onBuyerReferenceFileChange(input) {
+  const file = input.files[0]
+  if (!file || !cartonUploadData) {
+    if (file && !cartonUploadData) showCartonUploadError('Load the packing list before the buyer PO reference.')
+    return
+  }
+  buyerReferenceError = null
+  buyerSkuBySize = {}
+  cartonUploadData.cartons.forEach(carton => { carton.sku = ''; carton.expectedQuantity = '' })
   try {
-    await buildStickerWorkbook(stickerData)
-  } finally {
-    btn.disabled = false
-    btn.textContent = 'Download Box Stickers'
+    const rows = parseCSV(await file.text())
+    buyerSkuBySize = window.buildSkuAndExpectedBySize(rows, cartonUploadData.po)
+    cartonUploadData.cartons.forEach(carton => {
+      const match = buyerSkuBySize[carton.size]
+      if (match) Object.assign(carton, match)
+    })
+    renderCartonUploadPreview()
+  } catch (error) {
+    buyerReferenceError = error.message || 'Failed to read buyer PO reference.'
+    renderCartonUploadPreview()
   }
 }
 
-async function buildStickerWorkbook({ po, sku, bookingRef, cartons }) {
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet('Stickers')
-
-  const thick = { style: 'thick', color: { argb: 'FF000000' } }
-  const border = { top: thick, bottom: thick, left: thick, right: thick }
-  const bold14 = { name: 'Arial', size: 11, bold: true }
-  const center = { horizontal: 'center', vertical: 'middle', wrapText: true }
-
-  // fitToWidth:1 auto-scales these columns to fill A4 width exactly
-  const colWidths = [12.63, 13, 13, 17, 12.63, 13, 13]
-  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w })
-
-  function sc(row, col, val, mergeSpan) {
-    if (mergeSpan > 1) ws.mergeCells(row, col, row, col + mergeSpan - 1)
-    const cell = ws.getCell(row, col)
-    cell.value = val
-    cell.font = bold14
-    cell.alignment = center
-    cell.border = border
-    return cell
+function updateCartonUploadValue(index, field, value) {
+  const carton = cartonUploadData?.cartons[index]
+  if (!carton) return
+  carton[field] = field === 'quantity' || field === 'expectedQuantity' ? Number(value) : value
+  // SKU and expected PO quantity are per-size values. Editing either updates
+  // every carton of that size, avoiding contradictory rows in one upload.
+  if (field === 'sku' || field === 'expectedQuantity') {
+    buyerReferenceError = null
+    cartonUploadData.cartons.forEach(other => { if (other.size === carton.size) other[field] = carton[field] })
+    renderCartonUploadPreview()
+  } else {
+    validateCartonUploadPreview()
   }
+}
 
-  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty, cartonColour, cartonSku) {
-    const r = rowStart, c = colStart
-    sc(r,   c, 'SUPPLIER: DENOVO SOURCING', 3)
-    sc(r+1, c, 'PO',          1); sc(r+1, c+1, po,             2)
-    sc(r+2, c, 'SKU',         1); sc(r+2, c+1, cartonSku,      2)
-    sc(r+3, c, 'Booking Ref', 1); sc(r+3, c+1, bookingRef,     2)
-    sc(r+4, c, 'SIZE',        1); sc(r+4, c+1, size,           2)
-    sc(r+5, c, 'COLOUR',      1); sc(r+5, c+1, cartonColour,   2)
-    sc(r+6, c, 'QTY',         1); sc(r+6, c+1, qty,            2)
-    sc(r+7, c, 'CARTON NO.',  1); sc(r+7, c+1, cartonNum, 1); sc(r+7, c+2, `OF ${totalCartons}`, 1)
-    // spacer rows 9-11
-    ws.mergeCells(r+8, c, r+10, c+2)
-    ws.getCell(r+8, c).border = border
-    sc(r+11, c, 'Customer', 1); sc(r+11, c+1, 'PLT', 2)
+function renderCartonUploadPreview() {
+  if (!cartonUploadData) return
+  document.getElementById('cup-po').textContent = cartonUploadData.po
+  document.getElementById('cup-cartons').textContent = cartonUploadData.cartons.length
+  document.getElementById('cup-pcs').textContent = cartonUploadData.cartons.reduce((sum, carton) => sum + Number(carton.quantity || 0), 0)
+  document.getElementById('carton-upload-rows').innerHTML = cartonUploadData.cartons.map((carton, index) => `<tr class="border-b border-outline-variant/10">
+    <td class="p-2 font-mono">${index + 1}</td><td class="p-2">${escapeHtml(carton.size)}</td><td class="p-2">${escapeHtml(carton.colour)}</td>
+    <td class="p-1"><input type="number" min="1" step="1" value="${carton.quantity}" onchange="updateCartonUploadValue(${index}, 'quantity', this.value)" class="w-20 rounded border-outline-variant/30 text-xs"/></td>
+    <td class="p-1"><select onchange="updateCartonUploadValue(${index}, 'cartonType', this.value)" class="rounded border-outline-variant/30 text-xs"><option value="BDCM1" ${String(carton.cartonType).toUpperCase()==='BDCM1'?'selected':''}>BDCM1</option><option value="BDCM3" ${String(carton.cartonType).toUpperCase()==='BDCM3'?'selected':''}>BDCM3</option></select></td>
+    <td class="p-1"><input value="${escapeHtml(carton.sku)}" onchange="updateCartonUploadValue(${index}, 'sku', this.value)" class="w-full rounded border-outline-variant/30 text-xs font-mono" placeholder="Required"/></td>
+    <td class="p-1"><input type="number" min="1" step="1" value="${carton.expectedQuantity || ''}" onchange="updateCartonUploadValue(${index}, 'expectedQuantity', this.value)" class="w-28 rounded border-outline-variant/30 text-xs" placeholder="Required"/></td>
+    <td class="p-1"><input value="${escapeHtml(carton.cartonNote)}" onchange="updateCartonUploadValue(${index}, 'cartonNote', this.value)" class="w-28 rounded border-outline-variant/30 text-xs"/></td></tr>`).join('')
+  document.getElementById('carton-upload-preview').classList.remove('hidden')
+  validateCartonUploadPreview()
+}
+
+function validateCartonUploadPreview() {
+  try {
+    if (buyerReferenceError) throw new Error(buyerReferenceError)
+    window.buildCartonUploadRows({ cartons: cartonUploadData.cartons, skuAndExpectedBySize: buyerSkuBySize })
+    showCartonUploadError([])
+    document.getElementById('carton-upload-btn').disabled = false
+    return true
+  } catch (error) {
+    showCartonUploadError(error.errors?.map(item => item.message) ?? error.message)
+    document.getElementById('carton-upload-btn').disabled = true
+    return false
   }
+}
 
-  // 2×2 layout: 2 stickers per row, 2 rows per page = 4 per page
-  const ROWS_PER_PAGE = 29
-  const TOP_COLS = [1, 5]
-  const BOT_COLS = [1, 5]
-  const totalCartons = cartons.length
-
-  cartons.forEach(({ size, qty, colour, sku: cartonSku }, i) => {
-    const page = Math.floor(i / 4)
-    const pos = i % 4
-    const pageOffset = page * ROWS_PER_PAGE
-    let rowStart, colStart
-    if (pos < 2) {
-      rowStart = pageOffset + 1
-      colStart = TOP_COLS[pos]
-    } else {
-      rowStart = pageOffset + 15
-      colStart = BOT_COLS[pos - 2]
-    }
-    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty, colour, cartonSku)
-  })
-
-  // fitToWidth:1 scales columns to fill A4 width; row heights calculated to fill A4 height at that scale
-  ws.pageSetup = {
-    paperSize: 9,
-    orientation: 'portrait',
-    fitToPage: true,
-    fitToWidth: 1,
-    fitToHeight: 0,
-    margins: { left: 0.35, right: 0.05, top: 0.45, bottom: 0.18, header: 0, footer: 0 },
-  }
-
-  const pages = Math.ceil(totalCartons / 4)
-  for (let p = 0; p < pages; p++) {
-    const o = p * ROWS_PER_PAGE
-    // Each label = 139mm = 394pt. 12 rows: 9 data×37pt + 3 spacers×20pt + customer×37pt = 393pt ≈ 394pt ✓
-    for (let r = 1; r <= 8; r++) ws.getRow(o + r).height = 37   // data rows (SUPPLIER→CARTON NO.)
-    ws.getRow(o + 9).height  = 20  // spacer
-    ws.getRow(o + 10).height = 20  // spacer
-    ws.getRow(o + 11).height = 20  // spacer
-    ws.getRow(o + 12).height = 37  // Customer row
-    // Vertical gap between labels: 3mm = 8pt across 2 rows
-    ws.getRow(o + 13).height = 4
-    ws.getRow(o + 14).height = 4
-    // Bottom label rows 15-26: identical = 393pt
-    for (let r = 15; r <= 22; r++) ws.getRow(o + r).height = 37
-    ws.getRow(o + 23).height = 20
-    ws.getRow(o + 24).height = 20
-    ws.getRow(o + 25).height = 20
-    ws.getRow(o + 26).height = 37
-    // Invisible separator rows between pages (1pt each)
-    ws.getRow(o + 27).height = 1
-    ws.getRow(o + 28).height = 1
-    ws.getRow(o + 29).height = 1
-    // explicit row page break after this page (not needed after last page)
-    if (p < pages - 1) {
-      try {
-        ws.getRow(o + ROWS_PER_PAGE).addPageBreak()
-      } catch(_) {
-        // fallback: inject directly into worksheet model
-        if (!ws.model.rowBreaks) ws.model.rowBreaks = []
-        ws.model.rowBreaks.push({ id: o + ROWS_PER_PAGE, max: 16383, min: 1, man: true })
-      }
-    }
-  }
-
-  const buf = await wb.xlsx.writeBuffer()
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+function downloadCartonUpload() {
+  if (!cartonUploadData || !validateCartonUploadPreview()) return
+  const csv = window.serializeCartonUploadCsv({ cartons: cartonUploadData.cartons, skuAndExpectedBySize: buyerSkuBySize })
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `BOX_STICKERS_${po}_${sku}.xlsx`
-  a.click()
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `PORTAL_CARTON_UPLOAD_${sanitizeDownloadPart(cartonUploadData.po)}.csv`
+  anchor.click()
   URL.revokeObjectURL(url)
 }
 

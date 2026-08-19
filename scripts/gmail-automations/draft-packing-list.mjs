@@ -50,7 +50,6 @@ import {
   DATA_MARKER,
   validateDocket,
   buildPackingListWorkbook,
-  buildStickerWorkbook,
   formatUk,
   addDaysUTC,
   findBooking,
@@ -407,24 +406,8 @@ async function processAwaitingThread(ctx, thread) {
   const confirmation = await getExecution(database, 'draft-packing-list', thread.id, confirmationStep);
   if (confirmation?.status !== 'completed') {
     const latest = replyMessage ?? full.messages[full.messages.length - 1];
-    const stickerFilename = `BOX_STICKERS_${poDisplay}_${internalCode.replace(/\//g, '-')}.xlsx`;
-    const attachments = [];
-    let stickerLine = '';
-    try {
-      const stickerWorkbook = buildStickerWorkbook({
-        po: poDisplay,
-        bookingRef: booking?.ref ?? '',
-        groups,
-      });
-      attachments.push({
-        filename: stickerFilename,
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        buffer: Buffer.from(await stickerWorkbook.xlsx.writeBuffer()),
-      });
-      stickerLine = `\n\nBox stickers for this PO are attached (${stickerFilename}).`;
-    } catch (err) {
-      console.error(`  Box sticker generation failed for ${stickerFilename}: ${err.message} — sending confirmation without stickers.`);
-    }
+    const cartonCount = groups.reduce((total, group) => total + group.cartons.length, 0);
+    console.log(`  Packing list ready for PO ${poDisplay}: ${cartonCount} cartons.`);
     await sendReply(accessToken, {
       threadId: thread.id,
       replyTo: latest,
@@ -432,9 +415,8 @@ async function processAwaitingThread(ctx, thread) {
       subject: getHeader(latest, 'Subject') || 'Packing list',
       body:
         `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
-        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).` +
-        stickerLine,
-      attachments,
+        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).\n\n` +
+        `Box stickers are no longer used — generate the Portal carton-upload file from the Portal Carton Upload screen once this packing list is in Drive.`,
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
       file_id: uploaded.id,

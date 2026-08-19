@@ -6,6 +6,7 @@
 // (see ../tests/). API plumbing lives in google.mjs / claude.mjs and the
 // orchestration in the top-level scripts.
 import ExcelJS from 'exceljs';
+export { buildCartonUploadRows, CartonUploadValidationError, serializeCartonUploadCsv } from '../../../web/carton-upload-rows.mjs';
 
 // Marks the machine-readable block draft-packing-list's Phase A embeds in
 // its own reply.
@@ -239,7 +240,7 @@ export function buildPackingListWorkbook({
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   ws.columns = [
-    { width: 18.43 }, { width: 11.71 }, { width: 23.57 }, { width: 13 }, { width: 20 }, { width: 19.71 },
+    { width: 18.43 }, { width: 11.71 }, { width: 23.57 }, { width: 13 }, { width: 14 }, { width: 20 }, { width: 19.71 },
   ];
   // The hand-made template this mirrors is locked to A4 with tight 0.25"
   // side margins; without it, export falls back to whatever default paper
@@ -288,9 +289,9 @@ export function buildPackingListWorkbook({
 
   // Title, centred across the sheet, plus a navy rule under the whole
   // header band.
-  ws.mergeCells('A1:F1');
+  ws.mergeCells('A1:G1');
   set('A1', 'PACKING LIST', { font: { name: 'Oswald', size: 18, bold: true, color: ACCENT }, alignment: { horizontal: 'center', vertical: 'bottom' } });
-  ['A1', 'B1', 'C1', 'D1', 'E1', 'F1'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
+  ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
 
   // Left header block (Oswald labels / Roboto Mono values) and the
   // left-accent-barred Delivery Note fields (E/F).
@@ -325,7 +326,7 @@ export function buildPackingListWorkbook({
   // under the title and the table below -- it used to stop after column B,
   // leaving the right two-thirds of the sheet without a line here.
   ws.mergeCells('A9:B9');
-  ['A9', 'B9', 'C9', 'D9', 'E9', 'F9'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
+  ['A9', 'B9', 'C9', 'D9', 'E9', 'F9', 'G9'].forEach((addr) => set(addr, undefined, { border: { bottom: M } }));
 
   // Labelled field rows — label with the value in the next cell; this shape
   // is what extractPackingListFields matches on, do not change. Box spans
@@ -358,8 +359,9 @@ export function buildPackingListWorkbook({
   set('B14', 'Size', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
   set('C14', 'Qty per Box', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
   set('D14', 'No of Boxes', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
-  set('E14', 'Total Pcs', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
-  set('F14', 'Carton Nos.', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('E14', 'Carton Type', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('F14', 'Total Pcs', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
+  set('G14', 'Carton Nos.', { font: oswald(9, { bold: true }), border: { right: T, bottom: M }, alignment: centre });
 
   // Data rows: sizes/qty-per-box/carton numbers are stored as text (like the
   // hand-made sheets); Total Pcs is a live formula so edits recompute.
@@ -375,8 +377,9 @@ export function buildPackingListWorkbook({
     set(`B${rn}`, r.size, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`C${rn}`, String(r.qty), { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`D${rn}`, r.boxes, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
-    set(`E${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
-    set(`F${rn}`, r.cartons, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
+    set(`E${rn}`, 'BDCM1', { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
+    set(`F${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
+    set(`G${rn}`, r.cartons, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
   });
 
   // Totals sit at row 40 like the hand-made template, pushed down only if a
@@ -389,17 +392,19 @@ export function buildPackingListWorkbook({
   const sumBottom = totalRowNum - 1;
   for (let rn = dataStart + rows.length; rn <= sumBottom; rn++) {
     set(`A${rn}`, undefined, { border: { left: T, right: T, bottom: T } });
-    ['B', 'C', 'D', 'E', 'F'].forEach((col) => set(`${col}${rn}`, undefined, { border: { right: T, bottom: T } }));
+    ['B', 'C', 'D', 'E', 'F', 'G'].forEach((col) => set(`${col}${rn}`, undefined, { border: { right: T, bottom: T } }));
   }
-  // A-E box, same width as the PO Reference block above -- it used to have
+  // A-F box, extended by the carton-type column while keeping the totals
+  // aligned with the PO Reference block above -- it used to have
   // only a top rule and no border at all on B/C/E, so the row trailed off
-  // with nothing closing it on the sides or bottom. Carton Nos. (F) is left
+  // with nothing closing it on the sides or bottom. Carton Nos. (G) is left
   // out, same as the reference template -- totals don't have a carton range.
   set(`A${totalRowNum}`, 'Total Boxes/Pcs.', { font: oswald(9, { bold: true }), border: { left: M, right: T, top: M, bottom: M }, alignment: centre });
   set(`B${totalRowNum}`, undefined, { border: { right: T, top: M, bottom: M } });
   set(`C${totalRowNum}`, undefined, { border: { right: T, top: M, bottom: M } });
   set(`D${totalRowNum}`, { formula: `SUM(D${dataStart}:D${sumBottom})`, result: totalBoxes }, { font: mono(10, { bold: true }), border: { right: T, top: M, bottom: M }, alignment: centre });
-  set(`E${totalRowNum}`, { formula: `SUM(E${dataStart}:E${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: M, top: M, bottom: M }, alignment: centre });
+  set(`E${totalRowNum}`, undefined, { border: { right: T, top: M, bottom: M } });
+  set(`F${totalRowNum}`, { formula: `SUM(F${dataStart}:F${sumBottom})`, result: totalPcs }, { font: mono(10, { bold: true }), border: { right: M, top: M, bottom: M }, alignment: centre });
   ws.getRow(totalRowNum).height = 15.75;
 
   const footerStart = totalRowNum + 2;
@@ -413,84 +418,11 @@ export function buildPackingListWorkbook({
   ];
   footer.forEach((line, i) => {
     const rn = footerStart + i;
-    ws.mergeCells(`A${rn}:F${rn}`);
+    ws.mergeCells(`A${rn}:G${rn}`);
     set(`A${rn}`, line, { font: { name: 'Roboto Mono', size: 8, color: MUTED }, alignment: centre });
     ws.getRow(rn).height = 12;
   });
 
-  return wb;
-}
-
-// ── Box-sticker workbook (mirrors the web Stickers page) ─────────────────────
-
-export function buildStickerWorkbook({ po, bookingRef, groups }) {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Stickers');
-  const cartons = groups.flatMap((g) => g.cartons.map((c) => ({ ...c, colour: g.colour, sku: g.sku })));
-  const thick = { style: 'thick', color: { argb: 'FF000000' } };
-  const border = { top: thick, bottom: thick, left: thick, right: thick };
-  const bold14 = { name: 'Arial', size: 11, bold: true };
-  const center = { horizontal: 'center', vertical: 'middle', wrapText: true };
-  [12.63, 13, 13, 17, 12.63, 13, 13].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-
-  function sc(row, col, val, mergeSpan) {
-    if (mergeSpan > 1) ws.mergeCells(row, col, row, col + mergeSpan - 1);
-    const cell = ws.getCell(row, col);
-    cell.value = val;
-    cell.font = bold14;
-    cell.alignment = center;
-    cell.border = border;
-    return cell;
-  }
-
-  function drawSticker(rowStart, colStart, cartonNum, totalCartons, size, qty, cartonColour, cartonSku) {
-    const r = rowStart, c = colStart;
-    sc(r, c, 'SUPPLIER: DENOVO SOURCING', 3);
-    sc(r + 1, c, 'PO', 1); sc(r + 1, c + 1, po, 2);
-    sc(r + 2, c, 'SKU', 1); sc(r + 2, c + 1, cartonSku, 2);
-    sc(r + 3, c, 'Booking Ref', 1); sc(r + 3, c + 1, bookingRef ?? '', 2);
-    sc(r + 4, c, 'SIZE', 1); sc(r + 4, c + 1, size, 2);
-    sc(r + 5, c, 'COLOUR', 1); sc(r + 5, c + 1, cartonColour, 2);
-    sc(r + 6, c, 'QTY', 1); sc(r + 6, c + 1, qty, 2);
-    sc(r + 7, c, 'CARTON NO.', 1); sc(r + 7, c + 1, cartonNum, 1); sc(r + 7, c + 2, `OF ${totalCartons}`, 1);
-    ws.mergeCells(r + 8, c, r + 10, c + 2);
-    ws.getCell(r + 8, c).border = border;
-    sc(r + 11, c, 'Customer', 1); sc(r + 11, c + 1, 'PLT', 2);
-  }
-
-  const ROWS_PER_PAGE = 29;
-  const TOP_COLS = [1, 5];
-  const BOT_COLS = [1, 5];
-  const totalCartons = cartons.length;
-  cartons.forEach(({ size, qty, colour, sku: cartonSku }, i) => {
-    const page = Math.floor(i / 4), pos = i % 4, pageOffset = page * ROWS_PER_PAGE;
-    const rowStart = pos < 2 ? pageOffset + 1 : pageOffset + 15;
-    const colStart = pos < 2 ? TOP_COLS[pos] : BOT_COLS[pos - 2];
-    drawSticker(rowStart, colStart, i + 1, totalCartons, size, qty, colour, cartonSku);
-  });
-
-  ws.pageSetup = {
-    paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-    margins: { left: 0.35, right: 0.05, top: 0.45, bottom: 0.18, header: 0, footer: 0 },
-  };
-  const pages = Math.ceil(totalCartons / 4);
-  for (let p = 0; p < pages; p++) {
-    const o = p * ROWS_PER_PAGE;
-    for (let r = 1; r <= 8; r++) ws.getRow(o + r).height = 37;
-    ws.getRow(o + 9).height = 20; ws.getRow(o + 10).height = 20; ws.getRow(o + 11).height = 20;
-    ws.getRow(o + 12).height = 37; ws.getRow(o + 13).height = 4; ws.getRow(o + 14).height = 4;
-    for (let r = 15; r <= 22; r++) ws.getRow(o + r).height = 37;
-    ws.getRow(o + 23).height = 20; ws.getRow(o + 24).height = 20; ws.getRow(o + 25).height = 20;
-    ws.getRow(o + 26).height = 37; ws.getRow(o + 27).height = 1; ws.getRow(o + 28).height = 1; ws.getRow(o + 29).height = 1;
-    if (p < pages - 1) {
-      try {
-        ws.getRow(o + ROWS_PER_PAGE).addPageBreak();
-      } catch (_) {
-        if (!ws.model.rowBreaks) ws.model.rowBreaks = [];
-        ws.model.rowBreaks.push({ id: o + ROWS_PER_PAGE, max: 16383, min: 1, man: true });
-      }
-    }
-  }
   return wb;
 }
 

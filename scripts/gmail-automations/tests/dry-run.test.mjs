@@ -32,12 +32,12 @@ test('buildReplyMime creates a wrapped multipart attachment', async () => {
   const mime = buildReplyMime({
     to: 'person@example.com', subject: 'Test', messageId: '<message@example.com>',
     references: '<earlier@example.com> <message@example.com>', body: 'Hello',
-    attachments: [{ filename: 'stickers.xlsx', mimeType: 'application/test', buffer: Buffer.alloc(200, 1) }],
+    attachments: [{ filename: 'example.xlsx', mimeType: 'application/test', buffer: Buffer.alloc(200, 1) }],
   });
   assert.match(mime, /Content-Type: multipart\/mixed; boundary="(denovo-\d+)"/);
   const boundary = mime.match(/boundary="([^"]+)"/)[1];
   assert.equal(mime.split(`--${boundary}`).length - 1, 3);
-  assert.match(mime, /Content-Disposition: attachment; filename="stickers\.xlsx"/);
+  assert.match(mime, /Content-Disposition: attachment; filename="example\.xlsx"/);
   const encoded = mime.split('Content-Transfer-Encoding: base64\r\n\r\n')[1].split(`\r\n--${boundary}--`)[0];
   assert.ok(encoded.split('\r\n').every((line) => line.length <= 76));
 });
