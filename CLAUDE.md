@@ -9,7 +9,7 @@ work on the factory floor from the mobile app.
 | | Website | Mobile app |
 |---|---|---|
 | Code | `web/index.html` (single-file, vanilla JS + Tailwind) | Expo / React Native (`app/`, `components/`) |
-| Users | Managers (full edit: stages, cancel, booking, import, stickers, print) | Packers (can advance stage only, see below) and managers |
+| Users | Managers (full edit: stages, cancel, booking, import, Portal carton export, print) | Packers (can advance stage only, see below) and managers |
 | Deploy | Cloudflare Pages (`denovo-orders.pages.dev`), auto-deploys on push to `main` | Expo build |
 
 **They share no code.** Any change to stages, order fields, or business rules
@@ -71,6 +71,10 @@ write, independent of what the UI shows.
   `stageColor()`, and the print `stageBadge()`. A new stage needs all of them.
 - Deploys: Cloudflare Pages only. Netlify and Vercel were disconnected —
   don't re-add configs for them.
+- Debenhams Group's ISC Portal generates the SSCCs and 4×6 BEL PDFs. Denovo
+  only exports the Portal's eight-column carton CSV. Carton type and the
+  buyer's full per-size SKU/expected quantity are shipment-time inputs on the
+  website's Portal Carton Upload screen; they are not stored on `orders`.
 - Some `orders`/`profiles` RLS policies were applied directly to the live
   project without a matching migration file (predates this doc's migration
   convention) — before assuming a policy doesn't exist, check the live

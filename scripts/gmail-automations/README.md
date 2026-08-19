@@ -34,7 +34,10 @@ running hourly on a normal GitHub-hosted runner with full internet access
   and **replies to the email** with what it read, asking for the invoice
   number (which lives in the accounts app, so it stays human-supplied).
   Reply with the number (e.g. `220`) and the next hourly run uploads the
-  finished sheet to Drive and confirms; `complete-order-from-packing-list`
+  finished sheet to Drive and confirms. It does not attach carton labels:
+  managers use the website's Portal Carton Upload screen with the current
+  buyer PO reference, and the Debenhams Group ISC Portal generates SSCC/BEL
+  PDFs. `complete-order-from-packing-list`
   then completes the order as usual. Needs the `drive.file` scope on the
   denovogb refresh token (see step 2).
 

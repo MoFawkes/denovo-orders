@@ -8,7 +8,7 @@ orders through the booking and dispatch pipeline.
 
 | Area | Location | Purpose |
 |---|---|---|
-| Manager website | `web/index.html` | Import, edit, book, complete, print, and report on orders |
+| Manager website | `web/index.html` | Import, edit, book, complete, export Portal cartons, print, and report on orders |
 | Mobile app | `app/`, `components/` | Factory-floor stage tracking and operational views |
 | Backend | `supabase/` | PostgreSQL schema, RLS, audit events, and edge functions |
 | Mail/Drive automation | `scripts/gmail-automations/` | Dockets, sample approvals, bookings, and packing lists |
@@ -73,12 +73,18 @@ The hourly workflow performs five operations:
 1. Detect sample approvals and booking confirmations in Gmail.
 2. Generate order dockets from sourcing emails.
 3. Read photographed packing dockets and request a human-supplied invoice.
-4. Generate the packing-list workbook in Drive.
+4. Generate the packing-list workbook in Drive; the manager then combines it
+   with the current buyer PO reference on the Portal Carton Upload screen.
 5. Complete the matching Booked order and close its Google Task.
 
 Durable checkpoints in `automation_executions` make reply and upload retries
 recoverable. Operational setup, labels, secrets, and recovery instructions are
 in [`scripts/gmail-automations/README.md`](scripts/gmail-automations/README.md).
+
+The Debenhams Group ISC Portal, not Denovo, generates SSCCs and the printable
+BEL PDFs. Denovo's website exports only the Portal carton-upload CSV. Carton
+type and the buyer's full per-size SKU/expected quantity are supplied per
+shipment and are deliberately not persisted on the order.
 
 ## Production cautions
 
