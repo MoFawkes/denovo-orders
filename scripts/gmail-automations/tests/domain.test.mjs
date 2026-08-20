@@ -254,6 +254,43 @@ test('validateDocket surfaces the model-reported problem for unreadable pages', 
   assert.equal(validateDocket({ unreadable: true, problem: 'photo too blurry' }), 'photo too blurry');
 });
 
+// "s"-prefix small-box checksum: mirrors the written_total/written_boxes
+// pattern above -- optional overall (most dockets have no small boxes), but
+// required once at least one carton is actually marked small.
+
+test('validateDocket accepts a docket with a matching small-box count', () => {
+  const docket = {
+    ...goodDocket,
+    cartons: [{ size: '16', qty: 9 }, { size: '18', qty: 18, small: true }],
+    written_boxes: 2,
+    written_small_boxes: 1,
+  };
+  assert.equal(validateDocket(docket), null);
+});
+
+test('validateDocket rejects a wrong written small-box count', () => {
+  const docket = {
+    ...goodDocket,
+    cartons: [{ size: '16', qty: 9 }, { size: '18', qty: 18, small: true }],
+    written_boxes: 2,
+    written_small_boxes: 2,
+  };
+  assert.match(validateDocket(docket), /1 small-box carton\(s\) read but the written small-box count is 2/);
+});
+
+test('validateDocket requires a written small-box count once a carton is marked small', () => {
+  const docket = {
+    ...goodDocket,
+    cartons: [{ size: '16', qty: 9 }, { size: '18', qty: 18, small: true }],
+    written_boxes: 2,
+  };
+  assert.match(validateDocket(docket), /marked small.*no handwritten small-box count/);
+});
+
+test('validateDocket does not require a small-box count when no carton is marked small', () => {
+  assert.equal(validateDocket(goodDocket), null); // goodDocket has no written_small_boxes and no small cartons
+});
+
 // ── cartonRows ───────────────────────────────────────────────────────────────
 // Layout rule from the hand-made sheets: consecutive same-size/same-qty
 // cartons collapse into one row with a carton range.
@@ -272,10 +309,10 @@ test('cartonRows groups consecutive identical cartons and numbers across groups'
     { colour: 'BLACK', cartons: [{ size: 16, qty: 5 }] },
   ]);
   assert.deepEqual(rows, [
-    { colourLabel: 'LEMON', size: '16', qty: 9, boxes: 1, pcs: 9, cartons: '1' },
-    { colourLabel: '', size: '18', qty: 18, boxes: 2, pcs: 36, cartons: '2-3' },
-    { colourLabel: '', size: '20', qty: 17, boxes: 1, pcs: 17, cartons: '4' },
-    { colourLabel: 'BLACK', size: '16', qty: 5, boxes: 1, pcs: 5, cartons: '5' },
+    { colourLabel: 'LEMON', size: '16', qty: 9, boxes: 1, cartonType: 'BDCM1', pcs: 9, cartons: '1' },
+    { colourLabel: '', size: '18', qty: 18, boxes: 2, cartonType: 'BDCM1', pcs: 36, cartons: '2-3' },
+    { colourLabel: '', size: '20', qty: 17, boxes: 1, cartonType: 'BDCM1', pcs: 17, cartons: '4' },
+    { colourLabel: 'BLACK', size: '16', qty: 5, boxes: 1, cartonType: 'BDCM1', pcs: 5, cartons: '5' },
   ]);
   assert.equal(totalBoxes, 5);
   assert.equal(totalPcs, 67);
@@ -287,6 +324,39 @@ test('cartonRows does not merge same-size cartons with different quantities', ()
   ]);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((r) => r.cartons), ['1', '2']);
+});
+
+// "s"-prefix convention: a carton marked `small: true` is a half-height
+// BDCM3 box. Two otherwise-identical cartons must NOT merge into one row
+// if their carton type differs -- see domain.mjs cartonRows.
+
+test('cartonRows keeps same-size/same-qty cartons separate when carton type differs', () => {
+  const { rows } = cartonRows([
+    {
+      colour: 'TAUPE',
+      cartons: [
+        { size: '8', qty: 20, small: false },
+        { size: '8', qty: 20, small: true },
+      ],
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.cartonType), ['BDCM1', 'BDCM3']);
+  assert.deepEqual(rows.map((r) => r.cartons), ['1', '2']);
+});
+
+test('cartonRows still merges consecutive small cartons of the same size/qty', () => {
+  const { rows } = cartonRows([
+    {
+      colour: 'TAUPE',
+      cartons: [
+        { size: '8', qty: 10, small: true },
+        { size: '8', qty: 10, small: true },
+      ],
+    },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { colourLabel: 'TAUPE', size: '8', qty: 10, boxes: 2, cartonType: 'BDCM3', pcs: 20, cartons: '1-2' });
 });
 
 // ── buildPackingListWorkbook + extractPackingListFields round trip ───────────
@@ -343,6 +413,26 @@ test('generated sheets keep the hand-made layout anchors', () => {
   assert.equal(ws.getCell('F40').value.result, 27);
   // Footer starts two rows below the totals.
   assert.match(String(ws.getCell('A42').value), /denovosourcing@gmail\.com/);
+});
+
+test('generated sheets write the real carton type per row, not a blanket BDCM1', () => {
+  const wb = buildPackingListWorkbook({
+    invoice: '224', dispatchDate: '', deliveryDate: '', bookingRef: '',
+    poDisplay: '70056980', internalCode: 'CNR0463', description: 'Taupe Maxi Dress',
+    groups: [
+      {
+        colour: 'TAUPE',
+        sku: 'CNR0463',
+        cartons: [
+          { size: '8', qty: 20, small: false },
+          { size: '8', qty: 15, small: true },
+        ],
+      },
+    ],
+  });
+  const ws = wb.worksheets[0];
+  assert.equal(ws.getCell('E15').value, 'BDCM1');
+  assert.equal(ws.getCell('E16').value, 'BDCM3');
 });
 
 test('the totals row moves down only when a delivery overflows the template', () => {
