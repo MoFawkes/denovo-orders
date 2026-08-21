@@ -23,6 +23,15 @@ on:
         description: Log intended writes without changing Gmail, Drive, Tasks, or Supabase
         type: boolean
         default: false
+      portal_mode:
+        description: ISC Portal rollout mode (submitting mode uses the protected portal-submission environment)
+        type: choice
+        options: [disabled, validate-config, login-smoke, navigate-only, submit-one]
+        default: disabled
+      portal_po:
+        description: Required PO for submit-one; optional filter for navigate-only
+        type: string
+        default: ''
 
 env:
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
@@ -116,7 +125,57 @@ jobs:
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
+          PORTAL_HANDOFF_DIR: ${{ runner.temp }}/portal-handoff
         run: node scripts/gmail-automations/draft-packing-list.mjs
+      - name: Upload fresh Portal handoff
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-handoff
+          path: ${{ runner.temp }}/portal-handoff/*.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+  portal-submission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: draft-packing-list
+    if: >-
+      ${{ needs.draft-packing-list.result == 'success' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.portal_mode != 'disabled') ||
+           (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED == '1')) }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.portal_mode == 'submit-one' && 'portal-submission' || 'production' }}
+    concurrency:
+      group: isc-portal-submission
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-automation
+      - name: Download fresh Portal handoff
+        if: ${{ inputs.portal_mode != 'validate-config' && inputs.portal_mode != 'login-smoke' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: portal-handoff
+          path: ${{ runner.temp }}/portal-handoff
+      - name: Install Chromium
+        if: ${{ inputs.portal_mode != 'validate-config' }}
+        working-directory: scripts/gmail-automations
+        run: npx playwright install --with-deps chromium
+      - name: Run ISC Portal automation
+        env:
+          PORTAL_RUN_MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.portal_mode }}
+          PORTAL_PO: ${{ inputs.portal_po }}
+          PORTAL_HANDOFF_DIR: ${{ runner.temp }}/portal-handoff
+          PORTAL_SCHEDULED_ENABLED: ${{ vars.PORTAL_SCHEDULED_ENABLED }}
+          PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
+          PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
+          PORTAL_TOTP_SECRET: ${{ secrets.PORTAL_TOTP_SECRET }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
+        run: node scripts/gmail-automations/portal-automation.mjs
 
   generate-docket:
     runs-on: ubuntu-latest
@@ -140,8 +199,8 @@ jobs:
         run: node scripts/gmail-automations/generate-docket.mjs
 
   alert-on-failure:
-    if: ${{ failure() }}
-    needs: [mark-sample-approved, mark-order-booked, draft-packing-list, complete-from-packing-list, generate-docket]
+    if: ${{ always() && failure() }}
+    needs: [mark-sample-approved, mark-order-booked, draft-packing-list, complete-from-packing-list, generate-docket, portal-submission]
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "urls": {
+    "purchaseOrders": "https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders",
+    "cartonWizard": "https://isc-portal.debenhamsgroup.com/en/ssccLabels/cartonWizard/{po}"
+  },
+  "selectors": {
+    "username": "input[name=username]",
+    "password": "input[name=password]",
+    "totp": "input[name=totp], input[name=code], input[autocomplete=one-time-code]",
+    "sku": "#sku",
+    "size": "#size, input[name=size]",
+    "cartonQuantity": "input[name=cartonQuantity], #cartonQuantity",
+    "cartonSize": "#cartonSize, [name=cartonSize]"
+  },
+  "timeouts": {
+    "navigationMs": 30000,
+    "actionMs": 15000,
+    "downloadMs": 30000
+  }
+}
