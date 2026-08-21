@@ -41,12 +41,40 @@ async function openWizard(page, config, po) {
   };
 }
 
+async function dumpFilterDiagnostics(page) {
+  const info = await page.evaluate(() => {
+    const textMatches = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.children.length === 0 && el.textContent?.trim() === 'PO Number') {
+        let node = el;
+        const chain = [];
+        for (let i = 0; i < 4 && node; i += 1) {
+          chain.push(node.outerHTML?.slice(0, 300));
+          node = node.parentElement;
+        }
+        textMatches.push(chain);
+      }
+    }
+    const buttonRoles = Array.from(document.querySelectorAll('[role="button"], button'))
+      .map((el) => el.textContent?.trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 30);
+    return { url: location.href, title: document.title, textMatches: textMatches.slice(0, 5), buttonRoles };
+  });
+  console.error('[portal-diagnostic]', JSON.stringify(info, null, 2));
+}
+
 async function readPurchaseOrderStatus(page, config, po) {
   await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
   await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
-  await poNumberButton.first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+  try {
+    await poNumberButton.first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+  } catch (error) {
+    await dumpFilterDiagnostics(page).catch(() => {});
+    throw error;
+  }
   await poNumberButton.first().click();
   const filter = page.locator(config.selectors.poNumberFilter);
   await filter.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
