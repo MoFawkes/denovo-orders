@@ -11,6 +11,7 @@ create function auth.role() returns text language sql stable as $$ select 'servi
 
 create table public.profiles (
   id uuid primary key,
+  full_name text,
   role text not null check (role in ('packer', 'manager', 'admin'))
 );
 
