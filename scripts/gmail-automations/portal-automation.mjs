@@ -1,0 +1,234 @@
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { chromium } from 'playwright';
+import { loadPortalConfig } from './lib/portal-config.mjs';
+import { validatePortalManifest } from './lib/portal-manifest.mjs';
+import { generateTotp } from './lib/totp.mjs';
+import { callPackingListDb } from './lib/automation-db.mjs';
+import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
+import { validateBelPdf } from './lib/bel-validation.mjs';
+import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mjs';
+
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'scheduled']);
+
+function requireSecret(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+async function login(page, config) {
+  await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  if (page.url().includes('amazoncognito.com')) {
+    await page.locator(config.selectors.username).fill(requireSecret('PORTAL_USERNAME'));
+    await page.locator(config.selectors.password).fill(requireSecret('PORTAL_PASSWORD'));
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const totp = page.locator(config.selectors.totp).first();
+    await totp.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+    await totp.fill(generateTotp(requireSecret('PORTAL_TOTP_SECRET')));
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  }
+  await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+}
+
+async function openWizard(page, config, po) {
+  await page.goto(config.urls.cartonWizard.replace('{po}', po), { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  await page.getByRole('button', { name: /Back/i }).waitFor({ timeout: config.timeouts.actionMs });
+  return {
+    submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
+    canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
+  };
+}
+
+async function readPurchaseOrderStatus(page, config, po) {
+  await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  const filter = page.getByRole('textbox', { name: /PO Number/i });
+  if (await filter.isVisible().catch(() => false)) {
+    await filter.fill(po);
+    await filter.press('Enter');
+  }
+  const row = page.getByRole('row').filter({ hasText: po }).first();
+  await row.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+  return { submitted: /\bSubmitted\b/i.test((await row.textContent()) ?? '') };
+}
+
+async function chooseOption(page, control, matcher) {
+  await control.click();
+  const option = page.getByRole('option').filter({ hasText: matcher }).first();
+  await option.waitFor({ state: 'visible' });
+  await option.click();
+}
+
+async function chooseSkuForSize(page, config, carton) {
+  const sku = page.locator(config.selectors.sku);
+  await sku.click();
+  await sku.fill(carton.baseSku);
+  const optionTexts = await page.getByRole('option').filter({ hasText: carton.baseSku }).allTextContents();
+  if (optionTexts.length === 0) throw new Error(`Portal has no SKU matching ${carton.baseSku}`);
+  for (const optionText of optionTexts) {
+    await sku.click();
+    await sku.fill(carton.baseSku);
+    await page.getByRole('option', { name: optionText, exact: true }).click();
+    const portalSize = await page.locator(config.selectors.size).inputValue().catch(async () =>
+      (await page.locator(config.selectors.size).textContent()) ?? '');
+    if (portalSize.trim().toUpperCase() === carton.size.trim().toUpperCase()) return;
+  }
+  throw new Error(`Portal has no ${carton.baseSku} SKU whose derived size is ${carton.size}`);
+}
+
+async function addCarton(page, config, carton) {
+  await chooseSkuForSize(page, config, carton);
+  await page.locator(config.selectors.cartonQuantity).fill(String(carton.quantity));
+  const remainingText = await page.getByText(/\d+\s+Remaining/i).first().textContent().catch(() => null);
+  if (remainingText) {
+    const remaining = Number(remainingText.match(/\d+/)?.[0]);
+    if (Number.isFinite(remaining) && carton.quantity > remaining) throw new Error(`carton ${carton.cartonId} exceeds Portal remaining quantity`);
+  }
+  if (carton.cartonSize !== 'BDCM1') {
+    await chooseOption(page, page.locator(config.selectors.cartonSize), new RegExp(`^${carton.cartonSize}$`, 'i'));
+  }
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+}
+
+async function validateAndSubmit(page, config, onBeforeSubmit) {
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  if (await dialog.isVisible({ timeout: 2000 }).catch(() => false)) {
+    const warnings = (await dialog.textContent())?.trim() ?? '';
+    console.warn(`Portal validation warnings: ${warnings}`);
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+  }
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  onBeforeSubmit();
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page.getByText('Cartons submitted successfully!', { exact: true }).waitFor({ timeout: config.timeouts.actionMs });
+}
+
+async function downloadFromButton(page, name, directory, filename, timeout) {
+  const downloadPromise = page.waitForEvent('download', { timeout });
+  await page.getByRole('button', { name, exact: true }).click();
+  const download = await downloadPromise;
+  const path = join(directory, filename);
+  await download.saveAs(path);
+  return path;
+}
+
+async function deliver(manifest, belPath, packingListPath) {
+  const accessToken = await getAccessToken({
+    clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID'),
+    clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET'),
+    refreshToken: requireSecret('GMAIL_OAUTH_REFRESH_TOKEN'),
+  });
+  const thread = await getThread(accessToken, manifest.gmailThreadId);
+  const latest = thread.messages.at(-1);
+  await sendReply(accessToken, {
+    threadId: manifest.gmailThreadId,
+    replyTo: latest,
+    to: getHeader(latest, 'From'),
+    subject: getHeader(latest, 'Subject') || `Portal labels ${manifest.po}`,
+    body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.`,
+    attachments: [
+      { filename: `${manifest.po}_BELs.pdf`, mimeType: 'application/pdf', buffer: await readFile(belPath) },
+      { filename: `${manifest.po}_packing_list.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: await readFile(packingListPath) },
+    ],
+  });
+}
+
+async function loadManifests(directory, requestedPo) {
+  if (!directory) return [];
+  const files = (await readdir(directory).catch((error) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  })).filter((file) => file.endsWith('.json'));
+  const manifests = [];
+  for (const file of files) {
+    const manifest = validatePortalManifest(JSON.parse(await readFile(join(directory, file), 'utf8')));
+    if (!requestedPo || manifest.po === requestedPo.padStart(10, '0')) manifests.push(manifest);
+  }
+  return manifests;
+}
+
+async function main() {
+  const mode = process.env.PORTAL_RUN_MODE ?? 'validate-config';
+  if (!MODES.has(mode)) throw new Error(`unsupported PORTAL_RUN_MODE: ${mode}`);
+  const config = await loadPortalConfig();
+  console.log('Portal configuration is valid.');
+  if (process.env.DRY_RUN === '1' && ['submit-one', 'scheduled'].includes(mode)) {
+    throw new Error('Portal submission has no dry-run simulation; use navigate-only instead');
+  }
+  if (mode === 'validate-config') return;
+  if (mode === 'scheduled' && process.env.PORTAL_SCHEDULED_ENABLED !== '1') {
+    console.log('Scheduled Portal submission is disabled pending operational sign-off.');
+    return;
+  }
+  const manifests = await loadManifests(process.env.PORTAL_HANDOFF_DIR, process.env.PORTAL_PO);
+  if (['navigate-only', 'submit-one', 'scheduled'].includes(mode) && manifests.length === 0) {
+    if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
+    console.log('No fresh Portal handoff manifests found.');
+    return;
+  }
+  if (mode === 'submit-one' && manifests.length !== 1) throw new Error('submit-one requires exactly one matching manifest');
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ acceptDownloads: true });
+  page.setDefaultTimeout(config.timeouts.actionMs);
+  try {
+    await login(page, config);
+    console.log('Portal login succeeded.');
+    if (mode === 'login-smoke') return;
+    for (const manifest of manifests) {
+      const listState = await readPurchaseOrderStatus(page, config, manifest.po);
+      const portalState = await openWizard(page, config, manifest.po);
+      if (listState.submitted !== portalState.submitted) {
+        throw new Error(`Portal status signals disagree for PO ${manifest.po}; human reconciliation required`);
+      }
+      if (portalState.submitted) {
+        console.log(`PO ${manifest.po} is already Submitted in the Portal; refusing to add cartons.`);
+        continue;
+      }
+      if (mode === 'navigate-only') {
+        await page.locator(config.selectors.sku).waitFor({ state: 'visible' });
+        console.log(`PO ${manifest.po} carton-entry UI is available.`);
+        continue;
+      }
+
+      const runnerId = process.env.GITHUB_RUN_ID ?? `local-${process.pid}`;
+      const claim = await claimPortalSubmission(callPackingListDb, manifest, runnerId);
+      if (claim.noOp) { console.log(`PO ${manifest.po} is already ${claim.submission.state}; no-op.`); continue; }
+      if (!claim.claimed) throw new Error(`PO ${manifest.po} is claimed by another runner`);
+      let submitted = false;
+      let state = 'claimed';
+      try {
+        for (const carton of manifest.cartons) await addCarton(page, config, carton);
+        await validateAndSubmit(page, config, () => { submitted = true; });
+        await transitionPortalSubmission(callPackingListDb, manifest, state, 'portal-submitted', { confirmedBy: 'success-toast' });
+        state = 'portal-submitted';
+        await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-generated');
+        state = 'bels-generated';
+        const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
+        const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
+        const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
+        const validation = await validateBelPdf(belPath, manifest);
+        await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
+        state = 'bels-downloaded';
+        await deliver(manifest, belPath, packingListPath);
+        await transitionPortalSubmission(callPackingListDb, manifest, state, 'delivered');
+        console.log(`PO ${manifest.po} submitted and delivered (${validation.pages} BELs).`);
+      } catch (error) {
+        const nextState = submitted ? 'uncertain-after-submit' : 'failed-before-submit';
+        await transitionPortalSubmission(callPackingListDb, manifest, state, nextState, {}, error).catch((transitionError) => {
+          console.error(`Could not record ${nextState}: ${transitionError.message}`);
+        });
+        throw error;
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => { console.error('Fatal error:', error.message); process.exit(1); });
+}

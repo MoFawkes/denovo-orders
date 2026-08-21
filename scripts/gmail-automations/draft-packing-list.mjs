@@ -27,6 +27,8 @@
 // Requires the drive.file scope on the denovogb refresh token (upload); see
 // oauth-setup.mjs — tokens issued before that scope was added need a re-run.
 import { pathToFileURL } from 'node:url';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import {
   getAccessToken,
@@ -46,6 +48,7 @@ import {
 import { extractJson } from './lib/claude.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution, completeExecution, failExecution } from './lib/execution-state.mjs';
+import { buildPortalManifest } from './lib/portal-manifest.mjs';
 import {
   DATA_MARKER,
   validateDocket,
@@ -359,6 +362,7 @@ async function processAwaitingThread(ctx, thread) {
     description,
     groups,
   });
+  const workbookBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
   const name = `INV ${invoice} ${description}.xlsx`;
   const uploadStep = `drive-upload:${invoice}`;
@@ -381,11 +385,10 @@ async function processAwaitingThread(ctx, thread) {
   }
   if (!uploaded?.id) {
     try {
-      const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
       uploaded = await driveUploadFile(accessToken, {
         name,
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        buffer,
+        buffer: workbookBuffer,
         appProperties: { denovoPackingList: uploadKey },
       });
       await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
@@ -403,6 +406,25 @@ async function processAwaitingThread(ctx, thread) {
       }
       return { outcome: 'failed' };
     }
+  }
+
+  if (process.env.PORTAL_HANDOFF_DIR) {
+    const manifest = buildPortalManifest({
+      po: payload.po,
+      gmailThreadId: thread.id,
+      invoiceId: invoice,
+      groups,
+      workbookBytes: workbookBuffer,
+      sourceRevision: process.env.GITHUB_SHA ?? 'local',
+    });
+    await mkdir(process.env.PORTAL_HANDOFF_DIR, { recursive: true });
+    await writeFile(
+      join(process.env.PORTAL_HANDOFF_DIR, `${manifest.po}-${manifest.idempotencyKey.slice(0, 12)}.json`),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      { flag: 'wx' },
+    ).catch((error) => {
+      if (error.code !== 'EEXIST') throw error;
+    });
   }
 
   const confirmationStep = `creation-confirmation-sent:${invoice}`;

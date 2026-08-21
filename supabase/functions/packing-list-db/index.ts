@@ -119,6 +119,41 @@ Deno.serve(async (request: Request) => {
         return json({ ok: true })
       }
 
+      case 'portal-submission-get': {
+        const idempotencyKey = text(body.idempotencyKey)
+        if (!idempotencyKey) return json({ error: 'idempotencyKey is required' }, 400)
+        const result = await supabase.from('portal_submissions').select('*')
+          .eq('idempotency_key', idempotencyKey).maybeSingle()
+        if (result.error) throw result.error
+        return json({ submission: result.data })
+      }
+
+      case 'portal-submission-claim': {
+        if (!body.manifest || typeof body.manifest !== 'object' || !text(body.runnerId)) {
+          return json({ error: 'manifest and runnerId are required' }, 400)
+        }
+        const result = await supabase.rpc('claim_portal_submission', {
+          submission: body.manifest, runner_id: text(body.runnerId),
+        })
+        if (result.error) throw result.error
+        return json({ submission: result.data })
+      }
+
+      case 'portal-submission-transition': {
+        const idempotencyKey = text(body.idempotencyKey)
+        const expectedState = text(body.expectedState), nextState = text(body.nextState)
+        if (!idempotencyKey || !expectedState || !nextState) return json({ error: 'transition identity is required' }, 400)
+        const result = await supabase.rpc('transition_portal_submission', {
+          submission_key: idempotencyKey,
+          expected_state: expectedState,
+          next_state: nextState,
+          patch: body.result ?? {},
+          error_text: text(body.error) || null,
+        })
+        if (result.error) throw result.error
+        return json({ submission: result.data })
+      }
+
       default:
         return json({ error: 'unknown action' }, 400)
     }

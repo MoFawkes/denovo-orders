@@ -1,6 +1,6 @@
 # Gmail automations (GitHub Actions)
 
-Five automations, one workflow (`.github/workflows/gmail-automations.yml`),
+Six automations, one workflow (`.github/workflows/gmail-automations.yml`),
 running hourly on a normal GitHub-hosted runner with full internet access
 (this replaces two Claude Code cloud routines that couldn't reach
 `supabase.co` from their sandbox):
@@ -40,6 +40,13 @@ running hourly on a normal GitHub-hosted runner with full internet access
   PDFs. `complete-order-from-packing-list`
   then completes the order as usual. Needs the `drive.file` scope on the
   denovogb refresh token (see step 2).
+- `portal-automation.mjs` — drives the buyer ISC Portal using its authoritative
+  SKU dropdown and live remaining quantities. A one-day Actions artifact
+  carries a versioned carton manifest from `draft-packing-list`; credentials
+  and generated documents are not stored in it. The job atomically claims a
+  manifest, submits once, validates the BEL PDF, downloads the Portal's
+  official packing list, and replies with both files. Any failure after the
+  Submit click becomes `uncertain-after-submit` and is never retried.
 
 ## One-time setup
 
@@ -99,6 +106,14 @@ Settings > Secrets and variables > Actions > New repository secret, for each of:
 | `SAMPLE_APPROVAL_SECRET` | must match the `SAMPLE_APPROVAL_SECRET` env var already set on the `mark-sample-approved` Supabase edge function |
 | `BOOKING_AUTOMATION_SECRET` | must match the `BOOKING_AUTOMATION_SECRET` env var already set on the `mark-order-booked` Supabase edge function |
 | `SUPABASE_SERVICE_ROLE_KEY` | from the Supabase dashboard: Project Settings > API > `service_role` secret key. Bypasses RLS entirely (same as the two automation secrets above, but for the whole database, not one edge function) — treat it like a DB superuser password, not a normal API key |
+| `PORTAL_USERNAME` | ISC Portal email (`denovogb@gmail.com`) |
+| `PORTAL_PASSWORD` | ISC Portal password |
+| `PORTAL_TOTP_SECRET` | Base32 authenticator seed, not a current six-digit code |
+
+Create a GitHub environment named **`portal-submission`** with required
+reviewers before using `submit-one`. Leave the repository variable
+`PORTAL_SCHEDULED_ENABLED` absent or `0` during rollout; set it to `1` only
+after the duplicate/no-op and crash-after-submit exercises are signed off.
 
 The sample-approval/booking secrets are existing shared secrets already
 configured on the Supabase edge functions (previously only known to the
@@ -115,6 +130,12 @@ For a read-only production rehearsal, enable the **dry_run** input. The jobs
 still read real Gmail, Drive, Tasks, and Supabase data, but every label, reply,
 task, upload, edge-function mutation, database mutation, and checkpoint write
 is replaced by a `[dry-run]` log line.
+
+Portal rollout is deliberately separate from `dry_run`: `validate-config`
+does not open a browser; `login-smoke` stops after MFA; `navigate-only` opens
+the PO without changing it; and `submit-one` requires an exact PO plus approval
+through the protected environment. Use them in that order. Scheduled Portal
+submission stays disabled unless `PORTAL_SCHEDULED_ENABLED=1`.
 
 ## Ongoing
 
@@ -141,6 +162,11 @@ for `denovosourcing`). Causes, most likely first:
 checkpoints to `public.automation_executions`. The table is protected by RLS
 with no browser-client policies; only the service-role automation can access
 it.
+
+Portal submissions use `public.portal_submissions`, a separate transaction
+state machine. Safe pre-submit failures may be claimed again. Post-submit and
+`uncertain-after-submit` records are automatic no-ops on rerun and require
+human reconciliation through the Portal's Unsubmit/edit flow.
 
 Checkpoint identities use the external source rather than an order row:
 
