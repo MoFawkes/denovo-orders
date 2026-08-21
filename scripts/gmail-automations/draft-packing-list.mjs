@@ -84,7 +84,8 @@ const SYSTEM_PROMPT = `You extract packing data from photos of printed "DOCKET S
 Each photo shows one docket sheet: a printed header table (DOCKET SHEET #<number>, DATE, EX-FACTORY DATE, PO NUMBER, STYLE NO., SKU, DESCRIPTION, SUPPLIER, FABRICATION) and a printed size row (e.g. 4 6 8 10 12 14 16) with ordered quantities underneath. The packers then HANDWRITE the actual packed quantities, usually below the printed table, in columns aligned under each size:
 - Each handwritten number in a size's column is the quantity in ONE box/carton. Two stacked numbers under size 8 (e.g. 20 and 15) mean two cartons: one of 20, one of 15.
 - A column's numbers are often summed with an underline: the figure UNDER the line is the column total, NOT another carton — never include column totals as cartons. A size's column often repeats the printed size number at the top; that is a size label, not a quantity.
-- Somewhere on the page there is usually a handwritten grand total (e.g. "153 TOTAL") and a box count (e.g. "10 Box").
+- A quantity written with a lowercase "s" immediately before the number (e.g. "s15") marks that carton as a SMALL box (half-height BDCM3 carton); an unmarked number is a normal box (BDCM1). The "s" is a letter, clearly distinct in shape from the digit "5" — don't confuse the two, and don't infer "small" from the quantity being low, only from an actual written "s".
+- Somewhere on the page there is usually a handwritten grand total (e.g. "153 TOTAL") and a box count (e.g. "10 Box"). If any cartons are marked small, there is often also a handwritten small-box count (e.g. "2 small").
 - The SKU field often reads "<COLOUR>: <CODE>" (e.g. "SAGE: CNQ9238") — the colour word and the buyer SKU code.
 
 Reply with ONLY a JSON object, no other text, matching this shape:
@@ -96,9 +97,10 @@ Reply with ONLY a JSON object, no other text, matching this shape:
       "style_no": "CNO4843",
       "sku": "CNQ9238",
       "colour": "SAGE",
-      "cartons": [ { "size": "4", "qty": 9 }, { "size": "8", "qty": 20 }, { "size": "8", "qty": 15 } ],
+      "cartons": [ { "size": "4", "qty": 9, "small": false }, { "size": "8", "qty": 20, "small": false }, { "size": "8", "qty": 15, "small": true } ],
       "written_total": 153,
       "written_boxes": 10,
+      "written_small_boxes": 1,
       "unreadable": false,
       "problem": null
     }
@@ -108,8 +110,9 @@ Reply with ONLY a JSON object, no other text, matching this shape:
 Rules:
 - One entry per docket sheet photographed, in the order the photos appear.
 - "po" must be a 10-digit zero-padded numeric string (left-pad what's printed).
-- "cartons" lists every handwritten carton quantity, sizes in the printed column order, boxes within a size top-to-bottom. Sizes are strings exactly as printed (they can be "S"/"M" or "16"/"18").
+- "cartons" lists every handwritten carton quantity, sizes in the printed column order, boxes within a size top-to-bottom. Sizes are strings exactly as printed (they can be "S"/"M" or "16"/"18"). "small" is true only when that specific number has a written "s" prefix, false otherwise — always include it.
 - "written_total" / "written_boxes" are the handwritten grand total and box count; use null for one that genuinely is not on the page.
+- "written_small_boxes" is the handwritten count of small-box cartons, if the packer wrote one (e.g. "2 small"); use null if no such count appears on the page, even if some cartons are marked small.
 - If a page is too blurry or ambiguous to read confidently, set "unreadable": true and say why in "problem" — never guess a digit you cannot actually read.`;
 
 // ── Phase A: read photos, extract, ask for the INV number ───────────────────

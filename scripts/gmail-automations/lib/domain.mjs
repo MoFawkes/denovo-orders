@@ -40,6 +40,13 @@ export function validateDocket(docket) {
   if (docket.written_boxes != null && docket.cartons.length !== Number(docket.written_boxes)) {
     return `${docket.cartons.length} cartons read but the written box count is ${docket.written_boxes}`;
   }
+  const smallCount = docket.cartons.filter((c) => c.small).length;
+  if (smallCount > 0 && docket.written_small_boxes == null) {
+    return `${smallCount} carton(s) marked small ("s" prefix) but no handwritten small-box count found to check against`;
+  }
+  if (docket.written_small_boxes != null && smallCount !== Number(docket.written_small_boxes)) {
+    return `${smallCount} small-box carton(s) read but the written small-box count is ${docket.written_small_boxes}`;
+  }
   return null;
 }
 
@@ -202,11 +209,12 @@ export function cartonRows(groups) {
   for (const group of groups) {
     const groupRows = [];
     for (const c of group.cartons) {
+      const cartonType = c.small ? 'BDCM3' : 'BDCM1';
       const prev = groupRows[groupRows.length - 1];
-      if (prev && prev.size === String(c.size) && prev.qty === Number(c.qty)) {
+      if (prev && prev.size === String(c.size) && prev.qty === Number(c.qty) && prev.cartonType === cartonType) {
         prev.boxes += 1;
       } else {
-        groupRows.push({ size: String(c.size), qty: Number(c.qty), boxes: 1 });
+        groupRows.push({ size: String(c.size), qty: Number(c.qty), boxes: 1, cartonType });
       }
     }
     groupRows.forEach((r, i) => {
@@ -219,6 +227,7 @@ export function cartonRows(groups) {
         size: r.size,
         qty: r.qty,
         boxes: r.boxes,
+        cartonType: r.cartonType,
         pcs: r.qty * r.boxes,
         cartons: r.boxes === 1 ? String(first) : `${first}-${carton}`,
       });
@@ -377,7 +386,7 @@ export function buildPackingListWorkbook({
     set(`B${rn}`, r.size, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`C${rn}`, String(r.qty), { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
     set(`D${rn}`, r.boxes, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
-    set(`E${rn}`, 'BDCM1', { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
+    set(`E${rn}`, r.cartonType, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
     set(`F${rn}`, { formula: `SUM(D${rn}*C${rn})`, result: r.pcs }, { font: mono(10), border: { right: T, bottom: T }, alignment: middle });
     set(`G${rn}`, r.cartons, { font: mono(10), border: { right: T, bottom: T }, alignment: middle, numFmt: '@' });
   });
