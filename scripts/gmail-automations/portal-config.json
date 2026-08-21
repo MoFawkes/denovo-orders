@@ -11,7 +11,8 @@
     "sku": "#sku",
     "size": "#size, input[name=size]",
     "cartonQuantity": "input[name=cartonQuantity], #cartonQuantity",
-    "cartonSize": "#cartonSize, [name=cartonSize]"
+    "cartonSize": "#cartonSize, [name=cartonSize]",
+    "poNumberFilter": "#purchaseOrderId input"
   },
   "timeouts": {
     "navigationMs": 30000,
