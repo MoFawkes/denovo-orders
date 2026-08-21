@@ -13,8 +13,7 @@ import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mj
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'scheduled']);
 
-function requireSecret(name) {
-  const value = process.env[name];
+function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
@@ -22,12 +21,12 @@ function requireSecret(name) {
 async function login(page, config) {
   await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
   if (page.url().includes('amazoncognito.com')) {
-    await page.locator(config.selectors.username).fill(requireSecret('PORTAL_USERNAME'));
-    await page.locator(config.selectors.password).fill(requireSecret('PORTAL_PASSWORD'));
+    await page.locator(config.selectors.username).fill(requireSecret('PORTAL_USERNAME', process.env.PORTAL_USERNAME));
+    await page.locator(config.selectors.password).fill(requireSecret('PORTAL_PASSWORD', process.env.PORTAL_PASSWORD));
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     const totp = page.locator(config.selectors.totp).first();
     await totp.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
-    await totp.fill(generateTotp(requireSecret('PORTAL_TOTP_SECRET')));
+    await totp.fill(generateTotp(requireSecret('PORTAL_TOTP_SECRET', process.env.PORTAL_TOTP_SECRET)));
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
@@ -117,9 +116,9 @@ async function downloadFromButton(page, name, directory, filename, timeout) {
 
 async function deliver(manifest, belPath, packingListPath) {
   const accessToken = await getAccessToken({
-    clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID'),
-    clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET'),
-    refreshToken: requireSecret('GMAIL_OAUTH_REFRESH_TOKEN'),
+    clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID', process.env.GMAIL_OAUTH_CLIENT_ID),
+    clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET', process.env.GMAIL_OAUTH_CLIENT_SECRET),
+    refreshToken: requireSecret('GMAIL_OAUTH_REFRESH_TOKEN', process.env.GMAIL_OAUTH_REFRESH_TOKEN),
   });
   const thread = await getThread(accessToken, manifest.gmailThreadId);
   const latest = thread.messages.at(-1);
