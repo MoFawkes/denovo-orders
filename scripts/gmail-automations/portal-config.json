@@ -12,7 +12,8 @@
     "size": "#size, input[name=size]",
     "cartonQuantity": "input[name=cartonQuantity], #cartonQuantity",
     "cartonSize": "#cartonSize, [name=cartonSize]",
-    "poNumberFilter": "#purchaseOrderId input"
+    "poNumberFilter": "#purchaseOrderId input",
+    "poNumberButton": "body > div.MuiBox-root.mui-t3xolk > div.MuiBox-root.mui-11dfn0q > main > div > div > div:nth-child(2) > div > div > div:nth-child(1) > div > button"
   },
   "timeouts": {
     "navigationMs": 30000,
