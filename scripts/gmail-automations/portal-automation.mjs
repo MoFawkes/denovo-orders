@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -43,6 +43,7 @@ async function openWizard(page, config, po) {
 
 async function readPurchaseOrderStatus(page, config, po) {
   await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
   await poNumberButton.first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
@@ -176,7 +177,9 @@ async function main() {
   if (mode === 'submit-one' && manifests.length !== 1) throw new Error('submit-one requires exactly one matching manifest');
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ acceptDownloads: true });
+  const context = await browser.newContext({ acceptDownloads: true });
+  await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+  const page = await context.newPage();
   page.setDefaultTimeout(config.timeouts.actionMs);
   try {
     await login(page, config);
@@ -229,6 +232,12 @@ async function main() {
       }
     }
   } finally {
+    if (process.env.PORTAL_TRACE_DIR) {
+      await mkdir(process.env.PORTAL_TRACE_DIR, { recursive: true });
+      await context.tracing.stop({ path: join(process.env.PORTAL_TRACE_DIR, 'trace.zip') });
+    } else {
+      await context.tracing.stop();
+    }
     await browser.close();
   }
 }

@@ -180,6 +180,7 @@ jobs:
           PORTAL_RUN_MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.portal_mode }}
           PORTAL_PO: ${{ inputs.portal_po }}
           PORTAL_HANDOFF_DIR: ${{ runner.temp }}/portal-handoff
+          PORTAL_TRACE_DIR: ${{ runner.temp }}/portal-trace
           PORTAL_SCHEDULED_ENABLED: ${{ vars.PORTAL_SCHEDULED_ENABLED }}
           PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
           PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
@@ -189,6 +190,14 @@ jobs:
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
           PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
         run: node scripts/gmail-automations/portal-automation.mjs
+      - name: Upload Portal trace on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-trace
+          path: ${{ runner.temp }}/portal-trace/trace.zip
+          if-no-files-found: ignore
+          retention-days: 3
 
   generate-docket:
     runs-on: ubuntu-latest
