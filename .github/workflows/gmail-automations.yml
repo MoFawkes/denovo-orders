@@ -32,6 +32,14 @@ on:
         description: Required PO for submit-one; optional filter for navigate-only
         type: string
         default: ''
+      portal_run_id:
+        description: >-
+          Recover a portal-handoff manifest from a prior run's artifact
+          instead of this run's own (needed once the source Gmail thread is
+          already Processed, since draft-packing-list can't rebuild it).
+          Leave blank to use this run's own manifest as normal.
+        type: string
+        default: ''
 
 env:
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
@@ -145,6 +153,9 @@ jobs:
           ((github.event_name == 'workflow_dispatch' && inputs.portal_mode != 'disabled') ||
            (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED == '1')) }}
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.portal_mode == 'submit-one' && 'portal-submission' || 'production' }}
+    permissions:
+      contents: read
+      actions: read
     concurrency:
       group: isc-portal-submission
       cancel-in-progress: false
@@ -158,6 +169,8 @@ jobs:
         with:
           name: portal-handoff
           path: ${{ runner.temp }}/portal-handoff
+          run-id: ${{ inputs.portal_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Install Chromium
         if: ${{ inputs.portal_mode != 'validate-config' }}
         working-directory: scripts/gmail-automations

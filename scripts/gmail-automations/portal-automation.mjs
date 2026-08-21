@@ -43,11 +43,13 @@ async function openWizard(page, config, po) {
 
 async function readPurchaseOrderStatus(page, config, po) {
   await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
-  const filter = page.getByRole('textbox', { name: /PO Number/i });
-  if (await filter.isVisible().catch(() => false)) {
-    await filter.fill(po);
-    await filter.press('Enter');
-  }
+  await page.getByRole('button', { name: 'PO Number' }).click();
+  const filter = page.locator(config.selectors.poNumberFilter);
+  await filter.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+  await filter.fill(po);
+  const addOption = page.getByRole('option').filter({ hasText: 'Add' }).first();
+  await addOption.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+  await addOption.click();
   const row = page.getByRole('row').filter({ hasText: po }).first();
   await row.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   return { submitted: /\bSubmitted\b/i.test((await row.textContent()) ?? '') };

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const REQUIRED_URLS = ['purchaseOrders', 'cartonWizard'];
-const REQUIRED_SELECTORS = ['username', 'password', 'totp', 'sku', 'size', 'cartonQuantity', 'cartonSize'];
+const REQUIRED_SELECTORS = ['username', 'password', 'totp', 'sku', 'size', 'cartonQuantity', 'cartonSize', 'poNumberFilter'];
 const REQUIRED_TIMEOUTS = ['navigationMs', 'actionMs', 'downloadMs'];
 
 export function validatePortalConfig(config) {
