@@ -930,7 +930,10 @@ function subscribeRealtime() {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 function printActiveOrders() {
-  const active = allOrders.filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
+  const stageOrder = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Booked']
+  const active = allOrders
+    .filter(o => o.stage !== 'Completed' && o.stage !== 'Cancelled')
+    .sort((a, b) => stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage))
 
   const stageColors = {
     Pending: { bg: 'rgba(148,163,184,0.2)', color: '#475569' },
@@ -951,6 +954,7 @@ function printActiveOrders() {
       <td>${o.colour || '—'}</td>
       <td style="text-align:right;">${o.qty ?? '—'}</td>
       <td>${o.ex_factory || '—'}</td>
+      <td style="text-align:right;">${o.ppu != null ? '£' + parseFloat(o.ppu).toFixed(2) : '—'}</td>
       <td><span style="background:${sc.bg};color:${sc.color};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;">${o.stage || '—'}</span></td>
       <td style="color:#888;font-size:11px;">${o.notes || '—'}</td>
     </tr>`
@@ -988,7 +992,7 @@ function printActiveOrders() {
       <thead>
         <tr>
           <th>PO</th><th>Description</th><th>Style No</th><th>SKU</th>
-          <th>Colour</th><th>Qty</th><th>Ex Factory</th><th>Stage</th><th>Notes</th>
+          <th>Colour</th><th>Qty</th><th>Ex Factory</th><th>PPU</th><th>Stage</th><th>Notes</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
