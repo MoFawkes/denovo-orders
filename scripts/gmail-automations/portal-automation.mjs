@@ -9,6 +9,7 @@ import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
 import { validateBelPdf } from './lib/bel-validation.mjs';
+import { assertPortalAccess } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mjs';
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'scheduled']);
@@ -19,7 +20,10 @@ function requireSecret(name, value) {
 }
 
 async function login(page, config) {
-  await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  const landingResponse = await page.goto(config.urls.purchaseOrders, {
+    waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+  });
+  await assertPortalAccess(landingResponse, page, 'initial navigation before authentication');
   if (page.url().includes('amazoncognito.com')) {
     await page.locator(config.selectors.username).fill(requireSecret('PORTAL_USERNAME', process.env.PORTAL_USERNAME));
     await page.locator(config.selectors.password).fill(requireSecret('PORTAL_PASSWORD', process.env.PORTAL_PASSWORD));
@@ -30,10 +34,14 @@ async function login(page, config) {
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+  await assertPortalAccess(null, page, 'Cognito callback');
 }
 
 async function openWizard(page, config, po) {
-  await page.goto(config.urls.cartonWizard.replace('{po}', po), { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
+    waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+  });
+  await assertPortalAccess(response, page, `carton-wizard navigation for PO ${po}`);
   await page.getByRole('button', { name: /Back/i }).waitFor({ timeout: config.timeouts.actionMs });
   return {
     submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
@@ -65,7 +73,13 @@ async function dumpFilterDiagnostics(page) {
 }
 
 async function readPurchaseOrderStatus(page, config, po) {
-  await page.goto(config.urls.purchaseOrders, { waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs });
+  let response = null;
+  if (page.url().split('?')[0] !== config.urls.purchaseOrders) {
+    response = await page.goto(config.urls.purchaseOrders, {
+      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+    });
+  }
+  await assertPortalAccess(response, page, 'purchase-order list navigation');
   await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
