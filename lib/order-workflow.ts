@@ -7,6 +7,7 @@ export type Order = {
   docket: number | string | null; docket_url: string | null; invoice_no: string | null
   packing_list_url: string | null; stage: string | null; notes: string | null
   image_url?: string | null; product_url?: string | null; updated_by?: string | null
+  ppu?: number | string | null
 }
 
 export const STAGES = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Booked', 'Completed'] as const

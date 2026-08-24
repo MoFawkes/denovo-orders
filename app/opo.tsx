@@ -208,7 +208,12 @@ export default function OpoScreen() {
       }
     }
 
-    const rows = activeOrders.map((order, i) => `
+    const printStageOrder = ['Pending', 'Cutting', 'Production', 'Packing', 'Ready', 'Booked']
+    const sortedOrders = [...activeOrders].sort(
+      (a, b) => printStageOrder.indexOf(a.stage ?? '') - printStageOrder.indexOf(b.stage ?? '')
+    )
+
+    const rows = sortedOrders.map((order, i) => `
       <tr class="zebra-row">
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:11px;">${order.po || '-'}</td>
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.description || order.style || '-'}</td>
@@ -216,6 +221,7 @@ export default function OpoScreen() {
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.colour || '-'}</td>
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${order.qty != null ? order.qty.toLocaleString() : '-'}</td>
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${order.ex_factory || '-'}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${order.ppu != null ? '£' + parseFloat(String(order.ppu)).toFixed(2) : '-'}</td>
         <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;">
           <span style="${stageBadge(order.stage)}padding:2px 8px;border-radius:999px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">
             ${order.stage || '-'}
@@ -251,6 +257,7 @@ export default function OpoScreen() {
               <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Colour</th>
               <th style="padding:8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Qty</th>
               <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Ex Factory</th>
+              <th style="padding:8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">PPU</th>
               <th style="padding:8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Stage</th>
               <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Notes</th>
             </tr>
