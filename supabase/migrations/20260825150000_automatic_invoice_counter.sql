@@ -62,7 +62,7 @@ begin
   values (allocation_source_id, allocated);
   return allocated;
 end;
-$;
+$$;
 
 revoke all on function public.allocate_invoice_number(text, bigint) from public;
 grant execute on function public.allocate_invoice_number(text, bigint) to service_role;
