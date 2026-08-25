@@ -342,9 +342,18 @@ async function processAwaitingThread(ctx, thread) {
   const groups = payload.groups.map((g) => ({
     colour: (g.colour ?? '').toUpperCase(), sku: g.sku, cartons: g.cartons,
   }));
+  const dispatchDate = payload.booking?.date ? addDaysUTC(payload.booking.date, -1) : null;
+  if (!dispatchDate) {
+    await modifyThreadLabels(accessToken, thread.id, {
+      add: [labels.needsReview],
+      remove: [labels.awaitingInv],
+    });
+    return { outcome: 'needs_review', reason: 'no booking date available for the dispatch date' };
+  }
   const handoffBytes = Buffer.from(JSON.stringify({
     po: payload.po,
     invoiceId: invoice,
+    dispatchDate,
     groups,
   }));
 
@@ -353,6 +362,7 @@ async function processAwaitingThread(ctx, thread) {
       po: payload.po,
       gmailThreadId: thread.id,
       invoiceId: invoice,
+      dispatchDate,
       groups,
       workbookBytes: handoffBytes,
       sourceRevision: process.env.GITHUB_SHA ?? 'local',
