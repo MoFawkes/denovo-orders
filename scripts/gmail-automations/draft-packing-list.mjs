@@ -422,6 +422,7 @@ async function main() {
   const labels = {
     packingList: await getOrCreateLabel(accessToken, 'Packing List'),
     awaitingInv: await getOrCreateLabel(accessToken, 'Packing List/Awaiting INV'),
+    awaitingBooking: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Booking'),
     processed: await getOrCreateLabel(accessToken, 'Packing List/Processed'),
     needsReview: await getOrCreateLabel(accessToken, 'Packing List/Needs Review'),
   };
@@ -436,41 +437,40 @@ async function main() {
 
   const newThreads = await searchThreads(
     accessToken,
-    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Processed -label:Packing-List-Needs-Review',
+    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Processed -label:Packing-List-Needs-Review',
   );
   console.log(`New Packing List thread(s): ${newThreads.length}.`);
-  let asked = 0;
+  let waitingForBooking = 0;
+  let created = 0;
   let flagged = 0;
   let failed = 0;
   for (const thread of newThreads) {
     console.log(`Processing new thread ${thread.id}...`);
     const result = await processNewThread(ctx, thread);
-    if (result.outcome === 'awaiting_inv') asked++;
+    if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
+    else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'needs_review') { flagged++; console.log(`  -> Needs Review: ${result.reason}`); }
     else failed++;
   }
 
-  const awaitingThreads = await searchThreads(
+  const waitingThreads = await searchThreads(
     accessToken,
-    'label:Packing-List-Awaiting-INV -label:Packing-List-Processed',
+    '{label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
   );
-  console.log(`Thread(s) awaiting an INV number: ${awaitingThreads.length}.`);
-  let created = 0;
-  let stillAwaiting = 0;
-  for (const thread of awaitingThreads) {
-    console.log(`Checking awaiting thread ${thread.id}...`);
-    const result = await processAwaitingThread(ctx, thread);
+  console.log(`Thread(s) waiting for a booking: ${waitingThreads.length}.`);
+  for (const thread of waitingThreads) {
+    console.log(`Rechecking booking for thread ${thread.id}...`);
+    const result = await processWaitingThread(ctx, thread);
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
-    else if (result.outcome === 'still_awaiting') stillAwaiting++;
+    else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'needs_review') flagged++;
     else failed++;
   }
 
   console.log('');
   console.log('Summary:');
-  console.log(`  Extracted + asked for INV number: ${asked}`);
   console.log(`  Portal handoffs created: ${created}`);
-  console.log(`  Still awaiting a reply with the INV number: ${stillAwaiting}`);
+  console.log(`  Waiting for booking: ${waitingForBooking}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
 
