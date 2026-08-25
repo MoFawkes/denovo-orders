@@ -7,7 +7,7 @@ test('requests a corrective photo read for carton checksum mismatches', () => {
     'docket #367: carton quantities add up to 480 but the written total is 500',
   ]), true);
   assert.equal(hasChecksumProblem([
-    'docket #367: extracted 9 cartons but the written box count is 10',
+    'docket #367: 9 cartons read but the written box count is 10',
   ]), true);
 });
 
