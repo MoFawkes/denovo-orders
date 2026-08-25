@@ -111,8 +111,6 @@ for the summary line each script prints at the end.
 
 For a manual run, leave **invoice_start** blank to continue the stored sequence. To carry on from a specific higher number, enter that number; it becomes the next invoice assigned, and later dockets continue upward automatically.
 
-For a manual run, leave **invoice_start** blank to continue the stored sequence. To carry on from a specific higher number, enter that number; it becomes the next invoice assigned, and later dockets continue upward automatically.
-
 For a read-only production rehearsal, enable the **dry_run** input. The jobs
 still read real Gmail, Drive, Tasks, and Supabase data, but every label, reply,
 task, upload, edge-function mutation, database mutation, and checkpoint write
