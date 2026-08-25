@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   mark-sample-approved:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
     timeout-minutes: 15
     concurrency:
@@ -68,7 +68,7 @@ jobs:
         run: node scripts/gmail-automations/mark-sample-approved.mjs
 
   mark-order-booked:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
     timeout-minutes: 15
     concurrency:
@@ -87,7 +87,7 @@ jobs:
         run: node scripts/gmail-automations/mark-order-booked.mjs
 
   complete-from-packing-list:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
     timeout-minutes: 20
     concurrency:
@@ -114,7 +114,7 @@ jobs:
         run: node scripts/gmail-automations/complete-order-from-packing-list.mjs
 
   draft-packing-list:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
     timeout-minutes: 30
     concurrency:
@@ -145,7 +145,7 @@ jobs:
           retention-days: 1
 
   portal-submission:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     timeout-minutes: 30
     needs: draft-packing-list
     if: >-
@@ -200,7 +200,7 @@ jobs:
           retention-days: 3
 
   generate-docket:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
     timeout-minutes: 20
     concurrency:
@@ -223,7 +223,7 @@ jobs:
   alert-on-failure:
     if: ${{ always() && failure() }}
     needs: [mark-sample-approved, mark-order-booked, draft-packing-list, complete-from-packing-list, generate-docket, portal-submission]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     permissions:
       contents: read
       issues: write
