@@ -13,7 +13,7 @@ import { assertPortalAccess } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 
-const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'scheduled']);
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
 function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
@@ -203,7 +203,7 @@ async function main() {
   if (!MODES.has(mode)) throw new Error(`unsupported PORTAL_RUN_MODE: ${mode}`);
   const config = await loadPortalConfig();
   console.log('Portal configuration is valid.');
-  if (process.env.DRY_RUN === '1' && ['submit-one', 'scheduled'].includes(mode)) {
+  if (process.env.DRY_RUN === '1' && ['submit-one', 'submit-fresh', 'scheduled'].includes(mode)) {
     throw new Error('Portal submission has no dry-run simulation; use navigate-only instead');
   }
   if (mode === 'validate-config') return;
@@ -212,7 +212,7 @@ async function main() {
     return;
   }
   const manifests = await loadManifests(process.env.PORTAL_HANDOFF_DIR, process.env.PORTAL_PO);
-  if (['navigate-only', 'submit-one', 'scheduled'].includes(mode) && manifests.length === 0) {
+  if (['navigate-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
     if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
     console.log('No fresh Portal handoff manifests found.');
     return;
