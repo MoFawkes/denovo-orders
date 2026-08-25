@@ -52,17 +52,22 @@ permissions:
   contents: read
 
 jobs:
-  mark-sample-approved:
+  gmail-automations:
     runs-on: [self-hosted, linux, x64, denovo-orders]
     environment: production
-    timeout-minutes: 15
+    timeout-minutes: 60
+    outputs:
+      draft_result: ${{ steps.draft.outcome }}
     concurrency:
-      group: sample-approvals
+      group: gmail-automations
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-automation
+
       - name: Run sample-approval automation
+        id: sample
+        continue-on-error: true
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -71,17 +76,9 @@ jobs:
           SAMPLE_APPROVAL_SECRET: ${{ secrets.SAMPLE_APPROVAL_SECRET }}
         run: node scripts/gmail-automations/mark-sample-approved.mjs
 
-  mark-order-booked:
-    runs-on: [self-hosted, linux, x64, denovo-orders]
-    environment: production
-    timeout-minutes: 15
-    concurrency:
-      group: booking-confirmations
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-automation
       - name: Run booking-confirmation automation
+        id: booking
+        continue-on-error: true
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -90,50 +87,20 @@ jobs:
           BOOKING_AUTOMATION_SECRET: ${{ secrets.BOOKING_AUTOMATION_SECRET }}
         run: node scripts/gmail-automations/mark-order-booked.mjs
 
-  complete-from-packing-list:
-    runs-on: [self-hosted, linux, x64, denovo-orders]
-    environment: production
-    timeout-minutes: 20
-    concurrency:
-      group: packing-list-pipeline
-      cancel-in-progress: false
-    # Runs after draft-packing-list so a sheet drafted in this run is picked
-    # up immediately instead of waiting for the next hourly run. Not `needs`'
-    # default behaviour alone: if drafting fails (e.g. an upload left for
-    # retry), completion of already-uploaded sheets should still run.
-    needs: draft-packing-list
-    if: ${{ always() }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-automation
-      - name: Run packing-list completion automation
+      - name: Run docket-generation automation
+        id: docket
+        continue-on-error: true
         env:
-          # denovogb token: it owns both the Drive packing lists and the
-          # Google Tasks created by mark-order-booked. Requires the
-          # drive.readonly scope (re-run oauth-setup.mjs if this 403s).
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-          PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
-        run: node scripts/gmail-automations/complete-order-from-packing-list.mjs
+          GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
+          DOCKET_DB_SECRET: ${{ secrets.DOCKET_DB_SECRET }}
+        run: node scripts/gmail-automations/generate-docket.mjs
 
-  draft-packing-list:
-    needs: mark-order-booked
-    if: ${{ always() }}
-    runs-on: [self-hosted, linux, x64, denovo-orders]
-    environment: production
-    timeout-minutes: 30
-    concurrency:
-      group: packing-list-pipeline
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-automation
       - name: Run packing-list drafting automation
+        id: draft
+        continue-on-error: true
         env:
-          # denovogb token again: reads the forwarded docket photos, replies
-          # in-thread, and uploads the generated sheet. Requires the
-          # drive.file scope (re-run oauth-setup.mjs if uploads 403).
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
@@ -142,8 +109,9 @@ jobs:
           PORTAL_HANDOFF_DIR: ${{ runner.temp }}/portal-handoff
           INVOICE_START: ${{ github.event_name == 'workflow_dispatch' && inputs.invoice_start || '' }}
         run: node scripts/gmail-automations/draft-packing-list.mjs
+
       - name: Upload fresh Portal handoff
-        if: ${{ success() }}
+        if: ${{ steps.draft.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: portal-handoff
@@ -151,12 +119,43 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+      - name: Run legacy packing-list completion automation
+        id: completion
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
+        run: node scripts/gmail-automations/complete-order-from-packing-list.mjs
+
+      - name: Report combined job failures
+        if: ${{ always() }}
+        env:
+          SAMPLE_OUTCOME: ${{ steps.sample.outcome }}
+          BOOKING_OUTCOME: ${{ steps.booking.outcome }}
+          DOCKET_OUTCOME: ${{ steps.docket.outcome }}
+          DRAFT_OUTCOME: ${{ steps.draft.outcome }}
+          COMPLETION_OUTCOME: ${{ steps.completion.outcome }}
+        run: |
+          failed=()
+          [ "${SAMPLE_OUTCOME}" = success ] || failed+=("sample approvals")
+          [ "${BOOKING_OUTCOME}" = success ] || failed+=("booking confirmations")
+          [ "${DOCKET_OUTCOME}" = success ] || failed+=("docket generation")
+          [ "${DRAFT_OUTCOME}" = success ] || failed+=("packing-list drafting")
+          [ "${COMPLETION_OUTCOME}" = success ] || failed+=("legacy packing-list completion")
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf 'Failed automation step(s): %s\n' "${failed[*]}"
+            exit 1
+          fi
+
   portal-submission:
     runs-on: [self-hosted, linux, x64, denovo-orders]
     timeout-minutes: 30
-    needs: draft-packing-list
+    needs: gmail-automations
     if: >-
-      ${{ needs.draft-packing-list.result == 'success' &&
+      ${{ always() && needs.gmail-automations.outputs.draft_result == 'success' &&
           ((github.event_name == 'workflow_dispatch' && inputs.portal_mode != 'disabled') ||
            (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED == '1')) }}
     environment: ${{ github.event_name == 'workflow_dispatch' && (inputs.portal_mode == 'submit-one' || inputs.portal_mode == 'submit-fresh') && 'portal-submission' || 'production' }}
@@ -206,30 +205,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  generate-docket:
-    runs-on: [self-hosted, linux, x64, denovo-orders]
-    environment: production
-    timeout-minutes: 20
-    concurrency:
-      group: docket-generation
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-automation
-      - name: Run docket-generation automation
-        env:
-          # Same OAuth client as the other two jobs (it identifies the app,
-          # not the mailbox) but a separate refresh token, since this reads
-          # denovosourcing@gmail.com instead of denovogb@gmail.com.
-          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
-          DOCKET_DB_SECRET: ${{ secrets.DOCKET_DB_SECRET }}
-        run: node scripts/gmail-automations/generate-docket.mjs
-
   alert-on-failure:
     if: ${{ always() && failure() }}
-    needs: [mark-sample-approved, mark-order-booked, draft-packing-list, complete-from-packing-list, generate-docket, portal-submission]
+    needs: [gmail-automations, portal-submission]
     runs-on: [self-hosted, linux, x64, denovo-orders]
     permissions:
       contents: read
