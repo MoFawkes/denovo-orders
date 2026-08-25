@@ -80,7 +80,7 @@ function validateExtractedDockets(dockets) {
   return { problems, uniquePos };
 }
 
-function hasChecksumProblem(problems) {
+export function hasChecksumProblem(problems) {
   return problems.some((problem) =>
     /carton quantities add up|carton count|small-box count/i.test(problem));
 }
