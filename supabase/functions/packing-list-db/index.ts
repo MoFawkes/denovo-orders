@@ -86,6 +86,22 @@ Deno.serve(async (request: Request) => {
         })
       }
 
+      case 'invoice-allocate': {
+        const rawStart = body.startAt
+        const startAt = rawStart === undefined || rawStart === null || rawStart === ''
+          ? null
+          : Number(rawStart)
+        if (startAt !== null && (!Number.isSafeInteger(startAt) || startAt < 1)) {
+          return json({ error: 'startAt must be a positive integer' }, 400)
+        }
+        const result = await supabase.rpc('allocate_automation_counter', {
+          counter_name: 'invoice_number',
+          floor_value: startAt,
+        })
+        if (result.error) throw result.error
+        return json({ invoice: String(result.data) })
+      }
+
       case 'checkpoint-get': {
         const automation = text(body.automation), sourceId = text(body.sourceId), step = text(body.step)
         if (!automation || !sourceId || !step) return json({ error: 'checkpoint identity is required' }, 400)
