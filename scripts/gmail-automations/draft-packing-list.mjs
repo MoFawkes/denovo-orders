@@ -252,7 +252,7 @@ async function processNewThread(ctx, thread) {
   const bookingLine = booking?.date
     ? `Delivery ${formatUk(booking.date)}${booking.time ? ` ${booking.time}` : ''}` +
       `${booking.ref ? `, booking ref ${booking.ref}` : ''}, dispatch ${formatUk(addDaysUTC(booking.date, -1))}.`
-    : 'No booking found yet — the date/booking ref fields will be left blank (edit the sheet in Drive later, or reply once it is booked).';
+    : 'No booking found yet — a dispatch date is required before the Portal packing list can be completed.';
 
   const payload = {
     po,
@@ -270,7 +270,7 @@ async function processNewThread(ctx, thread) {
     ...replyCtx,
     body:
       `Read from the docket photo(s) — PO ${po.replace(/^0+/, '')}:\n\n${summary}\n\n${bookingLine}\n\n` +
-      `Reply to this email with the invoice number (e.g. "220") and the packing list will be created in Drive within the hour.\n\n` +
+      `Reply to this email with the invoice number (e.g. "220") and the Portal handoff will be prepared within the hour.\n\n` +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
   await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
