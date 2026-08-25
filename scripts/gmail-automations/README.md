@@ -15,38 +15,21 @@ running hourly on a normal GitHub-hosted runner with full internet access
   / `Docket-Needs-Review` labels are created automatically by the script on
   first run — unlike `Sample-Approval` / `Bookings`, there's no manual
   labeling step to set up.
-- `complete-order-from-packing-list.mjs` — scans **denovogb's Google Drive**
-  for packing lists (spreadsheets titled `INV <n> ...`); when one's PO
-  Reference + Internal Code match an order in stage `Booked`, marks the
-  order `Completed`, links the sheet as `packing_list_url`, records the
-  invoice number, and prefixes `INV <n>` onto the booking's Google Task. No
-  Gmail involvement; needs the `drive.readonly` scope on the denovogb
-  refresh token (see step 2).
-- `draft-packing-list.mjs` — creates those `INV <n> ...` packing lists in
-  the first place, from WhatsApp photos of handwritten docket sheets.
-  Forward the packer's photo(s) to `denovogb@gmail.com` and label the
-  thread **`Packing List`** (hand-applied, like `Bookings`; the
-  `Awaiting INV` / `Processed` / `Needs Review` sub-labels are created by
-  the script). The script reads the handwriting with Claude (Sonnet) —
-  each stacked number under a size is one carton, checked against the
-  written grand total and box count — matches the order by PO + SKU,
-  pulls the delivery slot and booking ref from the booking's Google Task,
-  and **replies to the email** with what it read, asking for the invoice
-  number (which lives in the accounts app, so it stays human-supplied).
-  Reply with the number (e.g. `220`) and the next hourly run uploads the
-  finished sheet to Drive and confirms. It does not attach carton labels:
-  managers use the website's Portal Carton Upload screen with the current
-  buyer PO reference, and the Debenhams Group ISC Portal generates SSCC/BEL
-  PDFs. `complete-order-from-packing-list`
-  then completes the order as usual. Needs the `drive.file` scope on the
-  denovogb refresh token (see step 2).
-- `portal-automation.mjs` — drives the buyer ISC Portal using its authoritative
-  SKU dropdown and live remaining quantities. A one-day Actions artifact
-  carries a versioned carton manifest from `draft-packing-list`; credentials
-  and generated documents are not stored in it. The job atomically claims a
-  manifest, submits once, validates the BEL PDF, downloads the Portal's
-  official packing list, and replies with both files. Any failure after the
-  Submit click becomes `uncertain-after-submit` and is never retried.
+- `complete-order-from-packing-list.mjs` — retains compatibility with older
+  Denovo Drive packing lists. New Portal-only deliveries do not create these
+  legacy sheets.
+- `draft-packing-list.mjs` — reads WhatsApp photos of handwritten docket
+  sheets forwarded to `denovogb@gmail.com` and labelled **`Packing List`**.
+  It validates carton quantities, matches PO + SKU, and looks up the booking.
+  If no booking exists, the thread moves to **`Packing List/Awaiting Booking`**
+  and is checked again every run; no resend or invoice reply is needed. Once a
+  booking is found, the automation atomically assigns the next invoice number
+  (initially 256), creates the Portal handoff, and marks the thread Processed.
+- `portal-automation.mjs` — runs immediately after drafting in the same
+  workflow, drives the buyer ISC Portal, submits cartons once, validates the
+  BEL PDF, downloads the Portal's official packing list, stamps its Invoice
+  Serial Number and dispatch date, then replies with both files. Any failure
+  after Submit becomes `uncertain-after-submit` and is never retried.
 
 ## One-time setup
 
@@ -111,7 +94,7 @@ Settings > Secrets and variables > Actions > New repository secret, for each of:
 | `PORTAL_TOTP_SECRET` | Base32 authenticator seed, not a current six-digit code |
 
 Create a GitHub environment named **`portal-submission`** with required
-reviewers before using `submit-one`. Leave the repository variable
+reviewers before using `submit-one` or the default `submit-fresh` mode. Leave the repository variable
 `PORTAL_SCHEDULED_ENABLED` absent or `0` during rollout; set it to `1` only
 after the duplicate/no-op and crash-after-submit exercises are signed off.
 
@@ -126,6 +109,8 @@ Actions tab > "Gmail automations" workflow > Run workflow (uses
 `workflow_dispatch`, no need to wait for the hourly cron). Check the run logs
 for the summary line each script prints at the end.
 
+For a manual run, leave **invoice_start** blank to continue the stored sequence. To carry on from a specific higher number, enter that number; it becomes the next invoice assigned, and later dockets continue upward automatically.
+
 For a read-only production rehearsal, enable the **dry_run** input. The jobs
 still read real Gmail, Drive, Tasks, and Supabase data, but every label, reply,
 task, upload, edge-function mutation, database mutation, and checkpoint write
@@ -133,13 +118,13 @@ is replaced by a `[dry-run]` log line.
 
 Portal rollout is deliberately separate from `dry_run`: `validate-config`
 does not open a browser; `login-smoke` stops after MFA; `navigate-only` opens
-the PO without changing it; and `submit-one` requires an exact PO plus approval
-through the protected environment. Use them in that order. Scheduled Portal
+the PO without changing it; `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
+through the protected environment. Use the read-only modes before enabling submission. Scheduled Portal
 submission stays disabled unless `PORTAL_SCHEDULED_ENABLED=1`.
 
 ## Ongoing
 
-Runs hourly via cron (`0 * * * *`, UTC) automatically once the secrets above
+Runs hourly via cron (`13 * * * *`, UTC) automatically once the secrets above
 are in place. No further action needed.
 
 If a job fails with `invalid_grant: Token has been expired or revoked`,
@@ -172,7 +157,7 @@ Checkpoint identities use the external source rather than an order row:
 
 | Automation | Source | Steps |
 |---|---|---|
-| Packing-list drafting | Gmail thread ID | Invoice request, Drive upload, creation confirmation |
+| Packing-list drafting | Gmail thread ID | Docket summary, idempotent invoice allocation, Portal handoff confirmation |
 | Packing-list completion | Drive file ID | Workbook parse attempts and last error |
 
 If a run fails after an external side effect but before Gmail labels are
