@@ -24,31 +24,48 @@ export async function extractJson({ apiKey, system, prompt, maxTokens = 1024, mo
     })),
     { type: 'text', text: prompt },
   ];
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content }],
-    }),
-  });
 
-  if (!res.ok) {
-    throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
+  let lastResponse = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      if (attempt < 2 && (res.status === 429 || res.status >= 500)) continue;
+      throw new Error(`Anthropic API error: ${res.status} ${errorBody}`);
+    }
+
+    const json = await res.json();
+    const responseText = json.content
+      ?.filter((block) => block.type === 'text')
+      .map((block) => block.text ?? '')
+      .join('') ?? '';
+    const match = responseText.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+
+    lastResponse = {
+      stopReason: json.stop_reason ?? 'unknown',
+      contentTypes: json.content?.map((block) => block.type) ?? [],
+      text: responseText.slice(0, 500),
+    };
+    if (attempt < 2) console.warn(`Anthropic returned no JSON (stop_reason=${lastResponse.stopReason}); retrying once.`);
   }
 
-  const json = await res.json();
-  const text = json.content?.map((b) => b.text ?? '').join('') ?? '';
-
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error(`Model did not return JSON. Raw output: ${text.slice(0, 500)}`);
-  }
-  return JSON.parse(match[0]);
+  throw new Error(
+    `Model did not return JSON after 2 attempts. stop_reason=${lastResponse?.stopReason}; ` +
+    `content_types=${lastResponse?.contentTypes.join(',') || 'none'}; raw output: ${lastResponse?.text ?? ''}`,
+  );
 }
