@@ -50,7 +50,6 @@ import {
   formatUk,
   addDaysUTC,
   findBooking,
-  combineDescriptions,
   extractInvoiceNumber,
 } from './lib/domain.mjs';
 
