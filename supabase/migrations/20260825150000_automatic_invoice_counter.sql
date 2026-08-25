@@ -15,8 +15,21 @@ insert into public.automation_counters (name, next_value)
 values ('invoice_number', 256)
 on conflict (name) do nothing;
 
-create or replace function public.allocate_automation_counter(
-  counter_name text,
+create table public.invoice_allocations (
+  source_id text primary key,
+  invoice_number bigint not null unique check (invoice_number > 0),
+  created_at timestamptz not null default now()
+);
+
+comment on table public.invoice_allocations is
+  'Idempotent invoice assignment per Gmail thread.';
+
+alter table public.invoice_allocations enable row level security;
+revoke all on table public.invoice_allocations from anon, authenticated;
+grant select, insert on table public.invoice_allocations to service_role;
+
+create or replace function public.allocate_invoice_number(
+  allocation_source_id text,
   floor_value bigint default null
 ) returns bigint
 language plpgsql
@@ -25,26 +38,31 @@ set search_path = public
 as $$
 declare allocated bigint;
 begin
-  if counter_name is null or btrim(counter_name) = '' then
-    raise exception 'counter_name is required';
+  if allocation_source_id is null or btrim(allocation_source_id) = '' then
+    raise exception 'allocation_source_id is required';
   end if;
   if floor_value is not null and floor_value < 1 then
     raise exception 'floor_value must be positive';
   end if;
 
-  insert into public.automation_counters (name, next_value)
-  values (counter_name, coalesce(floor_value, 1) + 1)
-  on conflict (name) do update set
-    next_value = greatest(
-      public.automation_counters.next_value,
-      coalesce(floor_value, public.automation_counters.next_value)
-    ) + 1,
-    updated_at = now()
+  perform pg_advisory_xact_lock(hashtextextended('invoice_number', 0));
+
+  select invoice_number into allocated
+  from public.invoice_allocations
+  where source_id = allocation_source_id;
+  if allocated is not null then return allocated; end if;
+
+  update public.automation_counters
+  set next_value = greatest(next_value, coalesce(floor_value, next_value)) + 1,
+      updated_at = now()
+  where name = 'invoice_number'
   returning next_value - 1 into allocated;
 
+  insert into public.invoice_allocations (source_id, invoice_number)
+  values (allocation_source_id, allocated);
   return allocated;
 end;
-$$;
+$;
 
-revoke all on function public.allocate_automation_counter(text, bigint) from public;
-grant execute on function public.allocate_automation_counter(text, bigint) to service_role;
+revoke all on function public.allocate_invoice_number(text, bigint) from public;
+grant execute on function public.allocate_invoice_number(text, bigint) to service_role;
