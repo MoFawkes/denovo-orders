@@ -155,7 +155,7 @@ jobs:
     timeout-minutes: 30
     needs: gmail-automations
     if: >-
-      ${{ needs.gmail-automations.outputs.draft_result == 'success' &&
+      ${{ always() && needs.gmail-automations.outputs.draft_result == 'success' &&
           ((github.event_name == 'workflow_dispatch' && inputs.portal_mode != 'disabled') ||
            (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED == '1')) }}
     environment: ${{ github.event_name == 'workflow_dispatch' && (inputs.portal_mode == 'submit-one' || inputs.portal_mode == 'submit-fresh') && 'portal-submission' || 'production' }}
