@@ -1,6 +1,6 @@
-// Turns WhatsApp photos of handwritten docket sheets into "INV <n> ..."
-// packing lists in denovogb's Google Drive, closing the last manual gap in
-// the order pipeline. The human forwards the packer's photo(s) to
+// Turns WhatsApp photos of handwritten docket sheets into an approved ISC
+// Portal handoff, closing the last manual gap in the order pipeline. The human
+// forwards the packer's photo(s) to
 // denovogb@gmail.com and labels the thread 'Packing List'; this script then
 // runs a two-phase, reply-driven flow (hourly, from
 // .github/workflows/gmail-automations.yml):
@@ -15,17 +15,14 @@
 //   lives in the human's separate accounts app, so it stays a human input.
 //
 //   Phase B — threads awaiting an INV number: when the human has replied
-//   with the number, build the packing-list workbook (same layout as the
-//   hand-made ones), upload it to Drive, and confirm with a reply. The
-//   hourly complete-order-from-packing-list.mjs job then finds the sheet
-//   and completes the Booked order exactly as it does for hand-made lists.
+//   with the number, create the Portal handoff manifest and confirm with a
+//   reply. The Portal automation submits the cartons, then replies with the
+//   official Portal packing list and validated BEL label PDF attached.
 //
 // Phase A embeds its extraction as a JSON block in its own reply, so Phase B
 // never re-reads the photos — the human's reply implicitly approves the
 // numbers shown in that email.
 //
-// Requires the drive.file scope on the denovogb refresh token (upload); see
-// oauth-setup.mjs — tokens issued before that scope was added need a re-run.
 import { pathToFileURL } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -42,21 +39,17 @@ import {
   extractPlainTextBody,
   sendReply,
   listOpenTasks,
-  driveListFiles,
-  driveUploadFile,
 } from './lib/google.mjs';
 import { extractJson } from './lib/claude.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
-import { getExecution, completeExecution, failExecution } from './lib/execution-state.mjs';
+import { getExecution, completeExecution } from './lib/execution-state.mjs';
 import { buildPortalManifest } from './lib/portal-manifest.mjs';
 import {
   DATA_MARKER,
   validateDocket,
-  buildPackingListWorkbook,
   formatUk,
   addDaysUTC,
   findBooking,
-  combineDescriptions,
   extractInvoiceNumber,
 } from './lib/domain.mjs';
 
@@ -124,16 +117,16 @@ async function processNewThread(ctx, thread) {
   const { accessToken, apiKey, database, labels } = ctx;
   const replyCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent');
   if (replyCheckpoint?.status === 'completed') {
-    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
-    return { outcome: 'awaiting_inv', recovered: true };
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
+    return { outcome: 'awaiting_booking', recovered: true };
   }
   const full = await getThread(accessToken, thread.id);
   if (full.messages.some((message) => extractPlainTextBody(message).includes(DATA_MARKER))) {
     await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', {
       recovered_from_gmail: true,
     });
-    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
-    return { outcome: 'awaiting_inv', recovered: true };
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
+    return { outcome: 'awaiting_booking', recovered: true };
   }
 
   const images = [];
@@ -259,7 +252,7 @@ async function processNewThread(ctx, thread) {
   const bookingLine = booking?.date
     ? `Delivery ${formatUk(booking.date)}${booking.time ? ` ${booking.time}` : ''}` +
       `${booking.ref ? `, booking ref ${booking.ref}` : ''}, dispatch ${formatUk(addDaysUTC(booking.date, -1))}.`
-    : 'No booking found yet — the date/booking ref fields will be left blank (edit the sheet in Drive later, or reply once it is booked).';
+    : 'No booking found yet — this email will wait in Packing List/Awaiting Booking and be checked automatically.';
 
   const payload = {
     po,
@@ -277,144 +270,79 @@ async function processNewThread(ctx, thread) {
     ...replyCtx,
     body:
       `Read from the docket photo(s) — PO ${po.replace(/^0+/, '')}:\n\n${summary}\n\n${bookingLine}\n\n` +
-      `Reply to this email with the invoice number (e.g. "220") and the packing list will be created in Drive within the hour.\n\n` +
+      (booking?.date
+        ? 'The invoice number will be assigned automatically and Portal processing will continue now.\n\n'
+        : 'You do not need to resend the docket or provide an invoice number. Processing will resume when the booking appears.\n\n') +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
   await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
-  await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingInv] });
-  return { outcome: 'awaiting_inv' };
+
+  if (!booking?.date) {
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
+    return { outcome: 'awaiting_booking' };
+  }
+  return finalisePortalHandoff(ctx, thread, full, payload);
 }
 
-// ── Phase B: pick up the INV number, build + upload the sheet ────────────────
-
-async function processAwaitingThread(ctx, thread) {
-  const { accessToken, database, labels } = ctx;
-  const full = await getThread(accessToken, thread.id);
-
-  // Find the automation-data message we sent, then look for a later human
-  // reply carrying the invoice number. Take the FIRST message containing a
-  // valid data block, not the last: Phase A sends exactly one such message
-  // per thread (its label leaves the "new threads" search the moment it
-  // succeeds, so it never runs twice), but every human reply quotes it back
-  // in full -- meaning the marker shows up again in every later message too.
-  // Taking the last occurrence would latch onto the human's own most recent
-  // reply and leave nothing after it to scan.
-  let dataMessage = null;
-  let payload = null;
+function readPayload(full) {
   for (const message of full.messages) {
-    if (dataMessage) break;
     const body = extractPlainTextBody(message);
     const idx = body.indexOf(DATA_MARKER);
-    if (idx !== -1) {
-      const match = body.slice(idx + DATA_MARKER.length).match(/\{[\s\S]*\}/);
-      if (match) {
-        try {
-          payload = JSON.parse(match[0]);
-          dataMessage = message;
-        } catch {
-          // corrupted marker -- shouldn't happen since Phase A always writes
-          // valid JSON, but keep scanning defensively rather than giving up.
-        }
-      }
-    }
-  }
-  if (!payload) {
-    console.error(`  thread ${thread.id} is Awaiting INV but has no readable data block — flagging.`);
-    await modifyThreadLabels(accessToken, thread.id, {
-      add: [labels.needsReview],
-      remove: [labels.awaitingInv],
-    });
-    return { outcome: 'needs_review', reason: 'missing data block' };
-  }
-
-  // Every human reply quotes dataMessage back in full, so its body also
-  // contains DATA_MARKER -- that's expected, not a sign this is one of our
-  // own messages (Phase A never sends a second one; see above). Don't skip
-  // on that basis: extractInvoiceNumber already cuts the quoted portion off
-  // before searching for the number.
-  const dataIndex = full.messages.indexOf(dataMessage);
-  let invoice = null;
-  let replyMessage = null;
-  for (const message of full.messages.slice(dataIndex + 1)) {
-    const body = extractPlainTextBody(message);
-    const found = extractInvoiceNumber(body);
-    if (found) {
-      invoice = found;
-      replyMessage = message;
-    }
-  }
-  if (!invoice) return { outcome: 'still_awaiting' }; // human hasn't replied yet
-
-  const internalCode = payload.groups.map((g) => g.sku).join('/');
-  const description = combineDescriptions(payload.groups, payload.groups);
-  const booking = payload.booking;
-  const poDisplay = payload.po.replace(/^0+/, '');
-  const groups = payload.groups.map((g) => ({
-    colour: (g.colour ?? '').toUpperCase(), sku: g.sku, cartons: g.cartons,
-  }));
-  const workbook = buildPackingListWorkbook({
-    invoice,
-    dispatchDate: booking?.date ? formatUk(addDaysUTC(booking.date, -1)) : '',
-    deliveryDate: booking?.date ? formatUk(booking.date) : '',
-    bookingRef: booking?.ref ?? '',
-    poDisplay,
-    internalCode,
-    description,
-    groups,
-  });
-  const workbookBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
-
-  const name = `INV ${invoice} ${description}.xlsx`;
-  const uploadStep = `drive-upload:${invoice}`;
-  const uploadCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, uploadStep);
-  let uploaded = uploadCheckpoint?.status === 'completed' ? uploadCheckpoint.result : null;
-  const uploadKey = `${thread.id}:${invoice}`;
-  if (!uploaded?.id) {
-    const existingFiles = await driveListFiles(
-      accessToken,
-      `appProperties has { key='denovoPackingList' and value='${uploadKey}' } and trashed = false`,
-    );
-    if (existingFiles.length > 0) {
-      uploaded = existingFiles[0];
-      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
-        id: uploaded.id,
-        name: uploaded.name,
-        recovered_from_drive: true,
-      });
-    }
-  }
-  if (!uploaded?.id) {
+    if (idx === -1) continue;
+    const match = body.slice(idx + DATA_MARKER.length).match(/\{[\s\S]*\}/);
+    if (!match) continue;
     try {
-      uploaded = await driveUploadFile(accessToken, {
-        name,
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        buffer: workbookBuffer,
-        appProperties: { denovoPackingList: uploadKey },
-      });
-      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
-        id: uploaded.id,
-        name,
-      });
-    } catch (err) {
-      await failExecution(database, 'draft-packing-list', thread.id, uploadStep, err);
-      console.error(`  Drive upload failed for ${name}: ${err.message} — will retry next run.`);
-      if (String(err.message).includes('403')) {
-        console.error(
-          '  A 403 here usually means the GMAIL_OAUTH_REFRESH_TOKEN secret lacks the drive.file scope — ' +
-            're-run scripts/gmail-automations/oauth-setup.mjs as denovogb@gmail.com and update the secret.',
-        );
-      }
-      return { outcome: 'failed' };
+      return { payload: JSON.parse(match[0]), dataMessage: message };
+    } catch {
+      // Keep scanning in case an earlier quoted copy was damaged.
     }
   }
+  return { payload: null, dataMessage: null };
+}
+
+function manualInvoiceAfter(full, dataMessage) {
+  const dataIndex = full.messages.indexOf(dataMessage);
+  for (const message of full.messages.slice(dataIndex + 1)) {
+    const found = extractInvoiceNumber(extractPlainTextBody(message));
+    if (found) return found;
+  }
+  return null;
+}
+
+async function allocateInvoice(database, threadId) {
+  if (process.env.DRY_RUN === '1') return String(process.env.INVOICE_START || '256');
+  const startAt = String(process.env.INVOICE_START ?? '').trim();
+  if (startAt && !/^\d+$/.test(startAt)) throw new Error('INVOICE_START must be a positive integer');
+  const result = await database('invoice-allocate', {
+    sourceId: threadId,
+    ...(startAt ? { startAt: Number(startAt) } : {}),
+  });
+  if (!/^\d+$/.test(String(result.invoice ?? ''))) throw new Error('invoice allocator returned an invalid number');
+  return String(result.invoice);
+}
+
+async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice = null) {
+  const { accessToken, database, labels } = ctx;
+  const invoice = manualInvoice ?? await allocateInvoice(database, thread.id);
+  const poDisplay = payload.po.replace(/^0+/, '');
+  const groups = payload.groups.map((group) => ({
+    colour: (group.colour ?? '').toUpperCase(),
+    sku: group.sku,
+    cartons: group.cartons,
+  }));
+  const dispatchDate = addDaysUTC(payload.booking.date, -1);
+  const handoffBytes = Buffer.from(JSON.stringify({
+    po: payload.po, invoiceId: invoice, dispatchDate, groups,
+  }));
 
   if (process.env.PORTAL_HANDOFF_DIR) {
     const manifest = buildPortalManifest({
       po: payload.po,
       gmailThreadId: thread.id,
       invoiceId: invoice,
+      dispatchDate,
       groups,
-      workbookBytes: workbookBuffer,
+      workbookBytes: handoffBytes,
       sourceRevision: process.env.GITHUB_SHA ?? 'local',
     });
     await mkdir(process.env.PORTAL_HANDOFF_DIR, { recursive: true });
@@ -427,31 +355,58 @@ async function processAwaitingThread(ctx, thread) {
     });
   }
 
-  const confirmationStep = `creation-confirmation-sent:${invoice}`;
+  const confirmationStep = `portal-handoff-confirmation-sent:${invoice}`;
   const confirmation = await getExecution(database, 'draft-packing-list', thread.id, confirmationStep);
   if (confirmation?.status !== 'completed') {
-    const latest = replyMessage ?? full.messages[full.messages.length - 1];
+    const latest = full.messages.at(-1);
     const cartonCount = groups.reduce((total, group) => total + group.cartons.length, 0);
-    console.log(`  Packing list ready for PO ${poDisplay}: ${cartonCount} cartons.`);
+    console.log(`  Portal handoff ready for PO ${poDisplay}: ${cartonCount} cartons, INV ${invoice}.`);
     await sendReply(accessToken, {
       threadId: thread.id,
       replyTo: latest,
       to: getHeader(latest, 'From'),
-      subject: getHeader(latest, 'Subject') || 'Packing list',
+      subject: getHeader(latest, 'Subject') || 'Portal packing list',
       body:
-        `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
-        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).\n\n` +
-        `Box stickers are no longer used — generate the Portal carton-upload file from the Portal Carton Upload screen once this packing list is in Drive.`,
+        `Invoice ${invoice} assigned automatically. Portal handoff prepared for PO ${poDisplay}: ${cartonCount} cartons.\n\n` +
+        'The official ISC Portal packing list and validated BEL label PDF will be attached to this thread after Portal submission completes.',
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
-      file_id: uploaded.id,
+      po: payload.po, invoice, carton_count: cartonCount,
     });
   }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
-    remove: [labels.awaitingInv],
+    remove: [labels.awaitingBooking, labels.awaitingInv],
   });
-  return { outcome: 'created', name };
+  return { outcome: 'created', name: `Portal handoff for PO ${poDisplay} (INV ${invoice})` };
+}
+
+async function processWaitingThread(ctx, thread) {
+  const { accessToken, labels } = ctx;
+  const full = await getThread(accessToken, thread.id);
+  const { payload, dataMessage } = readPayload(full);
+  if (!payload) {
+    await modifyThreadLabels(accessToken, thread.id, {
+      add: [labels.needsReview],
+      remove: [labels.awaitingBooking, labels.awaitingInv],
+    });
+    return { outcome: 'needs_review', reason: 'missing data block' };
+  }
+
+  if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
+  const booking = findBooking(ctx.openTasks, payload.po, payload.groups[0]?.style_no);
+  if (!booking?.date) {
+    await modifyThreadLabels(accessToken, thread.id, {
+      add: [labels.awaitingBooking],
+      remove: [labels.awaitingInv],
+    });
+    return { outcome: 'awaiting_booking' };
+  }
+
+  payload.booking = booking;
+  // Honour an invoice already supplied on a legacy Awaiting INV thread.
+  const legacyManualInvoice = manualInvoiceAfter(full, dataMessage);
+  return finalisePortalHandoff(ctx, thread, full, payload, legacyManualInvoice);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -467,6 +422,7 @@ async function main() {
   const labels = {
     packingList: await getOrCreateLabel(accessToken, 'Packing List'),
     awaitingInv: await getOrCreateLabel(accessToken, 'Packing List/Awaiting INV'),
+    awaitingBooking: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Booking'),
     processed: await getOrCreateLabel(accessToken, 'Packing List/Processed'),
     needsReview: await getOrCreateLabel(accessToken, 'Packing List/Needs Review'),
   };
@@ -481,41 +437,40 @@ async function main() {
 
   const newThreads = await searchThreads(
     accessToken,
-    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Processed -label:Packing-List-Needs-Review',
+    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Processed -label:Packing-List-Needs-Review',
   );
   console.log(`New Packing List thread(s): ${newThreads.length}.`);
-  let asked = 0;
+  let waitingForBooking = 0;
+  let created = 0;
   let flagged = 0;
   let failed = 0;
   for (const thread of newThreads) {
     console.log(`Processing new thread ${thread.id}...`);
     const result = await processNewThread(ctx, thread);
-    if (result.outcome === 'awaiting_inv') asked++;
+    if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
+    else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'needs_review') { flagged++; console.log(`  -> Needs Review: ${result.reason}`); }
     else failed++;
   }
 
-  const awaitingThreads = await searchThreads(
+  const waitingThreads = await searchThreads(
     accessToken,
-    'label:Packing-List-Awaiting-INV -label:Packing-List-Processed',
+    '{label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
   );
-  console.log(`Thread(s) awaiting an INV number: ${awaitingThreads.length}.`);
-  let created = 0;
-  let stillAwaiting = 0;
-  for (const thread of awaitingThreads) {
-    console.log(`Checking awaiting thread ${thread.id}...`);
-    const result = await processAwaitingThread(ctx, thread);
+  console.log(`Thread(s) waiting for a booking: ${waitingThreads.length}.`);
+  for (const thread of waitingThreads) {
+    console.log(`Rechecking booking for thread ${thread.id}...`);
+    const result = await processWaitingThread(ctx, thread);
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
-    else if (result.outcome === 'still_awaiting') stillAwaiting++;
+    else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'needs_review') flagged++;
     else failed++;
   }
 
   console.log('');
   console.log('Summary:');
-  console.log(`  Extracted + asked for INV number: ${asked}`);
-  console.log(`  Packing lists created in Drive: ${created}`);
-  console.log(`  Still awaiting a reply with the INV number: ${stillAwaiting}`);
+  console.log(`  Portal handoffs created: ${created}`);
+  console.log(`  Waiting for booking: ${waitingForBooking}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
 

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -11,8 +11,9 @@ import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-
 import { validateBelPdf } from './lib/bel-validation.mjs';
 import { assertPortalAccess } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mjs';
+import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 
-const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'scheduled']);
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
 function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
@@ -202,7 +203,7 @@ async function main() {
   if (!MODES.has(mode)) throw new Error(`unsupported PORTAL_RUN_MODE: ${mode}`);
   const config = await loadPortalConfig();
   console.log('Portal configuration is valid.');
-  if (process.env.DRY_RUN === '1' && ['submit-one', 'scheduled'].includes(mode)) {
+  if (process.env.DRY_RUN === '1' && ['submit-one', 'submit-fresh', 'scheduled'].includes(mode)) {
     throw new Error('Portal submission has no dry-run simulation; use navigate-only instead');
   }
   if (mode === 'validate-config') return;
@@ -211,7 +212,7 @@ async function main() {
     return;
   }
   const manifests = await loadManifests(process.env.PORTAL_HANDOFF_DIR, process.env.PORTAL_PO);
-  if (['navigate-only', 'submit-one', 'scheduled'].includes(mode) && manifests.length === 0) {
+  if (['navigate-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
     if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
     console.log('No fresh Portal handoff manifests found.');
     return;
@@ -259,6 +260,8 @@ async function main() {
         const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
         const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
         const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
+        const stampedPackingList = await stampPortalPackingList(await readFile(packingListPath), manifest);
+        await writeFile(packingListPath, stampedPackingList);
         const validation = await validateBelPdf(belPath, manifest);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
         state = 'bels-downloaded';

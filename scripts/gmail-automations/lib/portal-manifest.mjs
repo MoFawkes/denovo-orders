@@ -13,9 +13,10 @@ export function normalisePo(value) {
 export function validatePortalManifest(value) {
   if (!value || typeof value !== 'object') throw new Error('manifest must be an object');
   if (value.schemaVersion !== PORTAL_MANIFEST_SCHEMA_VERSION) throw new Error('unsupported manifest schemaVersion');
-  const required = ['executionId', 'idempotencyKey', 'po', 'gmailThreadId', 'invoiceId', 'workbookSha256', 'sourceRevision'];
+  const required = ['executionId', 'idempotencyKey', 'po', 'gmailThreadId', 'invoiceId', 'dispatchDate', 'workbookSha256', 'sourceRevision'];
   for (const field of required) if (!text(value[field])) throw new Error(`manifest.${field} is required`);
   if (!/^\d{10}$/.test(value.po)) throw new Error('manifest.po must be a 10-digit string');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.dispatchDate)) throw new Error('manifest.dispatchDate must be YYYY-MM-DD');
   if (!Array.isArray(value.cartons) || value.cartons.length === 0) throw new Error('manifest.cartons must not be empty');
   if (value.expectedCartonCount !== value.cartons.length) throw new Error('expectedCartonCount does not match cartons');
   const ids = new Set();
@@ -29,7 +30,7 @@ export function validatePortalManifest(value) {
   return value;
 }
 
-export function buildPortalManifest({ po, gmailThreadId, invoiceId, groups, workbookBytes, sourceRevision = 'unknown', executionId = randomUUID() }) {
+export function buildPortalManifest({ po, gmailThreadId, invoiceId, dispatchDate, groups, workbookBytes, sourceRevision = 'unknown', executionId = randomUUID() }) {
   const cartons = [];
   for (const group of groups) {
     for (const carton of group.cartons) {
@@ -52,6 +53,7 @@ export function buildPortalManifest({ po, gmailThreadId, invoiceId, groups, work
     po: normalisedPo,
     gmailThreadId: text(gmailThreadId),
     invoiceId: text(invoiceId),
+    dispatchDate: text(dispatchDate),
     expectedCartonCount: cartons.length,
     workbookSha256,
     rowDigest,
