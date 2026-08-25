@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
 
+# Only the latest commit on a PR needs validation.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
