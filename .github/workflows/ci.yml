@@ -7,7 +7,7 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     steps:
       - uses: actions/checkout@v7
 
@@ -33,7 +33,7 @@ jobs:
         run: npx eslint scripts/gmail-automations --no-error-on-unmatched-pattern --max-warnings 0
 
   edge-functions:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     steps:
       - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
@@ -46,7 +46,7 @@ jobs:
           done
 
   migrations:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     services:
       postgres:
         image: postgres:16
@@ -83,7 +83,7 @@ jobs:
           done
 
   automations:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, denovo-orders]
     steps:
       - uses: actions/checkout@v7
 
