@@ -1,6 +1,6 @@
-// Turns WhatsApp photos of handwritten docket sheets into "INV <n> ..."
-// packing lists in denovogb's Google Drive, closing the last manual gap in
-// the order pipeline. The human forwards the packer's photo(s) to
+// Turns WhatsApp photos of handwritten docket sheets into an approved ISC
+// Portal handoff, closing the last manual gap in the order pipeline. The human
+// forwards the packer's photo(s) to
 // denovogb@gmail.com and labels the thread 'Packing List'; this script then
 // runs a two-phase, reply-driven flow (hourly, from
 // .github/workflows/gmail-automations.yml):
@@ -15,17 +15,14 @@
 //   lives in the human's separate accounts app, so it stays a human input.
 //
 //   Phase B — threads awaiting an INV number: when the human has replied
-//   with the number, build the packing-list workbook (same layout as the
-//   hand-made ones), upload it to Drive, and confirm with a reply. The
-//   hourly complete-order-from-packing-list.mjs job then finds the sheet
-//   and completes the Booked order exactly as it does for hand-made lists.
+//   with the number, create the Portal handoff manifest and confirm with a
+//   reply. The Portal automation submits the cartons, then replies with the
+//   official Portal packing list and validated BEL label PDF attached.
 //
 // Phase A embeds its extraction as a JSON block in its own reply, so Phase B
 // never re-reads the photos — the human's reply implicitly approves the
 // numbers shown in that email.
 //
-// Requires the drive.file scope on the denovogb refresh token (upload); see
-// oauth-setup.mjs — tokens issued before that scope was added need a re-run.
 import { pathToFileURL } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -42,17 +39,14 @@ import {
   extractPlainTextBody,
   sendReply,
   listOpenTasks,
-  driveListFiles,
-  driveUploadFile,
 } from './lib/google.mjs';
 import { extractJson } from './lib/claude.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
-import { getExecution, completeExecution, failExecution } from './lib/execution-state.mjs';
+import { getExecution, completeExecution } from './lib/execution-state.mjs';
 import { buildPortalManifest } from './lib/portal-manifest.mjs';
 import {
   DATA_MARKER,
   validateDocket,
-  buildPackingListWorkbook,
   formatUk,
   addDaysUTC,
   findBooking,
@@ -285,7 +279,7 @@ async function processNewThread(ctx, thread) {
   return { outcome: 'awaiting_inv' };
 }
 
-// ── Phase B: pick up the INV number, build + upload the sheet ────────────────
+// ── Phase B: pick up the INV number and create the Portal handoff ────────────
 
 async function processAwaitingThread(ctx, thread) {
   const { accessToken, database, labels } = ctx;
@@ -345,68 +339,15 @@ async function processAwaitingThread(ctx, thread) {
   }
   if (!invoice) return { outcome: 'still_awaiting' }; // human hasn't replied yet
 
-  const internalCode = payload.groups.map((g) => g.sku).join('/');
-  const description = combineDescriptions(payload.groups, payload.groups);
-  const booking = payload.booking;
   const poDisplay = payload.po.replace(/^0+/, '');
   const groups = payload.groups.map((g) => ({
     colour: (g.colour ?? '').toUpperCase(), sku: g.sku, cartons: g.cartons,
   }));
-  const workbook = buildPackingListWorkbook({
-    invoice,
-    dispatchDate: booking?.date ? formatUk(addDaysUTC(booking.date, -1)) : '',
-    deliveryDate: booking?.date ? formatUk(booking.date) : '',
-    bookingRef: booking?.ref ?? '',
-    poDisplay,
-    internalCode,
-    description,
+  const handoffBytes = Buffer.from(JSON.stringify({
+    po: payload.po,
+    invoiceId: invoice,
     groups,
-  });
-  const workbookBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
-
-  const name = `INV ${invoice} ${description}.xlsx`;
-  const uploadStep = `drive-upload:${invoice}`;
-  const uploadCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, uploadStep);
-  let uploaded = uploadCheckpoint?.status === 'completed' ? uploadCheckpoint.result : null;
-  const uploadKey = `${thread.id}:${invoice}`;
-  if (!uploaded?.id) {
-    const existingFiles = await driveListFiles(
-      accessToken,
-      `appProperties has { key='denovoPackingList' and value='${uploadKey}' } and trashed = false`,
-    );
-    if (existingFiles.length > 0) {
-      uploaded = existingFiles[0];
-      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
-        id: uploaded.id,
-        name: uploaded.name,
-        recovered_from_drive: true,
-      });
-    }
-  }
-  if (!uploaded?.id) {
-    try {
-      uploaded = await driveUploadFile(accessToken, {
-        name,
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        buffer: workbookBuffer,
-        appProperties: { denovoPackingList: uploadKey },
-      });
-      await completeExecution(database, 'draft-packing-list', thread.id, uploadStep, {
-        id: uploaded.id,
-        name,
-      });
-    } catch (err) {
-      await failExecution(database, 'draft-packing-list', thread.id, uploadStep, err);
-      console.error(`  Drive upload failed for ${name}: ${err.message} — will retry next run.`);
-      if (String(err.message).includes('403')) {
-        console.error(
-          '  A 403 here usually means the GMAIL_OAUTH_REFRESH_TOKEN secret lacks the drive.file scope — ' +
-            're-run scripts/gmail-automations/oauth-setup.mjs as denovogb@gmail.com and update the secret.',
-        );
-      }
-      return { outcome: 'failed' };
-    }
-  }
+  }));
 
   if (process.env.PORTAL_HANDOFF_DIR) {
     const manifest = buildPortalManifest({
@@ -414,7 +355,7 @@ async function processAwaitingThread(ctx, thread) {
       gmailThreadId: thread.id,
       invoiceId: invoice,
       groups,
-      workbookBytes: workbookBuffer,
+      workbookBytes: handoffBytes,
       sourceRevision: process.env.GITHUB_SHA ?? 'local',
     });
     await mkdir(process.env.PORTAL_HANDOFF_DIR, { recursive: true });
@@ -427,31 +368,31 @@ async function processAwaitingThread(ctx, thread) {
     });
   }
 
-  const confirmationStep = `creation-confirmation-sent:${invoice}`;
+  const confirmationStep = `portal-handoff-confirmation-sent:${invoice}`;
   const confirmation = await getExecution(database, 'draft-packing-list', thread.id, confirmationStep);
   if (confirmation?.status !== 'completed') {
     const latest = replyMessage ?? full.messages[full.messages.length - 1];
     const cartonCount = groups.reduce((total, group) => total + group.cartons.length, 0);
-    console.log(`  Packing list ready for PO ${poDisplay}: ${cartonCount} cartons.`);
+    console.log(`  Portal handoff ready for PO ${poDisplay}: ${cartonCount} cartons.`);
     await sendReply(accessToken, {
       threadId: thread.id,
       replyTo: latest,
       to: getHeader(latest, 'From'),
-      subject: getHeader(latest, 'Subject') || 'Packing list',
+      subject: getHeader(latest, 'Subject') || 'Portal packing list',
       body:
-        `Created "${name}" in Drive: https://drive.google.com/file/d/${uploaded.id}/view\n\n` +
-        `The order will be marked Completed automatically once the hourly packing-list job matches it (the order must be in stage Booked).\n\n` +
-        `Box stickers are no longer used — generate the Portal carton-upload file from the Portal Carton Upload screen once this packing list is in Drive.`,
+        `Portal handoff prepared for PO ${poDisplay}: ${cartonCount} cartons.\n\n` +
+        `The official ISC Portal packing list and validated BEL label PDF will be attached to this thread after Portal submission completes.`,
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
-      file_id: uploaded.id,
+      po: payload.po,
+      carton_count: cartonCount,
     });
   }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
     remove: [labels.awaitingInv],
   });
-  return { outcome: 'created', name };
+  return { outcome: 'created', name: `Portal handoff for PO ${poDisplay}` };
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -514,7 +455,7 @@ async function main() {
   console.log('');
   console.log('Summary:');
   console.log(`  Extracted + asked for INV number: ${asked}`);
-  console.log(`  Packing lists created in Drive: ${created}`);
+  console.log(`  Portal handoffs created: ${created}`);
   console.log(`  Still awaiting a reply with the INV number: ${stillAwaiting}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
