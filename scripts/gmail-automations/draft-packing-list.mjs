@@ -82,7 +82,7 @@ function validateExtractedDockets(dockets) {
 
 export function hasChecksumProblem(problems) {
   return problems.some((problem) =>
-    /carton quantities add up|carton count|small-box count/i.test(problem));
+    /carton quantities add up|cartons read but the written box count|small-box count|marked small/i.test(problem));
 }
 
 async function prepareImage(buffer) {
