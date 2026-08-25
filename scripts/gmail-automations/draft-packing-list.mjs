@@ -66,6 +66,25 @@ const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 // bound loses nothing while guaranteeing both limits.
 const MAX_IMAGE_EDGE = 1568;
 
+function validateExtractedDockets(dockets) {
+  const problems = [];
+  for (const docket of dockets) {
+    const problem = validateDocket(docket);
+    if (problem) problems.push(`docket #${docket.docket_no ?? '?'}: ${problem}`);
+  }
+  if (dockets.length === 0) problems.push('no docket sheets recognised in the photo(s)');
+  const uniquePos = [...new Set(dockets.map((docket) => docket.po))];
+  if (uniquePos.length > 1) {
+    problems.push(`photos span ${uniquePos.length} different POs — send one PO per email`);
+  }
+  return { problems, uniquePos };
+}
+
+export function hasChecksumProblem(problems) {
+  return problems.some((problem) =>
+    /carton quantities add up|cartons read but the written box count|small-box count|marked small/i.test(problem));
+}
+
 async function prepareImage(buffer) {
   const resized = await sharp(buffer)
     .rotate() // bake in EXIF orientation before re-encoding strips it
@@ -174,16 +193,30 @@ async function processNewThread(ctx, thread) {
     subject: getHeader(latest, 'Subject') || 'Packing list',
   };
 
-  const dockets = result.dockets ?? [];
-  const problems = [];
-  for (const d of dockets) {
-    const problem = validateDocket(d);
-    if (problem) problems.push(`docket #${d.docket_no ?? '?'}: ${problem}`);
-  }
-  if (dockets.length === 0) problems.push('no docket sheets recognised in the photo(s)');
-  const uniquePos = [...new Set(dockets.map((d) => d.po))];
-  if (uniquePos.length > 1) {
-    problems.push(`photos span ${uniquePos.length} different POs — send one PO per email`);
+  let dockets = result.dockets ?? [];
+  let { problems, uniquePos } = validateExtractedDockets(dockets);
+
+  if (hasChecksumProblem(problems)) {
+    console.warn(`  first photo read failed checksum validation; re-reading once: ${problems.join('; ')}`);
+    try {
+      result = await extractJson({
+        apiKey,
+        model: VISION_MODEL,
+        system: SYSTEM_PROMPT,
+        prompt:
+          `Re-read the same ${images.length} docket photo(s). The first extraction failed these checks:\n` +
+          `- ${problems.join('\n- ')}\n\n` +
+          `First extraction:\n${JSON.stringify(result)}\n\n` +
+          'Find the missed or misread handwritten carton quantities by inspecting the photos again. ' +
+          'Do not change a written total merely to make the arithmetic agree. Return the complete corrected JSON only.',
+        images,
+        maxTokens: 4096,
+      });
+      dockets = result.dockets ?? [];
+      ({ problems, uniquePos } = validateExtractedDockets(dockets));
+    } catch (error) {
+      console.warn(`  corrective photo read failed: ${error.message}`);
+    }
   }
 
   if (problems.length > 0) {
