@@ -180,7 +180,7 @@ jobs:
       - name: Install Chromium
         if: ${{ inputs.portal_mode != 'validate-config' }}
         working-directory: scripts/gmail-automations
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Run ISC Portal automation
         env:
           PORTAL_RUN_MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.portal_mode }}
