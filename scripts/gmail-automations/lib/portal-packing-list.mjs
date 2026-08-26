@@ -6,6 +6,7 @@ const LABELS = {
 };
 
 function ukDate(isoDate) {
+  if (!String(isoDate ?? '').trim()) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate ?? '').trim());
   if (!match) throw new Error('dispatchDate must be YYYY-MM-DD');
   return `${match[3]}/${match[2]}/${match[1]}`;
