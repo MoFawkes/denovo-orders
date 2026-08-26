@@ -117,16 +117,16 @@ async function processNewThread(ctx, thread) {
   const { accessToken, apiKey, database, labels } = ctx;
   const replyCheckpoint = await getExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent');
   if (replyCheckpoint?.status === 'completed') {
-    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
-    return { outcome: 'awaiting_booking', recovered: true };
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingSample] });
+    return { outcome: 'awaiting_sample', recovered: true };
   }
   const full = await getThread(accessToken, thread.id);
   if (full.messages.some((message) => extractPlainTextBody(message).includes(DATA_MARKER))) {
     await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', {
       recovered_from_gmail: true,
     });
-    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
-    return { outcome: 'awaiting_booking', recovered: true };
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingSample] });
+    return { outcome: 'awaiting_sample', recovered: true };
   }
 
   const images = [];
@@ -223,6 +223,7 @@ async function processNewThread(ctx, thread) {
     }
     orderByGroup.push(order);
   }
+  const sampleApproved = (orders ?? []).length > 0 && orders.every((order) => order.sample_approved === true);
 
   let booking = null;
   try {
@@ -270,11 +271,17 @@ async function processNewThread(ctx, thread) {
     ...replyCtx,
     body:
       `Read from the docket photo(s) — PO ${po.replace(/^0+/, '')}:\n\n${summary}\n\n${bookingLine}\n\n` +
-      'The invoice number will be assigned automatically and Portal processing will continue now.\n\n' +
+      (sampleApproved
+        ? 'The invoice number will be assigned automatically and Portal processing will continue now.\n\n'
+        : 'Portal processing will wait for Sample Approved. No invoice number has been assigned.\n\n') +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
   await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
 
+  if (!sampleApproved) {
+    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingSample] });
+    return { outcome: 'awaiting_sample' };
+  }
   return finalisePortalHandoff(ctx, thread, full, payload);
 }
 
@@ -370,7 +377,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
   }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
-    remove: [labels.awaitingBooking, labels.awaitingInv],
+    remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample],
   });
   return { outcome: 'created', name: `Portal handoff for PO ${poDisplay} (INV ${invoice})` };
 }
@@ -382,9 +389,25 @@ async function processWaitingThread(ctx, thread) {
   if (!payload) {
     await modifyThreadLabels(accessToken, thread.id, {
       add: [labels.needsReview],
-      remove: [labels.awaitingBooking, labels.awaitingInv],
+      remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample],
     });
     return { outcome: 'needs_review', reason: 'missing data block' };
+  }
+
+  let orders;
+  try {
+    ({ orders } = await ctx.database('orders-for-po', { po: payload.po }));
+  } catch (error) {
+    console.error(`  sample-approval lookup failed for PO ${payload.po}: ${error.message}`);
+    return { outcome: 'failed' };
+  }
+  const sampleApproved = (orders ?? []).length > 0 && orders.every((order) => order.sample_approved === true);
+  if (!sampleApproved) {
+    await modifyThreadLabels(accessToken, thread.id, {
+      add: [labels.awaitingSample],
+      remove: [labels.awaitingBooking, labels.awaitingInv],
+    });
+    return { outcome: 'awaiting_sample' };
   }
 
   try {
@@ -413,6 +436,7 @@ async function main() {
     packingList: await getOrCreateLabel(accessToken, 'Packing List'),
     awaitingInv: await getOrCreateLabel(accessToken, 'Packing List/Awaiting INV'),
     awaitingBooking: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Booking'),
+    awaitingSample: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Sample Approval'),
     processed: await getOrCreateLabel(accessToken, 'Packing List/Processed'),
     needsReview: await getOrCreateLabel(accessToken, 'Packing List/Needs Review'),
   };
@@ -427,10 +451,11 @@ async function main() {
 
   const newThreads = await searchThreads(
     accessToken,
-    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Processed -label:Packing-List-Needs-Review',
+    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Awaiting-Sample-Approval -label:Packing-List-Processed -label:Packing-List-Needs-Review',
   );
   console.log(`New Packing List thread(s): ${newThreads.length}.`);
   let waitingForBooking = 0;
+  let waitingForSample = 0;
   let created = 0;
   let flagged = 0;
   let failed = 0;
@@ -439,13 +464,14 @@ async function main() {
     const result = await processNewThread(ctx, thread);
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
+    else if (result.outcome === 'awaiting_sample') waitingForSample++;
     else if (result.outcome === 'needs_review') { flagged++; console.log(`  -> Needs Review: ${result.reason}`); }
     else failed++;
   }
 
   const waitingThreads = await searchThreads(
     accessToken,
-    '{label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
+    '{label:Packing-List-Awaiting-Sample-Approval label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
   );
   console.log(`Legacy waiting thread(s) to resume: ${waitingThreads.length}.`);
   for (const thread of waitingThreads) {
@@ -453,6 +479,7 @@ async function main() {
     const result = await processWaitingThread(ctx, thread);
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
+    else if (result.outcome === 'awaiting_sample') waitingForSample++;
     else if (result.outcome === 'needs_review') flagged++;
     else failed++;
   }
@@ -460,7 +487,8 @@ async function main() {
   console.log('');
   console.log('Summary:');
   console.log(`  Portal handoffs created: ${created}`);
-  console.log(`  Waiting for booking: ${waitingForBooking}`);
+  console.log(`  Legacy recovery queue: ${waitingForBooking}`);
+  console.log(`  Waiting for Sample Approved: ${waitingForSample}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
 

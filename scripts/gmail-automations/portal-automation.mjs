@@ -10,8 +10,9 @@ import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
 import { validateBelPdf } from './lib/bel-validation.mjs';
 import { assertPortalAccess } from './lib/portal-access.mjs';
-import { getAccessToken, getThread, getHeader, sendReply } from './lib/google.mjs';
+import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
+import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
@@ -44,9 +45,11 @@ async function openWizard(page, config, po) {
   });
   await assertPortalAccess(response, page, `carton-wizard navigation for PO ${po}`);
   await page.getByRole('button', { name: /Back/i }).waitFor({ timeout: config.timeouts.actionMs });
+  const pageText = await page.locator('body').innerText();
   return {
     submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
+    sampleApproved: parsePortalSampleApproval(pageText),
   };
 }
 
@@ -184,6 +187,21 @@ async function deliver(manifest, belPath, packingListPath) {
   });
 }
 
+async function deferForSampleApproval(manifest) {
+  const accessToken = await getAccessToken({
+    clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID', process.env.GMAIL_OAUTH_CLIENT_ID),
+    clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET', process.env.GMAIL_OAUTH_CLIENT_SECRET),
+    refreshToken: requireSecret('GMAIL_OAUTH_REFRESH_TOKEN', process.env.GMAIL_OAUTH_REFRESH_TOKEN),
+  });
+  const [awaitingSample, processed] = await Promise.all([
+    getOrCreateLabel(accessToken, 'Packing List/Awaiting Sample Approval'),
+    getOrCreateLabel(accessToken, 'Packing List/Processed'),
+  ]);
+  await modifyThreadLabels(accessToken, manifest.gmailThreadId, {
+    add: [awaitingSample],
+    remove: [processed],
+  });
+}
 async function loadManifests(directory, requestedPo) {
   if (!directory) return [];
   const files = (await readdir(directory).catch((error) => {
@@ -236,6 +254,11 @@ async function main() {
       }
       if (portalState.submitted) {
         console.log(`PO ${manifest.po} is already Submitted in the Portal; refusing to add cartons.`);
+        continue;
+      }
+      if (portalState.sampleApproved === false) {
+        await deferForSampleApproval(manifest);
+        console.log(`PO ${manifest.po} is not Sample Approved in the Portal; returned to the automatic waiting queue.`);
         continue;
       }
       if (mode === 'navigate-only') {
