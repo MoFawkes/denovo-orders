@@ -22,6 +22,12 @@ test('builds a stable, validated manual-entry handoff', () => {
   assert.match(first.workbookSha256, /^[0-9a-f]{64}$/);
 });
 
+test('allows a blank dispatch date when no booking exists', () => {
+  const manifest = buildPortalManifest({ ...input, dispatchDate: '' });
+  assert.equal(manifest.dispatchDate, '');
+  assert.doesNotThrow(() => validatePortalManifest(manifest));
+});
+
 test('blocks duplicate carton ids and unsupported carton types', () => {
   const manifest = buildPortalManifest(input);
   manifest.cartons[1].cartonId = 1;

@@ -252,7 +252,7 @@ async function processNewThread(ctx, thread) {
   const bookingLine = booking?.date
     ? `Delivery ${formatUk(booking.date)}${booking.time ? ` ${booking.time}` : ''}` +
       `${booking.ref ? `, booking ref ${booking.ref}` : ''}, dispatch ${formatUk(addDaysUTC(booking.date, -1))}.`
-    : 'No booking found yet — this email will wait in Packing List/Awaiting Booking and be checked automatically.';
+    : 'No booking found — Portal processing will continue with the dispatch date left blank.';
 
   const payload = {
     po,
@@ -270,17 +270,11 @@ async function processNewThread(ctx, thread) {
     ...replyCtx,
     body:
       `Read from the docket photo(s) — PO ${po.replace(/^0+/, '')}:\n\n${summary}\n\n${bookingLine}\n\n` +
-      (booking?.date
-        ? 'The invoice number will be assigned automatically and Portal processing will continue now.\n\n'
-        : 'You do not need to resend the docket or provide an invoice number. Processing will resume when the booking appears.\n\n') +
+      'The invoice number will be assigned automatically and Portal processing will continue now.\n\n' +
       `${DATA_MARKER}\n${JSON.stringify(payload)}`,
   });
   await completeExecution(database, 'draft-packing-list', thread.id, 'invoice-request-sent', { po });
 
-  if (!booking?.date) {
-    await modifyThreadLabels(accessToken, thread.id, { add: [labels.awaitingBooking] });
-    return { outcome: 'awaiting_booking' };
-  }
   return finalisePortalHandoff(ctx, thread, full, payload);
 }
 
@@ -330,7 +324,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
     sku: group.sku,
     cartons: group.cartons,
   }));
-  const dispatchDate = addDaysUTC(payload.booking.date, -1);
+  const dispatchDate = payload.booking?.date ? addDaysUTC(payload.booking.date, -1) : '';
   const handoffBytes = Buffer.from(JSON.stringify({
     po: payload.po, invoiceId: invoice, dispatchDate, groups,
   }));
@@ -393,17 +387,13 @@ async function processWaitingThread(ctx, thread) {
     return { outcome: 'needs_review', reason: 'missing data block' };
   }
 
-  if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
-  const booking = findBooking(ctx.openTasks, payload.po, payload.groups[0]?.style_no);
-  if (!booking?.date) {
-    await modifyThreadLabels(accessToken, thread.id, {
-      add: [labels.awaitingBooking],
-      remove: [labels.awaitingInv],
-    });
-    return { outcome: 'awaiting_booking' };
+  try {
+    if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
+    payload.booking = findBooking(ctx.openTasks, payload.po, payload.groups[0]?.style_no);
+  } catch (err) {
+    console.error(`  booking task lookup failed: ${err.message}`);
+    payload.booking = null;
   }
-
-  payload.booking = booking;
   // Honour an invoice already supplied on a legacy Awaiting INV thread.
   const legacyManualInvoice = manualInvoiceAfter(full, dataMessage);
   return finalisePortalHandoff(ctx, thread, full, payload, legacyManualInvoice);
@@ -457,9 +447,9 @@ async function main() {
     accessToken,
     '{label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
   );
-  console.log(`Thread(s) waiting for a booking: ${waitingThreads.length}.`);
+  console.log(`Legacy waiting thread(s) to resume: ${waitingThreads.length}.`);
   for (const thread of waitingThreads) {
-    console.log(`Rechecking booking for thread ${thread.id}...`);
+    console.log(`Resuming legacy waiting thread ${thread.id}...`);
     const result = await processWaitingThread(ctx, thread);
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;

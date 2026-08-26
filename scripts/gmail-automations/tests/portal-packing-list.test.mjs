@@ -31,6 +31,18 @@ test('adds the invoice number and dispatch date to the Portal packing list', asy
   assert.equal(sheet.getCell('K4').protection.locked, false);
 });
 
+test('leaves the dispatch date blank when no booking exists', async () => {
+  const result = await stampPortalPackingList(await portalTemplate(), {
+    invoiceId: 'INV-225',
+    dispatchDate: '',
+  });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(result);
+  const sheet = workbook.getWorksheet('body');
+  assert.equal(sheet.getCell('K3').value, 'INV-225');
+  assert.equal(sheet.getCell('K4').value, '');
+});
+
 test('refuses a workbook whose Invoice Details fields are missing', async () => {
   const workbook = new ExcelJS.Workbook();
   workbook.addWorksheet('body');

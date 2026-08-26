@@ -21,10 +21,9 @@ running hourly on a normal GitHub-hosted runner with full internet access
 - `draft-packing-list.mjs` — reads WhatsApp photos of handwritten docket
   sheets forwarded to `denovogb@gmail.com` and labelled **`Packing List`**.
   It validates carton quantities, matches PO + SKU, and looks up the booking.
-  If no booking exists, the thread moves to **`Packing List/Awaiting Booking`**
-  and is checked again every run; no resend or invoice reply is needed. Once a
-  booking is found, the automation atomically assigns the next invoice number
-  (initially 256), creates the Portal handoff, and marks the thread Processed.
+  A booking is optional. If none exists, the automation leaves the dispatch
+  date blank, atomically assigns the next invoice number (initially 256),
+  creates the Portal handoff, and marks the thread Processed.
 - `portal-automation.mjs` — runs immediately after drafting in the same
   workflow, drives the buyer ISC Portal, submits cartons once, validates the
   BEL PDF, downloads the Portal's official packing list, stamps its Invoice
