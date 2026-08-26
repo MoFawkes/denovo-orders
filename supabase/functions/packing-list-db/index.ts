@@ -45,7 +45,7 @@ Deno.serve(async (request: Request) => {
         const po = normalisePo(body.po)
         if (!po) return json({ error: 'po is required' }, 400)
         const result = await supabase
-          .from('orders').select('id, po, style, style_no, description, stage').eq('po', po)
+          .from('orders').select('id, po, style, style_no, description, stage, sample_approved').eq('po', po)
         if (result.error) throw result.error
         return json({ orders: result.data ?? [] })
       }

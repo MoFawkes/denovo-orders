@@ -20,8 +20,10 @@ running hourly on a normal GitHub-hosted runner with full internet access
   legacy sheets.
 - `draft-packing-list.mjs` — reads WhatsApp photos of handwritten docket
   sheets forwarded to `denovogb@gmail.com` and labelled **`Packing List`**.
-  It validates carton quantities, matches PO + SKU, and looks up the booking.
-  A booking is optional. If none exists, the automation leaves the dispatch
+  It validates carton quantities, matches PO + SKU, and checks Sample Approved.
+  Unapproved orders wait under **`Packing List/Awaiting Sample Approval`**
+  without consuming an invoice, then resume automatically after approval. A
+  booking is optional. If none exists, the automation leaves the dispatch
   date blank, atomically assigns the next invoice number (initially 256),
   creates the Portal handoff, and marks the thread Processed.
 - `portal-automation.mjs` — runs immediately after drafting in the same
