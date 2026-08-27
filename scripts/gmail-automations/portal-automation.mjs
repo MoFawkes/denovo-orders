@@ -113,8 +113,16 @@ async function readPurchaseOrderStatus(page, config, po) {
   try {
     await poNumberButton.first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   } catch (error) {
-    await dumpFilterDiagnostics(page).catch(() => {});
-    throw error;
+    if (await completeCognitoAccountConfirmation(page, config)) {
+      response = await page.goto(config.urls.purchaseOrders, {
+        waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+      });
+      await assertPortalAccess(response, page, 'purchase-order list after delayed account confirmation');
+      await poNumberButton.first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+    } else {
+      await dumpFilterDiagnostics(page).catch(() => {});
+      throw error;
+    }
   }
   await poNumberButton.first().click();
   const filter = page.locator(config.selectors.poNumberFilter);
