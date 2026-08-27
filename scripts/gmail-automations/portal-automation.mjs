@@ -26,6 +26,11 @@ async function completeCognitoAccountConfirmation(page, config) {
   await page.getByRole('button', { name: /Sign in as /i }).click();
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito account confirmation callback');
+  const portalRoot = new URL(config.urls.purchaseOrders).origin;
+  const rootResponse = await page.goto(portalRoot, {
+    waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+  });
+  await assertPortalAccess(rootResponse, page, 'Portal root navigation after account confirmation');
   return true;
 }
 
