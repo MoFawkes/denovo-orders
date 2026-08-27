@@ -171,7 +171,7 @@ jobs:
         with:
           node-version: 22
       - name: Install automation dependencies
-        shell: pwsh
+        shell: powershell
         working-directory: scripts/gmail-automations
         run: npm ci
       - name: Download fresh Portal handoff
