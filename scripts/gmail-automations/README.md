@@ -1,9 +1,9 @@
 # Gmail automations (GitHub Actions)
 
-Six automations, one workflow (`.github/workflows/gmail-automations.yml`),
-running hourly on a normal GitHub-hosted runner with full internet access
-(this replaces two Claude Code cloud routines that couldn't reach
-`supabase.co` from their sandbox):
+Six automations, one workflow (`.github/workflows/gmail-automations.yml`).
+The Gmail/Supabase job runs hourly on the self-hosted Linux runner; Portal
+browser work is routed to the separate self-hosted Windows runner so it can
+use installed Chrome in headed mode:
 
 - `mark-sample-approved.mjs` / `mark-order-booked.mjs` — read
   `denovogb@gmail.com`, use Claude (Haiku) to judge/extract data from
@@ -31,6 +31,29 @@ running hourly on a normal GitHub-hosted runner with full internet access
   BEL PDF, downloads the Portal's official packing list, stamps its Invoice
   Serial Number and dispatch date, then replies with both files. Any failure
   after Submit becomes `uncertain-after-submit` and is never retried.
+
+## Current rollout status (27 August 2026)
+
+- The Linux runner (`denovo-orders-pc`) and Windows Portal runner
+  (`denovo-portal-windows`) are registered as scheduled tasks and report
+  online to GitHub. The Portal job targets the `denovo-portal` label.
+- Gmail drafting, automatic sequential invoice allocation, optional bookings,
+  sample-approval limbo, and Portal handoff generation are implemented. Portal
+  submission remains disabled for scheduled runs.
+- Headed Chrome bypasses the AWS ALB 403 that blocked Linux/headless runs.
+  Automated username/password and TOTP authentication completes, including
+  Cognito's delayed **Sign in as** confirmation.
+- The remaining blocker is the ISC Portal authentication callback: it returns
+  HTTP 401 after Cognito confirmation and starts a new sign-in loop. Navigating
+  to `https://isc-portal.debenhamsgroup.com` first, as advised by Debenhams,
+  was tested and produces the same result. No live Portal submission has been
+  completed from the runner.
+- Recovery case PO `0070065988` is reserved as invoice `256` with a validated
+  26-carton handoff preserved outside Git. It has not been submitted, so a
+  future recovery must reuse invoice 256 rather than allocate another number.
+- Next external dependency: Debenhams must resolve the callback 401 or provide
+  an API/service-account authentication method. After that, rerun
+  `navigate-only`, then use protected `submit-one` for PO `0070065988`.
 
 ## One-time setup
 
