@@ -167,7 +167,13 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-automation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install automation dependencies
+        shell: pwsh
+        working-directory: scripts/gmail-automations
+        run: npm ci
       - name: Download fresh Portal handoff
         if: ${{ inputs.portal_mode != 'validate-config' && inputs.portal_mode != 'login-smoke' }}
         continue-on-error: true
