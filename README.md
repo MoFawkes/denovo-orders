@@ -72,10 +72,19 @@ The hourly workflow performs five operations:
 
 1. Detect sample approvals and booking confirmations in Gmail.
 2. Generate order dockets from sourcing emails.
-3. Read photographed packing dockets and request a human-supplied invoice.
-4. Generate the packing-list workbook in Drive; the manager then combines it
-   with the current buyer PO reference on the Portal Carton Upload screen.
-5. Complete the matching Booked order and close its Google Task.
+3. Validate photographed packing dockets, wait in sample-approval limbo when
+   required, and atomically allocate the next sequential invoice number.
+4. Create a Portal carton handoff. A booking is optional; without one, the
+   dispatch date remains blank.
+5. Run the Portal stage on the Windows runner to submit cartons, download the
+   buyer's packing list and BEL labels, stamp invoice/date fields, and reply to
+   the Gmail thread.
+
+Step 5 is currently blocked by an ISC Portal callback 401 after successful
+Cognito credentials, TOTP, and account confirmation. Debenhams confirmed
+there is no direct upload API; CSV upload through the Portal is the closest
+supported route. Scheduled Portal submission remains disabled; the Gmail and
+handoff stages continue to run.
 
 Durable checkpoints in `automation_executions` make reply and upload retries
 recoverable. Operational setup, labels, secrets, and recovery instructions are
