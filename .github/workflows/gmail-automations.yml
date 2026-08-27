@@ -151,7 +151,7 @@ jobs:
           fi
 
   portal-submission:
-    runs-on: [self-hosted, linux, x64, denovo-orders]
+    runs-on: [self-hosted, Windows, X64, denovo-portal]
     timeout-minutes: 30
     needs: gmail-automations
     if: >-
@@ -177,10 +177,6 @@ jobs:
           path: ${{ runner.temp }}/portal-handoff
           run-id: ${{ inputs.portal_run_id || github.run_id }}
           github-token: ${{ github.token }}
-      - name: Install Chromium
-        if: ${{ inputs.portal_mode != 'validate-config' }}
-        working-directory: scripts/gmail-automations
-        run: npx playwright install chromium
       - name: Run ISC Portal automation
         env:
           PORTAL_RUN_MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.portal_mode }}
@@ -191,6 +187,8 @@ jobs:
           PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
           PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
           PORTAL_TOTP_SECRET: ${{ secrets.PORTAL_TOTP_SECRET }}
+          PORTAL_HEADLESS: '0'
+          PORTAL_BROWSER_CHANNEL: chrome
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}

@@ -237,7 +237,10 @@ async function main() {
   }
   if (mode === 'submit-one' && manifests.length !== 1) throw new Error('submit-one requires exactly one matching manifest');
 
-  const browser = await chromium.launch({ headless: true });
+  const headless = process.env.PORTAL_HEADLESS !== '0';
+  const browserChannel = process.env.PORTAL_BROWSER_CHANNEL?.trim() || undefined;
+  console.log(`Launching ${browserChannel ?? 'bundled Chromium'} in ${headless ? 'headless' : 'headed'} mode.`);
+  const browser = await chromium.launch({ headless, channel: browserChannel });
   const context = await browser.newContext({ acceptDownloads: true });
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
   const page = await context.newPage();
