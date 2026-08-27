@@ -21,6 +21,14 @@ function requireSecret(name, value) {
   return value;
 }
 
+async function completeCognitoAccountConfirmation(page, config) {
+  if (!page.url().includes('amazoncognito.com')) return false;
+  await page.getByRole('button', { name: /Sign in as /i }).click();
+  await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+  await assertPortalAccess(null, page, 'Cognito account confirmation callback');
+  return true;
+}
+
 async function login(page, config) {
   const landingResponse = await page.goto(config.urls.purchaseOrders, {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
@@ -44,11 +52,7 @@ async function login(page, config) {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
   await assertPortalAccess(authenticatedResponse, page, 'authenticated purchase-order navigation');
-  if (page.url().includes('amazoncognito.com')) {
-    await page.getByRole('button', { name: /Sign in as /i }).click();
-    await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
-    await assertPortalAccess(null, page, 'Cognito account confirmation callback');
-  }
+  await completeCognitoAccountConfirmation(page, config);
 }
 
 async function openWizard(page, config, po) {
@@ -97,6 +101,13 @@ async function readPurchaseOrderStatus(page, config, po) {
   }
   await assertPortalAccess(response, page, 'purchase-order list navigation');
   await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
+  if (await completeCognitoAccountConfirmation(page, config)) {
+    response = await page.goto(config.urls.purchaseOrders, {
+      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+    });
+    await assertPortalAccess(response, page, 'purchase-order list after account confirmation');
+    await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
+  }
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
   try {
