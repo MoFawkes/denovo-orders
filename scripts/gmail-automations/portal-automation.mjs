@@ -37,6 +37,18 @@ async function login(page, config) {
   }
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito callback');
+
+  // Cognito can briefly return to the Portal and then require one final
+  // account-confirmation click before the authenticated session is usable.
+  const authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
+    waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+  });
+  await assertPortalAccess(authenticatedResponse, page, 'authenticated purchase-order navigation');
+  if (page.url().includes('amazoncognito.com')) {
+    await page.getByRole('button', { name: /Sign in as /i }).click();
+    await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+    await assertPortalAccess(null, page, 'Cognito account confirmation callback');
+  }
 }
 
 async function openWizard(page, config, po) {
