@@ -51,9 +51,11 @@ use installed Chrome in headed mode:
 - Recovery case PO `0070065988` is reserved as invoice `256` with a validated
   26-carton handoff preserved outside Git. It has not been submitted, so a
   future recovery must reuse invoice 256 rather than allocate another number.
-- Next external dependency: Debenhams must resolve the callback 401 or provide
-  an API/service-account authentication method. After that, rerun
-  `navigate-only`, then use protected `submit-one` for PO `0070065988`.
+- Debenhams confirmed there is no direct API for uploading carton details;
+  CSV upload through the Portal is the closest supported route. The remaining
+  external dependency is therefore resolution of the callback 401. After
+  access is restored, rerun `navigate-only`, then use protected `submit-one`
+  for PO `0070065988`.
 
 ## One-time setup
 

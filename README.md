@@ -81,8 +81,10 @@ The hourly workflow performs five operations:
    the Gmail thread.
 
 Step 5 is currently blocked by an ISC Portal callback 401 after successful
-Cognito credentials, TOTP, and account confirmation. Scheduled Portal
-submission remains disabled; the Gmail and handoff stages continue to run.
+Cognito credentials, TOTP, and account confirmation. Debenhams confirmed
+there is no direct upload API; CSV upload through the Portal is the closest
+supported route. Scheduled Portal submission remains disabled; the Gmail and
+handoff stages continue to run.
 
 Durable checkpoints in `automation_executions` make reply and upload retries
 recoverable. Operational setup, labels, secrets, and recovery instructions are
