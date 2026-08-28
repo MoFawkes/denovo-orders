@@ -494,6 +494,7 @@ async function processThread(accessToken, database, thread) {
   const docketBuffer = await buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, descDisplay, docketRows);
   const docketFileName = `${docketNumber}_${poNumber}.xlsx`;
   const storagePath = `${poNumber}/dockets/${docketFileName}`;
+  const buyerReferencePo = String(poNumber).replace(/\D/g, '').padStart(10, '0');
 
   let uploadError = null;
   let rowErrors = [];
@@ -506,9 +507,14 @@ async function processThread(accessToken, database, thread) {
     const saved = await database('save', {
       storagePath,
       fileBase64: docketBuffer.toString('base64'),
+      buyerReferencePo,
+      buyerReferenceCsv: csvBuffer.toString('utf8'),
       rows: dbRows,
     });
     uploadError = saved.uploadError;
+    if (saved.buyerReferenceSaveError) {
+      uploadError = [uploadError, `buyer CSV retention failed: ${saved.buyerReferenceSaveError}`].filter(Boolean).join('; ');
+    }
     rowErrors = saved.rowErrors ?? [];
   }
   if (uploadError) {
