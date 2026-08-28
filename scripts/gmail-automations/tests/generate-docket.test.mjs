@@ -12,6 +12,12 @@ test('extractSizeFromName reads the new " - UK <n>" suffix', () => {
   assert.equal(extractSizeFromName('Some Dress Lemon - UK 16'), '16');
 });
 
+test('extractSizeFromName reads UK size when a US size follows it', () => {
+  const name = 'Stretch Woven Boat Neck Long Sleeve Pleated Shift Dress Burgundy - UK 4, US 0';
+  assert.equal(extractSizeFromName(name), '4');
+  assert.equal(extractColourFromName(name), 'Burgundy');
+});
+
 test('extractSizeFromName still reads the legacy "-<n>" suffix', () => {
   assert.equal(extractSizeFromName('Petite Black Scoop Neck Sleeveless Maxi Dress Black-2'), '2');
 });

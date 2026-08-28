@@ -46,7 +46,7 @@ const FALLBACK_DOCKET_BASE = 241; // matches nextDocketNumber() in web/index.htm
 // `...Colour - UK 2`, which broke a bare `/-(\d+)$/`: no size parsed meant zero
 // order rows and a rejected docket save. Make the "UK" word and the spaces
 // around it optional so both forms parse; the capture group is the size.
-const SIZE_SUFFIX = /-\s*(?:UK\s*)?(\d+)\s*$/i;
+const SIZE_SUFFIX = /-\s*(?:UK\s*)?(\d+)(?:\s*,\s*US\s*\d+)?\s*$/i;
 
 // ── Ported from web/index.html (runImport / buildDocketWorkbook et al.) ──────
 // Kept as a self-contained copy rather than a shared module: the website has
