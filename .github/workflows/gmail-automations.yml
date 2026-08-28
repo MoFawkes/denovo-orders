@@ -53,7 +53,7 @@ permissions:
 
 jobs:
   gmail-automations:
-    runs-on: [self-hosted, linux, x64, denovo-orders]
+    runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 60
     outputs:
@@ -212,7 +212,7 @@ jobs:
   alert-on-failure:
     if: ${{ always() && failure() }}
     needs: [gmail-automations, portal-submission]
-    runs-on: [self-hosted, linux, x64, denovo-orders]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
