@@ -43,7 +43,7 @@ test('buyer product codes remain full and preserve leading zeros', () => {
 
 test('builds the size mapping from the real buyer CSV column shape and selected PO', () => {
   const rows = [
-    { productCode: 'CNR0463/40/145', productName: 'Taupe Petite Dress - UK 2', supplierRef: 'CNR0463', PONumber: '0070056980', supplierName: 'Denovo', orderQty: '100', productGroup: 'Dress', EAN: '0500000000001' },
+    { productCode: 'CNR0463/40/145', productName: 'Taupe Petite Dress - UK 2, US 00', supplierRef: 'CNR0463', PONumber: '0070056980', supplierName: 'Denovo', orderQty: '100', productGroup: 'Dress', EAN: '0500000000001' },
     { productCode: 'CNR0463/40/72', productName: 'Taupe Petite Dress-4', supplierRef: 'CNR0463', PONumber: '0070056980', supplierName: 'Denovo', orderQty: '80', productGroup: 'Dress', EAN: '0500000000002' },
     { productCode: 'OTHER/1', productName: 'Other Dress-2', supplierRef: 'OTHER', PONumber: '0070000000', supplierName: 'Denovo', orderQty: '5', productGroup: 'Dress', EAN: '0500000000003' },
   ];

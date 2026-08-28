@@ -16,7 +16,7 @@ export function fullSkuFromProductCode(code) {
 }
 
 export function extractBuyerSize(productName) {
-  const match = String(productName ?? '').match(/-\s*(?:UK\s*)?(\d+)\s*$/i);
+  const match = String(productName ?? '').match(/-\s*(?:UK\s*)?(\d+)(?:\s*,\s*US\s*\d+)?\s*$/i);
   return match ? match[1] : null;
 }
 

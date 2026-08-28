@@ -2384,13 +2384,15 @@ function pickColourCol(row) {
   return null
 }
 
+const PLT_SIZE_SUFFIX = /-\s*(?:UK\s*)?(\d+)(?:\s*,\s*US\s*\d+)?\s*$/i
+
 function extractSizeFromName(name) {
-  const m = String(name).match(/-\s*(?:UK\s*)?(\d+)\s*$/i)
+  const m = String(name).match(PLT_SIZE_SUFFIX)
   return m ? m[1] : null
 }
 
 function extractColourFromName(name) {
-  const parts = String(name).replace(/-\d+\s*$/, '').trim().split(/\s+/)
+  const parts = String(name).replace(PLT_SIZE_SUFFIX, '').trim().split(/\s+/)
   return parts[parts.length - 1] || 'Unknown'
 }
 
@@ -3086,7 +3088,7 @@ async function runImport() {
       return result
     }
     const baseDesc = rows.map(r => {
-      const n = String(r['productName'] || '').replace(/-\d+\s*$/, '').trim()
+      const n = String(r['productName'] || '').replace(PLT_SIZE_SUFFIX, '').trim()
       return stripColours(n)
     }).sort((a, b) => rows.filter(r => r.productName?.includes(b)).length - rows.filter(r => r.productName?.includes(a)).length)[0] || ''
 
