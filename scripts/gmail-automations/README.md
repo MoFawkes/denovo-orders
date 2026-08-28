@@ -1,7 +1,7 @@
 # Gmail automations (GitHub Actions)
 
 Six automations, one workflow (`.github/workflows/gmail-automations.yml`).
-The Gmail/Supabase job runs hourly on the self-hosted Linux runner; Portal
+The Gmail/Supabase job runs hourly on a GitHub-hosted Ubuntu runner; Portal
 browser work is routed to the separate self-hosted Windows runner so it can
 use installed Chrome in headed mode:
 
@@ -34,9 +34,9 @@ use installed Chrome in headed mode:
 
 ## Current rollout status (27 August 2026)
 
-- The Linux runner (`denovo-orders-pc`) and Windows Portal runner
-  (`denovo-portal-windows`) are registered as scheduled tasks and report
-  online to GitHub. The Portal job targets the `denovo-portal` label.
+- Linux CI and Gmail/Supabase jobs use GitHub-hosted Ubuntu runners. The
+  Windows Portal runner (`denovo-portal-windows`) remains self-hosted and
+  targets the `denovo-portal` label.
 - Gmail drafting, automatic sequential invoice allocation, optional bookings,
   sample-approval limbo, and Portal handoff generation are implemented. Portal
   submission remains disabled for scheduled runs.
