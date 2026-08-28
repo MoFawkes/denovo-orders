@@ -11,7 +11,8 @@ begin
   limit 1;
 
   if target_source is null then
-    raise exception 'Could not find the INV 258 allocation for PO 0070065988';
+    raise notice 'No live INV 258 allocation for PO 0070065988; nothing to reconcile';
+    return;
   end if;
   if exists (select 1 from public.invoice_allocations where invoice_number > 258) then
     raise exception 'Later invoice allocations exist; reconcile manually before reclaiming 256/257';
