@@ -104,6 +104,31 @@ Deno.serve(async (request: Request) => {
         })
       }
 
+      case 'complete-portal-csv': {
+        const po = normalisePo(body.po), invoice = text(body.invoice)
+        const skus = Array.isArray(body.skus) ? [...new Set(body.skus.map((v) => text(v).toUpperCase()).filter(Boolean))] : []
+        if (!po || !/^\d+$/.test(invoice) || skus.length === 0) return json({ error: 'po, numeric invoice, and SKU(s) are required' }, 400)
+        const existing = await supabase.from('orders').select('id, po, style, style_no, description, stage, invoice_no').eq('po', po)
+        if (existing.error) throw existing.error
+        const matched = (existing.data ?? []).filter((o) => skus.includes(text(o.style).toUpperCase()))
+        const found = new Set(matched.map((o) => text(o.style).toUpperCase()))
+        const missing = skus.filter((sku) => !found.has(sku))
+        if (missing.length) return json({ error: `no order found for SKU(s): ${missing.join(', ')}` }, 409)
+        const conflict = matched.find((o) => o.stage === 'Completed' && text(o.invoice_no) !== invoice)
+        if (conflict) return json({ error: `completed order ${conflict.id} already has invoice ${conflict.invoice_no}` }, 409)
+        const eligible = matched.filter((o) => o.stage === 'Booked')
+        const completed = matched.filter((o) => o.stage === 'Completed' && text(o.invoice_no) === invoice)
+        const invalid = matched.filter((o) => o.stage !== 'Booked' && !completed.some((done) => done.id === o.id))
+        if (invalid.length) return json({ error: 'matching order is not Booked' }, 409)
+        if (eligible.length) {
+          const ids = eligible.map((o) => o.id)
+          const update = await supabase.from('orders').update({ stage: 'Completed', invoice_no: invoice }).in('id', ids)
+          if (update.error) throw update.error
+          const events = await supabase.from('order_events').insert(ids.map((orderId) => ({ order_id: orderId, old_stage: 'Booked', new_stage: 'Completed', changed_by: null })))
+          if (events.error) throw events.error
+        }
+        return json({ matched: matched.length, orders: [...eligible, ...completed] })
+      }
       case 'invoice-allocate': {
         const sourceId = text(body.sourceId)
         if (!sourceId) return json({ error: 'sourceId is required' }, 400)

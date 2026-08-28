@@ -39,6 +39,7 @@ import {
   extractPlainTextBody,
   sendReply,
   listOpenTasks,
+  patchTask,
 } from './lib/google.mjs';
 import { extractJson } from './lib/claude.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
@@ -55,6 +56,7 @@ import {
   formatUk,
   addDaysUTC,
   findBooking,
+  findBookingTask,
   extractInvoiceNumber,
 } from './lib/domain.mjs';
 
@@ -461,6 +463,28 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
       po: payload.po, invoice, carton_count: cartonCount,
+    });
+  }
+  const completionStep = `manual-csv-completion:${invoice}`;
+  const completion = await getExecution(database, 'draft-packing-list', thread.id, completionStep);
+  if (completion?.status !== 'completed') {
+    const result = await database('complete-portal-csv', {
+      po: payload.po,
+      invoice,
+      skus: groups.map((group) => group.sku),
+    });
+    const completedOrders = result.orders ?? [];
+    if (completedOrders.length === 0) throw new Error(`no Booked orders completed for PO ${payload.po}`);
+    if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
+    const updatedTaskIds = new Set();
+    for (const order of completedOrders) {
+      const task = findBookingTask(ctx.openTasks, order, invoice);
+      if (!task || updatedTaskIds.has(task.id)) continue;
+      await patchTask(accessToken, task.id, { title: `INV ${invoice} — ${task.title}`, status: 'completed' });
+      updatedTaskIds.add(task.id);
+    }
+    await completeExecution(database, 'draft-packing-list', thread.id, completionStep, {
+      po: payload.po, invoice, orders_completed: completedOrders.length, tasks_completed: updatedTaskIds.size,
     });
   }
   await modifyThreadLabels(accessToken, thread.id, {
