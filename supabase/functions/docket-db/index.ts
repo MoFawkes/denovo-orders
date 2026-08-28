@@ -46,6 +46,7 @@ Deno.serve(async (request: Request) => {
       }
       case 'save': {
         const storagePath = text(body.storagePath), fileBase64 = text(body.fileBase64)
+        const buyerReferencePo = text(body.buyerReferencePo), buyerReferenceCsv = text(body.buyerReferenceCsv)
         const rows = Array.isArray(body.rows) ? body.rows : []
         if (!storagePath || !fileBase64 || rows.length === 0) {
           return json({ error: 'storagePath, fileBase64, and rows are required' }, 400)
@@ -55,6 +56,17 @@ Deno.serve(async (request: Request) => {
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           upsert: true,
         })
+        let buyerReferenceSaveError: string | null = null
+        if (buyerReferencePo || buyerReferenceCsv) {
+          if (!/^\d{10}$/.test(buyerReferencePo) || !buyerReferenceCsv) {
+            buyerReferenceSaveError = 'buyerReferencePo must be ten digits and buyerReferenceCsv is required'
+          } else {
+            const buyerReferenceSave = await supabase.from('buyer_po_references').upsert({
+              po: buyerReferencePo, csv_text: buyerReferenceCsv, source: 'docket-email', updated_at: new Date().toISOString(),
+            })
+            buyerReferenceSaveError = buyerReferenceSave.error?.message ?? null
+          }
+        }
         const docketUrl = upload.error
           ? null
           : supabase.storage.from('orders').getPublicUrl(storagePath).data.publicUrl
@@ -66,7 +78,10 @@ Deno.serve(async (request: Request) => {
           )
           if (result.error) errors.push(result.error.message)
         }
-        return json({ docketUrl, uploadError: upload.error?.message ?? null, rowErrors: errors })
+        return json({
+          docketUrl, uploadError: upload.error?.message ?? null,
+          buyerReferenceSaveError, rowErrors: errors,
+        })
       }
       default:
         return json({ error: 'unknown action' }, 400)

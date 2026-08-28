@@ -50,6 +50,24 @@ Deno.serve(async (request: Request) => {
         return json({ orders: result.data ?? [] })
       }
 
+      case 'buyer-reference-get': {
+        const po = normalisePo(body.po)
+        if (!po) return json({ error: 'po is required' }, 400)
+        const result = await supabase.from('buyer_po_references').select('csv_text').eq('po', po).maybeSingle()
+        if (result.error) throw result.error
+        return json({ found: Boolean(result.data), csvText: result.data?.csv_text ?? null })
+      }
+
+      case 'buyer-reference-save': {
+        const po = normalisePo(body.po), csvText = text(body.csvText)
+        if (!po || !csvText) return json({ error: 'po and csvText are required' }, 400)
+        const result = await supabase.from('buyer_po_references').upsert({
+          po, csv_text: csvText, source: 'packing-email-reply', updated_at: new Date().toISOString(),
+        })
+        if (result.error) throw result.error
+        return json({ ok: true })
+      }
+
       case 'complete': {
         const fileId = text(body.fileId)
         const po = normalisePo(body.po)

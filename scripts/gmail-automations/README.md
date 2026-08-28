@@ -11,7 +11,8 @@ use installed Chrome in headed mode:
 - `generate-docket.mjs` — reads **`denovosourcing@gmail.com`** for incoming
   PO emails (CSV of order rows + PDF PO confirmation), and automates the
   "Generate Dockets & Import Orders" button in `web/index.html`: no LLM step,
-  writes to Supabase directly with a service-role key. Its `Docket-Processed`
+  writes to Supabase directly with a service-role key and retains the original
+  buyer CSV by PO for shipment-time Portal carton uploads. Its `Docket-Processed`
   / `Docket-Needs-Review` labels are created automatically by the script on
   first run — unlike `Sample-Approval` / `Bookings`, there's no manual
   labeling step to set up.
@@ -25,7 +26,10 @@ use installed Chrome in headed mode:
   without consuming an invoice, then resume automatically after approval. A
   booking is optional. If none exists, the automation leaves the dispatch
   date blank, atomically assigns the next invoice number (initially 256),
-  creates the Portal handoff, and marks the thread Processed.
+  combines the retained buyer CSV with the packed cartons, attaches the Portal
+  upload CSV, creates the Portal handoff, and marks the thread Processed. If
+  the retained CSV is unavailable or invalid, it requests the original CSV in
+  the Gmail thread and resumes automatically when the attachment is supplied.
 - `portal-automation.mjs` — runs immediately after drafting in the same
   workflow, drives the buyer ISC Portal, submits cartons once, validates the
   BEL PDF, downloads the Portal's official packing list, stamps its Invoice

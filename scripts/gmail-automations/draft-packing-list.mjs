@@ -44,6 +44,7 @@ import { extractJson } from './lib/claude.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution, completeExecution } from './lib/execution-state.mjs';
 import { buildPortalManifest } from './lib/portal-manifest.mjs';
+import { buildPortalCsvFromBuyerReference } from './lib/buyer-reference.mjs';
 import {
   DATA_MARKER,
   validateDocket,
@@ -310,6 +311,62 @@ function manualInvoiceAfter(full, dataMessage) {
   return null;
 }
 
+async function resolveBuyerReference(ctx, full, payload) {
+  let lastError = null;
+  for (const message of [...full.messages].reverse()) {
+    const attachments = listAttachments(message).filter((attachment) => attachment.filename.toLowerCase().endsWith('.csv'));
+    for (const attachment of attachments) {
+      const buffer = await getAttachment(ctx.accessToken, message.id, attachment.attachmentId);
+      try {
+        const portalCsv = buildPortalCsvFromBuyerReference({ csvText: buffer.toString('utf8'), po: payload.po, groups: payload.groups });
+        await ctx.database('buyer-reference-save', { po: payload.po, csvText: buffer.toString('utf8') });
+        return { buffer, portalCsv };
+      } catch (error) {
+        lastError = error;
+        console.log(`  CSV attachment "${attachment.filename}" is not a valid buyer reference for PO ${payload.po}: ${error.message}`);
+      }
+    }
+  }
+
+  const retained = await ctx.database('buyer-reference-get', { po: payload.po });
+  if (retained.found && retained.csvText) {
+    const buffer = Buffer.from(retained.csvText, 'utf8');
+    try {
+      return {
+        buffer,
+        portalCsv: buildPortalCsvFromBuyerReference({ csvText: buffer.toString('utf8'), po: payload.po, groups: payload.groups }),
+      };
+    } catch (error) {
+      lastError = error;
+      console.log(`  retained buyer CSV is invalid for PO ${payload.po}: ${error.message}`);
+    }
+  }
+  return { buffer: null, portalCsv: null, error: lastError };
+}
+
+async function requestBuyerReference(ctx, thread, full, payload, error) {
+  const latest = full.messages.at(-1);
+  const step = `buyer-csv-request-sent:${latest?.id ?? 'unknown'}`;
+  const checkpoint = await getExecution(ctx.database, 'draft-packing-list', thread.id, step);
+  if (checkpoint?.status !== 'completed') {
+    const detail = error ? ` The CSV found could not be used: ${error.message}` : '';
+    await sendReply(ctx.accessToken, {
+      threadId: thread.id,
+      replyTo: latest,
+      to: getHeader(latest, 'From'),
+      subject: getHeader(latest, 'Subject') || 'Portal carton upload CSV required',
+      body:
+        `The original buyer PO CSV could not be found for PO ${payload.po.replace(/^0+/, '')}.${detail}\n\n` +
+        'Please reply to this email with the original buyer CSV attached. Processing will resume automatically; no new packing photos are needed.',
+    });
+    await completeExecution(ctx.database, 'draft-packing-list', thread.id, step, { po: payload.po });
+  }
+  await modifyThreadLabels(ctx.accessToken, thread.id, {
+    add: [ctx.labels.awaitingCsv],
+    remove: [ctx.labels.awaitingBooking, ctx.labels.awaitingInv, ctx.labels.awaitingSample],
+  });
+  return { outcome: 'awaiting_csv' };
+}
 async function allocateInvoice(database, threadId) {
   if (process.env.DRY_RUN === '1') return String(process.env.INVOICE_START || '256');
   const startAt = String(process.env.INVOICE_START ?? '').trim();
@@ -324,6 +381,8 @@ async function allocateInvoice(database, threadId) {
 
 async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice = null) {
   const { accessToken, database, labels } = ctx;
+  const buyerReference = await resolveBuyerReference(ctx, full, payload);
+  if (!buyerReference.portalCsv) return requestBuyerReference(ctx, thread, full, payload, buyerReference.error);
   const invoice = manualInvoice ?? await allocateInvoice(database, thread.id);
   const poDisplay = payload.po.replace(/^0+/, '');
   const groups = payload.groups.map((group) => ({
@@ -368,8 +427,13 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
       to: getHeader(latest, 'From'),
       subject: getHeader(latest, 'Subject') || 'Portal packing list',
       body:
-        `Invoice ${invoice} assigned automatically. Portal handoff prepared for PO ${poDisplay}: ${cartonCount} cartons.\n\n` +
-        'The official ISC Portal packing list and validated BEL label PDF will be attached to this thread after Portal submission completes.',
+        `Invoice ${invoice} assigned automatically. Portal upload CSV prepared for PO ${poDisplay}: ${cartonCount} cartons.\n\n` +
+        'Upload the attached CSV to the ISC Portal. The official Portal packing list and validated BEL label PDF will be attached after Portal submission completes.',
+      attachments: [{
+        filename: `PORTAL_CARTON_UPLOAD_${poDisplay}.csv`,
+        mimeType: 'text/csv',
+        buffer: Buffer.from(buyerReference.portalCsv),
+      }],
     });
     await completeExecution(database, 'draft-packing-list', thread.id, confirmationStep, {
       po: payload.po, invoice, carton_count: cartonCount,
@@ -377,7 +441,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
   }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
-    remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample],
+    remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample, labels.awaitingCsv],
   });
   return { outcome: 'created', name: `Portal handoff for PO ${poDisplay} (INV ${invoice})` };
 }
@@ -389,7 +453,7 @@ async function processWaitingThread(ctx, thread) {
   if (!payload) {
     await modifyThreadLabels(accessToken, thread.id, {
       add: [labels.needsReview],
-      remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample],
+      remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingSample, labels.awaitingCsv],
     });
     return { outcome: 'needs_review', reason: 'missing data block' };
   }
@@ -405,7 +469,7 @@ async function processWaitingThread(ctx, thread) {
   if (!sampleApproved) {
     await modifyThreadLabels(accessToken, thread.id, {
       add: [labels.awaitingSample],
-      remove: [labels.awaitingBooking, labels.awaitingInv],
+      remove: [labels.awaitingBooking, labels.awaitingInv, labels.awaitingCsv],
     });
     return { outcome: 'awaiting_sample' };
   }
@@ -437,6 +501,7 @@ async function main() {
     awaitingInv: await getOrCreateLabel(accessToken, 'Packing List/Awaiting INV'),
     awaitingBooking: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Booking'),
     awaitingSample: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Sample Approval'),
+    awaitingCsv: await getOrCreateLabel(accessToken, 'Packing List/Awaiting Buyer CSV'),
     processed: await getOrCreateLabel(accessToken, 'Packing List/Processed'),
     needsReview: await getOrCreateLabel(accessToken, 'Packing List/Needs Review'),
   };
@@ -451,11 +516,12 @@ async function main() {
 
   const newThreads = await searchThreads(
     accessToken,
-    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Awaiting-Sample-Approval -label:Packing-List-Processed -label:Packing-List-Needs-Review',
+    'label:Packing-List -label:Packing-List-Awaiting-INV -label:Packing-List-Awaiting-Booking -label:Packing-List-Awaiting-Sample-Approval -label:Packing-List-Awaiting-Buyer-CSV -label:Packing-List-Processed -label:Packing-List-Needs-Review',
   );
   console.log(`New Packing List thread(s): ${newThreads.length}.`);
   let waitingForBooking = 0;
   let waitingForSample = 0;
+  let waitingForCsv = 0;
   let created = 0;
   let flagged = 0;
   let failed = 0;
@@ -465,13 +531,14 @@ async function main() {
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'awaiting_sample') waitingForSample++;
+    else if (result.outcome === 'awaiting_csv') waitingForCsv++;
     else if (result.outcome === 'needs_review') { flagged++; console.log(`  -> Needs Review: ${result.reason}`); }
     else failed++;
   }
 
   const waitingThreads = await searchThreads(
     accessToken,
-    '{label:Packing-List-Awaiting-Sample-Approval label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV} -label:Packing-List-Processed',
+    '{label:Packing-List-Awaiting-Sample-Approval label:Packing-List-Awaiting-Booking label:Packing-List-Awaiting-INV label:Packing-List-Awaiting-Buyer-CSV} -label:Packing-List-Processed',
   );
   console.log(`Legacy waiting thread(s) to resume: ${waitingThreads.length}.`);
   for (const thread of waitingThreads) {
@@ -480,6 +547,7 @@ async function main() {
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'awaiting_sample') waitingForSample++;
+    else if (result.outcome === 'awaiting_csv') waitingForCsv++;
     else if (result.outcome === 'needs_review') flagged++;
     else failed++;
   }
@@ -489,6 +557,7 @@ async function main() {
   console.log(`  Portal handoffs created: ${created}`);
   console.log(`  Legacy recovery queue: ${waitingForBooking}`);
   console.log(`  Waiting for Sample Approved: ${waitingForSample}`);
+  console.log(`  Waiting for buyer CSV: ${waitingForCsv}`);
   console.log(`  Flagged Needs Review: ${flagged}`);
   console.log(`  Failed (left for retry next run): ${failed}`);
 
