@@ -46,8 +46,12 @@ import { getExecution, completeExecution } from './lib/execution-state.mjs';
 import { buildPortalManifest } from './lib/portal-manifest.mjs';
 import { buildPortalCsvFromBuyerReference } from './lib/buyer-reference.mjs';
 import {
+  docketExtractionProblems,
+  needsQuantityRetry,
+  selectBetterExtraction,
+} from './lib/docket-extraction.mjs';
+import {
   DATA_MARKER,
-  validateDocket,
   formatUk,
   addDaysUTC,
   findBooking,
@@ -175,17 +179,37 @@ async function processNewThread(ctx, thread) {
     subject: getHeader(latest, 'Subject') || 'Packing list',
   };
 
+  let problems = docketExtractionProblems(result);
+  if (needsQuantityRetry(problems)) {
+    console.log(`  quantity checksum mismatch; re-reading docket images once: ${problems.join('; ')}`);
+    try {
+      const retry = await extractJson({
+        apiKey,
+        model: VISION_MODEL,
+        system: SYSTEM_PROMPT,
+        prompt:
+          `Re-read these ${images.length} docket photo(s) from scratch. The first pass failed these checksum checks:\n` +
+          `${problems.map((problem) => `- ${problem}`).join('\n')}\n\n` +
+          'Inspect every handwritten carton quantity and its size column again, including any faint or partially obscured number. ' +
+          'Do not force the carton list to match the written totals and do not guess; return the same JSON shape with what is actually visible.',
+        images,
+        maxTokens: 4096,
+      });
+      const selected = selectBetterExtraction(result, retry);
+      if (selected === retry) {
+        result = retry;
+        console.log('  targeted quantity re-read reduced the validation problems.');
+      } else {
+        console.log('  targeted quantity re-read did not improve validation; keeping the first extraction.');
+      }
+      problems = docketExtractionProblems(result);
+    } catch (error) {
+      console.error(`  targeted quantity re-read failed: ${error.message}`);
+    }
+  }
+
   const dockets = result.dockets ?? [];
-  const problems = [];
-  for (const d of dockets) {
-    const problem = validateDocket(d);
-    if (problem) problems.push(`docket #${d.docket_no ?? '?'}: ${problem}`);
-  }
-  if (dockets.length === 0) problems.push('no docket sheets recognised in the photo(s)');
   const uniquePos = [...new Set(dockets.map((d) => d.po))];
-  if (uniquePos.length > 1) {
-    problems.push(`photos span ${uniquePos.length} different POs — send one PO per email`);
-  }
 
   if (problems.length > 0) {
     await sendReply(accessToken, {
