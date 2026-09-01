@@ -468,24 +468,45 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
   const completionStep = `manual-csv-completion:${invoice}`;
   const completion = await getExecution(database, 'draft-packing-list', thread.id, completionStep);
   if (completion?.status !== 'completed') {
-    const result = await database('complete-portal-csv', {
-      po: payload.po,
-      invoice,
-      skus: groups.map((group) => group.sku),
-    });
-    const completedOrders = result.orders ?? [];
-    if (completedOrders.length === 0) throw new Error(`no Booked orders completed for PO ${payload.po}`);
-    if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
-    const updatedTaskIds = new Set();
-    for (const order of completedOrders) {
-      const task = findBookingTask(ctx.openTasks, order, invoice);
-      if (!task || updatedTaskIds.has(task.id)) continue;
-      await patchTask(accessToken, task.id, { title: `INV ${invoice} — ${task.title}`, status: 'completed' });
-      updatedTaskIds.add(task.id);
+    let result;
+    try {
+      result = await database('complete-portal-csv', {
+        po: payload.po,
+        invoice,
+        skus: groups.map((group) => group.sku),
+      });
+    } catch (error) {
+      // The order can already be Completed under a different invoice than this
+      // thread's own record quotes -- e.g. an invoice-number reconciliation
+      // (like PO 0070065988's 258 -> 256 fix) rewrites the DB but Gmail thread
+      // history is immutable, so manualInvoiceAfter() keeps parsing the stale
+      // number forever. That's not a failure to retry: the completion already
+      // happened by other means, so just stop retrying this thread.
+      if (/already has invoice/.test(error.message)) {
+        console.log(`  PO ${poDisplay} already completed under a different invoice than this thread's record (${invoice}); leaving as-is: ${error.message}`);
+        await completeExecution(database, 'draft-packing-list', thread.id, completionStep, {
+          po: payload.po, invoice, reconciled_elsewhere: true,
+        });
+        result = null;
+      } else {
+        throw error;
+      }
     }
-    await completeExecution(database, 'draft-packing-list', thread.id, completionStep, {
-      po: payload.po, invoice, orders_completed: completedOrders.length, tasks_completed: updatedTaskIds.size,
-    });
+    if (result) {
+      const completedOrders = result.orders ?? [];
+      if (completedOrders.length === 0) throw new Error(`no Booked orders completed for PO ${payload.po}`);
+      if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
+      const updatedTaskIds = new Set();
+      for (const order of completedOrders) {
+        const task = findBookingTask(ctx.openTasks, order, invoice);
+        if (!task || updatedTaskIds.has(task.id)) continue;
+        await patchTask(accessToken, task.id, { title: `INV ${invoice} — ${task.title}`, status: 'completed' });
+        updatedTaskIds.add(task.id);
+      }
+      await completeExecution(database, 'draft-packing-list', thread.id, completionStep, {
+        po: payload.po, invoice, orders_completed: completedOrders.length, tasks_completed: updatedTaskIds.size,
+      });
+    }
   }
   await modifyThreadLabels(accessToken, thread.id, {
     add: [labels.processed],
@@ -575,7 +596,13 @@ async function main() {
   let failed = 0;
   for (const thread of newThreads) {
     console.log(`Processing new thread ${thread.id}...`);
-    const result = await processNewThread(ctx, thread);
+    let result;
+    try {
+      result = await processNewThread(ctx, thread);
+    } catch (error) {
+      console.error(`  thread ${thread.id} failed: ${error.message}`);
+      result = { outcome: 'failed' };
+    }
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'awaiting_sample') waitingForSample++;
@@ -591,7 +618,13 @@ async function main() {
   console.log(`Legacy waiting thread(s) to resume: ${waitingThreads.length}.`);
   for (const thread of waitingThreads) {
     console.log(`Resuming legacy waiting thread ${thread.id}...`);
-    const result = await processWaitingThread(ctx, thread);
+    let result;
+    try {
+      result = await processWaitingThread(ctx, thread);
+    } catch (error) {
+      console.error(`  thread ${thread.id} failed: ${error.message}`);
+      result = { outcome: 'failed' };
+    }
     if (result.outcome === 'created') { created++; console.log(`  -> ${result.name}`); }
     else if (result.outcome === 'awaiting_booking') waitingForBooking++;
     else if (result.outcome === 'awaiting_sample') waitingForSample++;
