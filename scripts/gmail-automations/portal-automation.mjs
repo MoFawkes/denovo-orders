@@ -30,6 +30,24 @@ async function completeCognitoAccountConfirmation(page, config) {
   return true;
 }
 
+async function navigateToAuthenticatedPurchaseOrders(page, config) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let response = await page.goto(config.urls.purchaseOrders, {
+      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+    });
+    await assertPortalAccess(response, page, `authenticated purchase-order navigation attempt ${attempt}`);
+    response = await recoverPortalRedirect(
+      response,
+      page,
+      config.urls.purchaseOrders,
+      config.timeouts.navigationMs,
+    );
+    if (await completeCognitoAccountConfirmation(page, config)) continue;
+    if (response?.status?.() === 401) continue;
+    if (!page.url().includes('amazoncognito.com')) return response;
+  }
+  throw new Error('ISC Portal authentication did not settle after the manual root redirect');
+}
 async function login(page, config) {
   const landingResponse = await page.goto(config.urls.purchaseOrders, {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
@@ -47,30 +65,9 @@ async function login(page, config) {
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito callback');
 
-  // Cognito can briefly return to the Portal and then require one final
-  // account-confirmation click before the authenticated session is usable.
-  let authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
-    waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
-  });
-  await assertPortalAccess(authenticatedResponse, page, 'authenticated purchase-order navigation');
-  authenticatedResponse = await recoverPortalRedirect(
-    authenticatedResponse,
-    page,
-    config.urls.purchaseOrders,
-    config.timeouts.navigationMs,
-  );
-  if (authenticatedResponse?.status?.() === 401) {
-    throw new Error('ISC Portal remained unauthorized after the manual root redirect');
-  }
-  if (await completeCognitoAccountConfirmation(page, config)) {
-    authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
-      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
-    });
-    await assertPortalAccess(authenticatedResponse, page, 'purchase-order navigation after manual root redirect');
-    if (authenticatedResponse?.status?.() === 401) {
-      throw new Error('ISC Portal remained unauthorized after the manual root redirect');
-    }
-  }
+  // Cognito can return to its account-confirmation screen more than once.
+  // Only declare login complete once the Purchase Orders page itself settles.
+  await navigateToAuthenticatedPurchaseOrders(page, config);
 }
 
 async function openWizard(page, config, po) {
@@ -111,21 +108,8 @@ async function dumpFilterDiagnostics(page) {
 }
 
 async function readPurchaseOrderStatus(page, config, po) {
-  let response = null;
-  if (page.url().split('?')[0] !== config.urls.purchaseOrders) {
-    response = await page.goto(config.urls.purchaseOrders, {
-      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
-    });
-  }
-  await assertPortalAccess(response, page, 'purchase-order list navigation');
+  await navigateToAuthenticatedPurchaseOrders(page, config);
   await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
-  if (await completeCognitoAccountConfirmation(page, config)) {
-    response = await page.goto(config.urls.purchaseOrders, {
-      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
-    });
-    await assertPortalAccess(response, page, 'purchase-order list after account confirmation');
-    await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
-  }
   await clearPortalSearchFilters(page, config.timeouts.navigationMs);
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
