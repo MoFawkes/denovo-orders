@@ -21,3 +21,22 @@ export async function assertPortalAccess(response, page, stage) {
     { status: 403, server, retryAfter, stage },
   );
 }
+
+export async function redirectToPortalRoot(page, targetUrl, navigationMs) {
+  const rootUrl = new URL('/', targetUrl).href;
+  const rootResponse = await page.goto(rootUrl, {
+    waitUntil: 'domcontentloaded', timeout: navigationMs,
+  });
+  await assertPortalAccess(rootResponse, page, 'manual root redirect after authentication callback');
+  return rootResponse;
+}
+
+export async function recoverPortalRedirect(response, page, targetUrl, navigationMs) {
+  if (response?.status?.() !== 401) return response;
+  await redirectToPortalRoot(page, targetUrl, navigationMs);
+  const retryResponse = await page.goto(targetUrl, {
+    waitUntil: 'domcontentloaded', timeout: navigationMs,
+  });
+  await assertPortalAccess(retryResponse, page, 'navigation after manual root redirect');
+  return retryResponse;
+}

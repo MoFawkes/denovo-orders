@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertPortalAccess, PortalAccessDeniedError } from '../lib/portal-access.mjs';
+import { assertPortalAccess, PortalAccessDeniedError, recoverPortalRedirect } from '../lib/portal-access.mjs';
 
 const page = (title) => ({ title: async () => title });
 const response = (status, headers = {}) => ({
@@ -37,4 +37,39 @@ test('includes Retry-After without inventing a delay when the server supplies on
     assertPortalAccess(response(403, { server: 'awselb/2.0', 'retry-after': '3600' }), page('403 Forbidden'), 'navigation'),
     /Retry-After: 3600/,
   );
+});
+test('a 401 visits the Portal root once before retrying the target page', async () => {
+  const visits = [];
+  const replies = [response(200), response(200)];
+  const mockPage = {
+    title: async () => 'ISC Portal',
+    goto: async (url, options) => {
+      visits.push({ url, options });
+      return replies.shift();
+    },
+  };
+
+  const recovered = await recoverPortalRedirect(
+    response(401),
+    mockPage,
+    'https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders',
+    30000,
+  );
+
+  assert.equal(recovered.status(), 200);
+  assert.deepEqual(visits.map((visit) => visit.url), [
+    'https://isc-portal.debenhamsgroup.com/',
+    'https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders',
+  ]);
+});
+
+test('a non-401 response does not trigger redirect recovery', async () => {
+  const original = response(200);
+  const recovered = await recoverPortalRedirect(
+    original,
+    { goto: async () => assert.fail('goto should not run') },
+    'https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders',
+    30000,
+  );
+  assert.equal(recovered, original);
 });

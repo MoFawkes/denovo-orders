@@ -11,6 +11,7 @@ import {
   findBooking,
   findBookingTask,
   combineDescriptions,
+  addPackingSummaryToTaskNotes,
   extractInvoiceNumber,
   extractPackingListFields,
   cartonRows,
@@ -19,6 +20,13 @@ import {
   addDaysUTC,
 } from '../lib/domain.mjs';
 
+test('task packing summary includes PPU and packed total while preserving the booking reference', () => {
+  const notes = addPackingSummaryToTaskNotes(
+    '70053828\nCNO7708\nSun 12-Jul-26 11:00\nEBUK21207-68', [12.5, '12.50'], 123,
+  );
+  assert.equal(notes, '70053828\nCNO7708\nSun 12-Jul-26 11:00\nPrice (PPU): £12.50\nPacked qty (total): 123\nEBUK21207-68');
+  assert.deepEqual(parseBookingTask({ notes }), { date: '2026-07-12', time: '11:00', ref: 'EBUK21207-68' });
+});
 // ── normalisePo ──────────────────────────────────────────────────────────────
 // DB POs are zero-padded to 10 digits; sheets and notes carry them unpadded
 // (4b07bf8: matching failed on the unpadded form).

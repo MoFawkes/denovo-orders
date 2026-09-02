@@ -57,6 +57,7 @@ import {
   addDaysUTC,
   findBooking,
   findBookingTask,
+  addPackingSummaryToTaskNotes,
   extractInvoiceNumber,
 } from './lib/domain.mjs';
 
@@ -290,6 +291,7 @@ async function processNewThread(ctx, thread) {
       cartons: d.cartons,
       description: orderByGroup[i].description,
       style_no: orderByGroup[i].style_no,
+      ppu: orderByGroup[i].ppu,
     })),
     booking,
   };
@@ -495,12 +497,20 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
     if (result) {
       const completedOrders = result.orders ?? [];
       if (completedOrders.length === 0) throw new Error(`no Booked orders completed for PO ${payload.po}`);
+      const packedTotal = groups.reduce(
+        (total, group) => total + group.cartons.reduce((groupTotal, carton) => groupTotal + (Number(carton.qty) || 0), 0),
+        0,
+      );
       if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
       const updatedTaskIds = new Set();
       for (const order of completedOrders) {
         const task = findBookingTask(ctx.openTasks, order, invoice);
         if (!task || updatedTaskIds.has(task.id)) continue;
-        await patchTask(accessToken, task.id, { title: `INV ${invoice} — ${task.title}`, status: 'completed' });
+        await patchTask(accessToken, task.id, {
+          title: `INV ${invoice} — ${task.title}`,
+          notes: addPackingSummaryToTaskNotes(task.notes, groups.map((group) => group.ppu), packedTotal),
+          status: 'completed',
+        });
         updatedTaskIds.add(task.id);
       }
       await completeExecution(database, 'draft-packing-list', thread.id, completionStep, {
