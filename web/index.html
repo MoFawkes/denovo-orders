@@ -733,10 +733,8 @@ const SUPABASE_KEY = 'sb_publishable_duNC--xXncN1Et3VedYPNw_oaBtBcu1'
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let allOrders = []
-// Orders that moved to Completed recently (order_events lookback) — shown
-// with a "new" marker in the Completed tab.
-const RECENT_COMPLETION_DAYS = 3
-let recentlyCompletedIds = new Set()
+// completed_at keeps newly completed orders permanently pinned in completion
+// order. Booking colours are stored on each order when a form is made.
 let selectedOrderId = null
 let currentTab = 'active'
 let currentRole = null
@@ -895,12 +893,7 @@ async function showDashboard(user) {
 // ── Data ──────────────────────────────────────────────────────────────────────
 
 async function loadOrders() {
-  const since = new Date(Date.now() - RECENT_COMPLETION_DAYS * 86400000).toISOString()
-  const [ordersRes, eventsRes] = await Promise.all([
-    sb.from('orders').select('*').order('po', { ascending: true }),
-    sb.from('order_events').select('order_id').eq('new_stage', 'Completed').gte('created_at', since),
-  ])
-  if (!eventsRes.error) recentlyCompletedIds = new Set((eventsRes.data || []).map(e => e.order_id))
+  const ordersRes = await sb.from('orders').select('*').order('po', { ascending: true })
   if (!ordersRes.error) { allOrders = ordersRes.data || []; renderOrders(); updateKpis() }
 }
 
@@ -911,9 +904,6 @@ function subscribeRealtime() {
         if (!allOrders.find(o => o.id === payload.new.id)) allOrders.push(payload.new)
       } else if (payload.eventType === 'UPDATE') {
         const idx = allOrders.findIndex(o => o.id === payload.new.id)
-        if (idx >= 0 && payload.new.stage === 'Completed' && allOrders[idx].stage !== 'Completed') {
-          recentlyCompletedIds.add(payload.new.id)
-        }
         if (idx >= 0) allOrders[idx] = payload.new
         if (selectedOrderId === payload.new.id) {
           if (isMobile()) renderDrawerContent(payload.new)
@@ -953,7 +943,7 @@ function printActiveOrders() {
       <td>${o.style || '—'}</td>
       <td>${o.colour || '—'}</td>
       <td style="text-align:right;">${o.qty ?? '—'}</td>
-      <td>${o.ex_factory || '—'}</td>
+      <td>${formatExFactory(o.ex_factory)}</td>
       <td style="text-align:right;">${o.ppu != null ? '£' + parseFloat(o.ppu).toFixed(2) : '—'}</td>
       <td><span style="background:${sc.bg};color:${sc.color};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;">${o.stage || '—'}</span></td>
       <td style="color:#888;font-size:11px;">${o.notes || '—'}</td>
@@ -1007,18 +997,36 @@ function stageClass(s) {
 
 function parseExFactory(val) {
   if (!val) return new Date(0)
-  // Dates stored as YYYY-DD-MM (e.g. 2026-12-01 = 12th Jan)
+  // Ex-factory dates are stored as ISO YYYY-MM-DD.
   const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (m) {
-    const d = new Date(`${m[1]}-${m[3]}-${m[2]}`)
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
     return isNaN(d) ? new Date(0) : d
   }
   return new Date(0)
 }
 
+function formatExFactory(val) {
+  if (!val) return '—'
+  const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : val
+}
+
+const BOOKING_TAGS = [
+  { name: 'Blue', className: 'bg-blue-500' },
+  { name: 'Red', className: 'bg-red-500' },
+  { name: 'Yellow', className: 'bg-yellow-400' },
+  { name: 'Green', className: 'bg-green-500' },
+]
+
+function bookingTag(o) {
+  const index = Number(o.booking_colour_index)
+  return Number.isInteger(index) && BOOKING_TAGS[index] ? BOOKING_TAGS[index] : null
+}
+
 // ── Column sorting ────────────────────────────────────────────────────────────
-// Default (no header clicked): Booked orders pinned to the top, then by
-// ex-factory date — ascending on Active, descending on Completed/Cancelled.
+// Default (no header clicked): Booked orders are pinned on Active. Completed
+// orders remain in newest-completion-first order; other tabs use ex-factory.
 // Clicking a header sorts by it (asc → desc → back to default).
 
 const TABLE_GRID = 'grid-template-columns:90px 1fr 80px 100px 95px 60px 100px 110px 70px 1fr 60px;'
@@ -1036,6 +1044,10 @@ function stageSortRank(s) {
 
 function compareOrders(a, b) {
   if (!sortKey) {
+    if (currentTab === 'completed') {
+      const completedDiff = new Date(b.completed_at || 0) - new Date(a.completed_at || 0)
+      if (completedDiff) return completedDiff
+    }
     const bookedDiff = (b.stage === 'Booked' ? 1 : 0) - (a.stage === 'Booked' ? 1 : 0)
     if (bookedDiff) return bookedDiff
     const diff = parseExFactory(a.ex_factory) - parseExFactory(b.ex_factory)
@@ -1127,13 +1139,13 @@ function renderOrders() {
     if (!visible.length) { body.innerHTML = emptyHtml(); }
     else body.innerHTML = visible.map(o => {
       const sel = o.id === selectedOrderId
-      const isNew = currentTab === 'completed' && recentlyCompletedIds.has(o.id)
+      const tag = currentTab === 'completed' ? bookingTag(o) : null
       return `<div class="relative grid px-4 py-3 items-center ghost-border-bottom row-hover ${sel ? 'row-selected' : ''}"
         style="${TABLE_GRID}"
         onclick="selectOrder('${o.id}')"
         onmouseenter="showOrderTooltip(event,'${o.id}')"
         onmouseleave="hideOrderTooltip()">
-        ${isNew ? `<span class="absolute left-0 top-1 bottom-1 w-1 rounded-r bg-green-500" title="Completed in the last ${RECENT_COMPLETION_DAYS} days"></span>` : ''}
+        ${tag ? `<span class="absolute left-0 top-1 bottom-1 w-1 rounded-r ${tag.className}" title="${tag.name} delivery · ${formatExFactory(o.booking_delivery_date)}"></span>` : ''}
         <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
         <div class="flex items-center gap-1 pr-3 min-w-0 group/desc">
           <span id="desc-${o.id}" class="text-xs text-on-surface truncate">${o.description||'—'}</span>
@@ -1143,7 +1155,7 @@ function renderOrders() {
         <span class="text-xs font-mono text-primary truncate">${o.style||'—'}</span>
         <span class="text-xs text-on-surface-variant truncate">${o.colour||'—'}</span>
         <span class="text-xs text-on-surface">${o.qty??'—'}</span>
-        <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
+        <span class="text-xs text-on-surface-variant">${formatExFactory(o.ex_factory)}</span>
         <div><span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span></div>
         <span class="text-[10px] font-bold uppercase ${o.sample_approved ? 'text-green-600' : 'text-on-surface-variant/50'}">${o.sample_approved ? 'Yes' : 'No'}</span>
         <span class="text-xs text-on-surface-variant italic truncate pr-4">${o.notes||'—'}</span>
@@ -1159,10 +1171,10 @@ function renderOrders() {
   if (cards) {
     if (!visible.length) { cards.innerHTML = emptyHtml(); return }
     cards.innerHTML = `<div class="p-3 space-y-3">` + visible.map(o => {
-      const isNew = currentTab === 'completed' && recentlyCompletedIds.has(o.id)
+      const tag = currentTab === 'completed' ? bookingTag(o) : null
       return `
       <div class="relative bg-white rounded-xl border border-outline-variant/30 overflow-hidden shadow-sm active:opacity-70" onclick="selectOrder('${o.id}')">
-        ${isNew ? `<span class="absolute left-0 top-0 bottom-0 w-1 bg-green-500"></span>` : ''}
+        ${tag ? `<span class="absolute left-0 top-0 bottom-0 w-1 ${tag.className}" title="${tag.name} delivery · ${formatExFactory(o.booking_delivery_date)}"></span>` : ''}
         <div class="flex items-center justify-between px-4 pt-4 pb-2">
           <span class="text-sm font-bold text-on-surface">PO ${o.po||'—'}</span>
           <span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span>
@@ -1174,7 +1186,7 @@ function renderOrders() {
             ${o.style ? `<span class="text-xs font-mono font-semibold text-primary">${o.style}</span>` : ''}
             <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
             <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
-            <span class="text-xs text-on-surface-variant">${o.ex_factory||'—'}</span>
+            <span class="text-xs text-on-surface-variant">${formatExFactory(o.ex_factory)}</span>
             <span class="text-xs ${o.sample_approved ? 'text-green-600 font-semibold' : 'text-on-surface-variant'}">Sample ${o.sample_approved ? 'Yes' : 'No'}</span>
           </div>
           ${o.notes ? `<p class="text-xs text-on-surface-variant italic mt-2 line-clamp-2">${o.notes}</p>` : ''}
@@ -1217,7 +1229,7 @@ function orderDetailHtml(o, idPrefix) {
       </select>
     </div>
     <div class="grid grid-cols-2 gap-3 mb-4">
-      ${[['Style No', o.style_no],['SKU', o.style],['PPU', o.ppu != null ? '£'+parseFloat(o.ppu).toFixed(2) : null],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',o.ex_factory],['Invoice',o.invoice_no]].map(([l,v])=>`
+      ${[['Style No', o.style_no],['SKU', o.style],['PPU', o.ppu != null ? '£'+parseFloat(o.ppu).toFixed(2) : null],['Fabric',o.fabric],['Colour',o.colour],['Qty',o.qty],['Ex Factory',formatExFactory(o.ex_factory)],['Invoice',o.invoice_no]].map(([l,v])=>`
         <div class="bg-surface-container-lowest p-3 rounded border border-outline-variant/10">
           <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-tighter mb-1">${l}</p>
           <p class="text-xs font-semibold text-on-surface">${v||'—'}</p>
@@ -1392,7 +1404,6 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
         new_stage: newStage,
         changed_by: user?.id ?? null,
       })
-      if (newStage === 'Completed') recentlyCompletedIds.add(orderId)
     }
 
     // Propagate a newly set CMT to the style costings table + same-style orders
@@ -1403,7 +1414,7 @@ async function doSaveOrder(orderId, prefix, btn, origText, packingListUrl) {
     // Update local data immediately (realtime may lag)
     const idx = allOrders.findIndex(o => o.id === orderId)
     if (idx >= 0) {
-      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(cmtEl ? { cmt: newCmt } : {}), ...(sampleEl ? { sample_approved: newSample } : {}), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
+      allOrders[idx] = { ...allOrders[idx], stage: newStage, notes: notesEl.value.trim(), ...(newStage === 'Completed' && oldOrder?.stage !== 'Completed' ? { completed_at: new Date().toISOString() } : {}), ...(cmtEl ? { cmt: newCmt } : {}), ...(sampleEl ? { sample_approved: newSample } : {}), ...(packingListUrl !== null ? { packing_list_url: packingListUrl } : {}) }
       renderOrders(); updateKpis()
     }
 
@@ -2558,6 +2569,23 @@ async function generateBookingForm() {
 
   try {
     const blob = await buildBookingWorkbook(selectedOrders, dateVal, asap)
+    // ASAP bookings use today's date as their delivery group so that every
+    // booking run still receives a stable colour.
+    const deliveryDate = dateVal || new Date().toLocaleDateString('en-CA')
+    const { data: bookingData, error: bookingError } = await sb.rpc('assign_booking_delivery', {
+      p_order_ids: selectedOrders.map(o => o.id),
+      p_delivery_date: deliveryDate,
+    })
+    if (bookingError) throw bookingError
+    const assignment = bookingData?.[0]
+    if (assignment) {
+      for (const order of selectedOrders) {
+        order.booking_delivery_date = assignment.delivery_date
+        order.booking_colour_index = assignment.colour_index
+        order.booking_sequence = assignment.sequence
+      }
+      renderOrders()
+    }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
