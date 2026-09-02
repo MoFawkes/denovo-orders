@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertPortalAccess, PortalAccessDeniedError, recoverPortalRedirect } from '../lib/portal-access.mjs';
+import { assertPortalAccess, PortalAccessDeniedError, recoverPortalRedirect, clearPortalSearchFilters } from '../lib/portal-access.mjs';
 
 const page = (title) => ({ title: async () => title });
 const response = (status, headers = {}) => ({
@@ -72,4 +72,35 @@ test('a non-401 response does not trigger redirect recovery', async () => {
     30000,
   );
   assert.equal(recovered, original);
+});
+test('clears active Portal filters before a PO search', async () => {
+  const actions = [];
+  const locator = {
+    or: () => locator,
+    first: () => locator,
+    isVisible: async () => true,
+    click: async () => actions.push('clicked'),
+  };
+  const cleared = await clearPortalSearchFilters({
+    getByRole: () => locator,
+    getByText: () => locator,
+    waitForLoadState: async (state) => actions.push(state),
+  }, 30000);
+
+  assert.equal(cleared, true);
+  assert.deepEqual(actions, ['clicked', 'networkidle']);
+});
+
+test('does nothing when the Portal has no active filters', async () => {
+  const locator = {
+    or: () => locator,
+    first: () => locator,
+    isVisible: async () => false,
+    click: async () => assert.fail('click should not run'),
+  };
+  const cleared = await clearPortalSearchFilters({
+    getByRole: () => locator,
+    getByText: () => locator,
+  }, 30000);
+  assert.equal(cleared, false);
 });

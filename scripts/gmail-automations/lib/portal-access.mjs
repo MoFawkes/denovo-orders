@@ -40,3 +40,13 @@ export async function recoverPortalRedirect(response, page, targetUrl, navigatio
   await assertPortalAccess(retryResponse, page, 'navigation after manual root redirect');
   return retryResponse;
 }
+export async function clearPortalSearchFilters(page, navigationMs) {
+  const clearAll = page.getByRole('button', { name: 'Clear all', exact: true })
+    .or(page.getByText('Clear all', { exact: true }))
+    .first();
+  if (!await clearAll.isVisible().catch(() => false)) return false;
+
+  await clearAll.click();
+  await page.waitForLoadState('networkidle', { timeout: navigationMs }).catch(() => {});
+  return true;
+}

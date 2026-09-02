@@ -9,7 +9,7 @@ import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
 import { validateBelPdf } from './lib/bel-validation.mjs';
-import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot } from './lib/portal-access.mjs';
+import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearPortalSearchFilters } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
@@ -126,6 +126,7 @@ async function readPurchaseOrderStatus(page, config, po) {
     await assertPortalAccess(response, page, 'purchase-order list after account confirmation');
     await page.waitForLoadState('networkidle', { timeout: config.timeouts.navigationMs }).catch(() => {});
   }
+  await clearPortalSearchFilters(page, config.timeouts.navigationMs);
   const poNumberButton = page.locator(config.selectors.poNumberButton)
     .or(page.getByRole('button', { name: 'PO Number' }));
   try {
