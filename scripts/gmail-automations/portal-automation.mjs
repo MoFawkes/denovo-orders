@@ -9,7 +9,7 @@ import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
 import { validateBelPdf } from './lib/bel-validation.mjs';
-import { assertPortalAccess } from './lib/portal-access.mjs';
+import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
@@ -26,6 +26,7 @@ async function completeCognitoAccountConfirmation(page, config) {
   await page.getByRole('button', { name: /Sign in as /i }).click();
   await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito account confirmation callback');
+  await redirectToPortalRoot(page, config.urls.purchaseOrders, config.timeouts.navigationMs);
   return true;
 }
 
@@ -48,11 +49,28 @@ async function login(page, config) {
 
   // Cognito can briefly return to the Portal and then require one final
   // account-confirmation click before the authenticated session is usable.
-  const authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
+  let authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
   await assertPortalAccess(authenticatedResponse, page, 'authenticated purchase-order navigation');
-  await completeCognitoAccountConfirmation(page, config);
+  authenticatedResponse = await recoverPortalRedirect(
+    authenticatedResponse,
+    page,
+    config.urls.purchaseOrders,
+    config.timeouts.navigationMs,
+  );
+  if (authenticatedResponse?.status?.() === 401) {
+    throw new Error('ISC Portal remained unauthorized after the manual root redirect');
+  }
+  if (await completeCognitoAccountConfirmation(page, config)) {
+    authenticatedResponse = await page.goto(config.urls.purchaseOrders, {
+      waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
+    });
+    await assertPortalAccess(authenticatedResponse, page, 'purchase-order navigation after manual root redirect');
+    if (authenticatedResponse?.status?.() === 401) {
+      throw new Error('ISC Portal remained unauthorized after the manual root redirect');
+    }
+  }
 }
 
 async function openWizard(page, config, po) {

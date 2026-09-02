@@ -118,6 +118,18 @@ export function findBookingTask(openTasks, order, invoice) {
   );
 }
 
+export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal) {
+  const lines = String(notes ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const uniquePpus = [...new Set(
+    (ppus ?? []).map((value) => Number(value)).filter(Number.isFinite).map((value) => `£${value.toFixed(2)}`),
+  )];
+  const summary = [];
+  if (uniquePpus.length) summary.push(`Price (PPU): ${uniquePpus.join(' / ')}`);
+  if (Number.isFinite(Number(packedTotal))) summary.push(`Packed qty (total): ${Number(packedTotal)}`);
+  if (!summary.length) return lines.join('\n');
+  const reference = lines.pop();
+  return [...lines, ...summary, reference].filter(Boolean).join('\n');
+}
 // ── Descriptions and invoice numbers ─────────────────────────────────────────
 
 // Combined display text for multi-colour deliveries, mirroring how the
