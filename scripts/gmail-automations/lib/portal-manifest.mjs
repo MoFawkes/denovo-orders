@@ -10,6 +10,9 @@ export function normalisePo(value) {
   return digits.padStart(10, '0');
 }
 
+export function buildPortalNavigationTarget(po) {
+  return { po: normalisePo(po) };
+}
 export function validatePortalManifest(value) {
   if (!value || typeof value !== 'object') throw new Error('manifest must be an object');
   if (value.schemaVersion !== PORTAL_MANIFEST_SCHEMA_VERSION) throw new Error('unsupported manifest schemaVersion');

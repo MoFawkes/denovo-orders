@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { loadPortalConfig } from './lib/portal-config.mjs';
-import { validatePortalManifest } from './lib/portal-manifest.mjs';
+import { buildPortalNavigationTarget, validatePortalManifest } from './lib/portal-manifest.mjs';
 import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
@@ -244,16 +244,18 @@ async function deferForSampleApproval(manifest) {
     remove: [processed],
   });
 }
-async function loadManifests(directory, requestedPo) {
-  if (!directory) return [];
-  const files = (await readdir(directory).catch((error) => {
+async function loadManifests(directory, requestedPo, allowPoOnly = false) {
+  const files = directory ? (await readdir(directory).catch((error) => {
     if (error.code === 'ENOENT') return [];
     throw error;
-  })).filter((file) => file.endsWith('.json'));
+  })).filter((file) => file.endsWith('.json')) : [];
   const manifests = [];
   for (const file of files) {
     const manifest = validatePortalManifest(JSON.parse(await readFile(join(directory, file), 'utf8')));
     if (!requestedPo || manifest.po === requestedPo.padStart(10, '0')) manifests.push(manifest);
+  }
+  if (manifests.length === 0 && allowPoOnly && requestedPo) {
+    return [buildPortalNavigationTarget(requestedPo)];
   }
   return manifests;
 }
@@ -271,7 +273,11 @@ async function main() {
     console.log('Scheduled Portal submission is disabled pending operational sign-off.');
     return;
   }
-  const manifests = await loadManifests(process.env.PORTAL_HANDOFF_DIR, process.env.PORTAL_PO);
+  const manifests = await loadManifests(
+    process.env.PORTAL_HANDOFF_DIR,
+    process.env.PORTAL_PO,
+    mode === 'navigate-only',
+  );
   if (['navigate-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
     if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
     console.log('No fresh Portal handoff manifests found.');
@@ -297,6 +303,11 @@ async function main() {
       if (listState.submitted !== portalState.submitted) {
         throw new Error(`Portal status signals disagree for PO ${manifest.po}; human reconciliation required`);
       }
+      if (mode === 'navigate-only') {
+        await page.locator(config.selectors.sku).waitFor({ state: 'visible' });
+        console.log(`PO ${manifest.po} carton-entry UI is available.`);
+        continue;
+      }
       if (portalState.submitted) {
         console.log(`PO ${manifest.po} is already Submitted in the Portal; refusing to add cartons.`);
         continue;
@@ -306,11 +317,7 @@ async function main() {
         console.log(`PO ${manifest.po} is not Sample Approved in the Portal; returned to the automatic waiting queue.`);
         continue;
       }
-      if (mode === 'navigate-only') {
-        await page.locator(config.selectors.sku).waitFor({ state: 'visible' });
-        console.log(`PO ${manifest.po} carton-entry UI is available.`);
-        continue;
-      }
+
 
       const runnerId = process.env.GITHUB_RUN_ID ?? `local-${process.pid}`;
       const claim = await claimPortalSubmission(callPackingListDb, manifest, runnerId);

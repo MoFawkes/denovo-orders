@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPortalManifest, validatePortalManifest } from '../lib/portal-manifest.mjs';
+import { buildPortalManifest, buildPortalNavigationTarget, validatePortalManifest } from '../lib/portal-manifest.mjs';
 
 const input = {
   po: '70056980', gmailThreadId: 'thread-1', invoiceId: '220', dispatchDate: '2026-07-11', workbookBytes: Buffer.from('workbook'),
@@ -11,6 +11,10 @@ const input = {
   ] }],
 };
 
+test('builds a PO-only target for read-only navigation without a handoff', () => {
+  assert.deepEqual(buildPortalNavigationTarget('70062958'), { po: '0070062958' });
+  assert.throws(() => buildPortalNavigationTarget('not-a-po'), /PO must contain/);
+});
 test('builds a stable, validated manual-entry handoff', () => {
   const first = buildPortalManifest(input);
   const second = buildPortalManifest(input);
