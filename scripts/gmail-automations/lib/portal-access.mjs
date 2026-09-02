@@ -28,6 +28,8 @@ export async function redirectToPortalRoot(page, targetUrl, navigationMs) {
     waitUntil: 'domcontentloaded', timeout: navigationMs,
   });
   await assertPortalAccess(rootResponse, page, 'manual root redirect after authentication callback');
+  await page.waitForLoadState('networkidle', { timeout: navigationMs }).catch(() => {});
+  await page.waitForTimeout(3000);
   return rootResponse;
 }
 

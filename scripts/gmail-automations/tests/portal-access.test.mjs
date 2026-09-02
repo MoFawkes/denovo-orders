@@ -44,9 +44,11 @@ test('a 401 visits the Portal root once before retrying the target page', async 
   const mockPage = {
     title: async () => 'ISC Portal',
     goto: async (url, options) => {
-      visits.push({ url, options });
+      visits.push({ type: 'goto', url, options });
       return replies.shift();
     },
+    waitForLoadState: async (state) => visits.push({ type: 'load', state }),
+    waitForTimeout: async (milliseconds) => visits.push({ type: 'pause', milliseconds }),
   };
 
   const recovered = await recoverPortalRedirect(
@@ -57,10 +59,11 @@ test('a 401 visits the Portal root once before retrying the target page', async 
   );
 
   assert.equal(recovered.status(), 200);
-  assert.deepEqual(visits.map((visit) => visit.url), [
-    'https://isc-portal.debenhamsgroup.com/',
-    'https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders',
-  ]);
+  assert.deepEqual(visits.map((visit) => visit.type), ['goto', 'load', 'pause', 'goto']);
+  assert.equal(visits[0].url, 'https://isc-portal.debenhamsgroup.com/');
+  assert.equal(visits[1].state, 'networkidle');
+  assert.equal(visits[2].milliseconds, 3000);
+  assert.equal(visits[3].url, 'https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders');
 });
 
 test('a non-401 response does not trigger redirect recovery', async () => {
