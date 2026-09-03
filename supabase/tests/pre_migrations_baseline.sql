@@ -6,6 +6,9 @@ create role authenticated nologin;
 create role service_role nologin;
 
 create schema auth;
+create table auth.users (
+  id uuid primary key
+);
 create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
 create function auth.role() returns text language sql stable as $$ select 'service_role'::text $$;
 
