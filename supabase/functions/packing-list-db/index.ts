@@ -77,7 +77,7 @@ Deno.serve(async (request: Request) => {
           return json({ error: 'fileId, po, sku, and invoice are required' }, 400)
         }
         const existing = await supabase
-          .from('orders').select('id, po, style, style_no, description, stage')
+          .from('orders').select('id, po, style, style_no, description, ppu, stage')
           .eq('stage', 'Booked').eq('po', po)
         if (existing.error) throw existing.error
         const matched = (existing.data ?? []).filter(
@@ -108,7 +108,7 @@ Deno.serve(async (request: Request) => {
         const po = normalisePo(body.po), invoice = text(body.invoice)
         const skus = Array.isArray(body.skus) ? [...new Set(body.skus.map((v) => text(v).toUpperCase()).filter(Boolean))] : []
         if (!po || !/^\d+$/.test(invoice) || skus.length === 0) return json({ error: 'po, numeric invoice, and SKU(s) are required' }, 400)
-        const existing = await supabase.from('orders').select('id, po, style, style_no, description, stage, invoice_no').eq('po', po)
+        const existing = await supabase.from('orders').select('id, po, style, style_no, description, ppu, stage, invoice_no').eq('po', po)
         if (existing.error) throw existing.error
         const matched = (existing.data ?? []).filter((o) => skus.includes(text(o.style).toUpperCase()))
         const found = new Set(matched.map((o) => text(o.style).toUpperCase()))

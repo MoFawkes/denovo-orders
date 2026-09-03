@@ -465,3 +465,9 @@ test('addDaysUTC shifts ISO dates across month boundaries', () => {
   assert.equal(addDaysUTC('2026-07-12', -1), '2026-07-11');
   assert.equal(addDaysUTC('2026-08-01', -1), '2026-07-31');
 });
+
+
+test('task packing summary does not turn a missing database PPU into zero', () => {
+  const notes = addPackingSummaryToTaskNotes('70053828\nEBUK21207-68', [null, undefined, ''], 123);
+  assert.equal(notes, '70053828\nPacked qty (total): 123\nEBUK21207-68');
+});

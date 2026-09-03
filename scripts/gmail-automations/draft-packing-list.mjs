@@ -508,7 +508,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
         if (!task || updatedTaskIds.has(task.id)) continue;
         await patchTask(accessToken, task.id, {
           title: `INV ${invoice} — ${task.title}`,
-          notes: addPackingSummaryToTaskNotes(task.notes, groups.map((group) => group.ppu), packedTotal),
+          notes: addPackingSummaryToTaskNotes(task.notes, completedOrders.map((matchedOrder) => matchedOrder.ppu), packedTotal),
           status: 'completed',
         });
         updatedTaskIds.add(task.id);
