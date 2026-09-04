@@ -112,7 +112,7 @@ jobs:
 
       - name: Upload fresh Portal handoff
         if: ${{ steps.draft.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: portal-handoff
           path: ${{ runner.temp }}/portal-handoff/*.json
@@ -167,7 +167,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install automation dependencies
@@ -177,7 +177,7 @@ jobs:
       - name: Download fresh Portal handoff
         if: ${{ inputs.portal_mode != 'validate-config' && inputs.portal_mode != 'login-smoke' }}
         continue-on-error: true
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: portal-handoff
           path: ${{ runner.temp }}/portal-handoff
@@ -202,7 +202,7 @@ jobs:
         run: node scripts/gmail-automations/portal-automation.mjs
       - name: Upload Portal trace on failure
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: portal-trace
           path: ${{ runner.temp }}/portal-trace/trace.zip
@@ -218,7 +218,7 @@ jobs:
       issues: write
     steps:
       - name: Open or update the automation failure issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const title = 'Gmail automations are failing';
