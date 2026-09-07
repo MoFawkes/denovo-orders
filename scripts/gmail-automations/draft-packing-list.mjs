@@ -501,6 +501,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
         (total, group) => total + group.cartons.reduce((groupTotal, carton) => groupTotal + (Number(carton.qty) || 0), 0),
         0,
       );
+      const totalBoxes = groups.reduce((total, group) => total + group.cartons.length, 0);
       if (ctx.openTasks === null) ctx.openTasks = await listOpenTasks(accessToken);
       const updatedTaskIds = new Set();
       for (const order of completedOrders) {
@@ -508,7 +509,7 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
         if (!task || updatedTaskIds.has(task.id)) continue;
         await patchTask(accessToken, task.id, {
           title: `INV ${invoice} — ${task.title}`,
-          notes: addPackingSummaryToTaskNotes(task.notes, completedOrders.map((matchedOrder) => matchedOrder.ppu), packedTotal),
+          notes: addPackingSummaryToTaskNotes(task.notes, completedOrders.map((matchedOrder) => matchedOrder.ppu), packedTotal, totalBoxes),
           status: 'completed',
         });
         updatedTaskIds.add(task.id);
