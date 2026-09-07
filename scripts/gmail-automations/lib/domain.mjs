@@ -118,7 +118,7 @@ export function findBookingTask(openTasks, order, invoice) {
   );
 }
 
-export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal) {
+export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal, totalBoxes) {
   const lines = String(notes ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
   const uniquePpus = [...new Set(
     (ppus ?? [])
@@ -130,6 +130,7 @@ export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal) {
   const summary = [];
   if (uniquePpus.length) summary.push(`Price (PPU): ${uniquePpus.join(' / ')}`);
   if (Number.isFinite(Number(packedTotal))) summary.push(`Packed qty (total): ${Number(packedTotal)}`);
+  if (Number.isFinite(Number(totalBoxes))) summary.push(`Total boxes: ${Number(totalBoxes)}`);
   if (!summary.length) return lines.join('\n');
   const reference = lines.pop();
   return [...lines, ...summary, reference].filter(Boolean).join('\n');

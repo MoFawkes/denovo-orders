@@ -22,9 +22,9 @@ import {
 
 test('task packing summary includes PPU and packed total while preserving the booking reference', () => {
   const notes = addPackingSummaryToTaskNotes(
-    '70053828\nCNO7708\nSun 12-Jul-26 11:00\nEBUK21207-68', [12.5, '12.50'], 123,
+    '70053828\nCNO7708\nSun 12-Jul-26 11:00\nEBUK21207-68', [12.5, '12.50'], 123, 7,
   );
-  assert.equal(notes, '70053828\nCNO7708\nSun 12-Jul-26 11:00\nPrice (PPU): £12.50\nPacked qty (total): 123\nEBUK21207-68');
+  assert.equal(notes, '70053828\nCNO7708\nSun 12-Jul-26 11:00\nPrice (PPU): £12.50\nPacked qty (total): 123\nTotal boxes: 7\nEBUK21207-68');
   assert.deepEqual(parseBookingTask({ notes }), { date: '2026-07-12', time: '11:00', ref: 'EBUK21207-68' });
 });
 // ── normalisePo ──────────────────────────────────────────────────────────────
