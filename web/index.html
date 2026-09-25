@@ -1146,12 +1146,9 @@ function renderOrders() {
         onmouseenter="showOrderTooltip(event,'${o.id}')"
         onmouseleave="hideOrderTooltip()">
         ${tag ? `<span class="absolute left-0 top-1 bottom-1 w-1 rounded-r ${tag.className}" title="${tag.name} delivery · ${formatExFactory(o.booking_delivery_date)}"></span>` : ''}
-        <span class="text-xs font-semibold text-on-surface">${o.po||'—'}</span>
-        <div class="flex items-center gap-1 pr-3 min-w-0 group/desc">
-          <span id="desc-${o.id}" class="text-xs text-on-surface truncate">${o.description||'—'}</span>
-          ${canEditOrders ? `<button onclick="event.stopPropagation();editDescription('${o.id}')" class="opacity-0 group-hover/desc:opacity-100 flex-shrink-0 text-on-surface-variant hover:text-primary transition-opacity" title="Edit description"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>` : ''}
-        </div>
-        <span class="text-xs font-mono text-on-surface-variant truncate">${o.style_no||'—'}</span>
+        ${editableOrderField(o, 'po', 'PO No.', 'text-xs font-semibold text-on-surface')}
+        ${editableOrderField(o, 'description', 'Description', 'text-xs text-on-surface')}
+        ${editableOrderField(o, 'style_no', 'Style No.', 'text-xs font-mono text-on-surface-variant')}
         <span class="text-xs font-mono text-primary truncate">${o.style||'—'}</span>
         <span class="text-xs text-on-surface-variant truncate">${o.colour||'—'}</span>
         <span class="text-xs text-on-surface">${o.qty??'—'}</span>
@@ -1176,13 +1173,13 @@ function renderOrders() {
       <div class="relative bg-white rounded-xl border border-outline-variant/30 overflow-hidden shadow-sm active:opacity-70" onclick="selectOrder('${o.id}')">
         ${tag ? `<span class="absolute left-0 top-0 bottom-0 w-1 ${tag.className}" title="${tag.name} delivery · ${formatExFactory(o.booking_delivery_date)}"></span>` : ''}
         <div class="flex items-center justify-between px-4 pt-4 pb-2">
-          <span class="text-sm font-bold text-on-surface">PO ${o.po||'—'}</span>
+          <div class="flex items-center gap-1 min-w-0"><span class="text-sm font-bold">PO</span>${editableOrderField(o, 'po', 'PO No.', 'text-sm font-bold text-on-surface')}</div>
           <span class="${stageClass(o.stage)} text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded">${o.stage||'—'}</span>
         </div>
         <div class="px-4 pb-3">
           <p class="text-sm text-on-surface mb-1 leading-snug">${o.description||'—'}</p>
           <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-            ${o.style_no ? `<span class="text-xs font-mono text-on-surface-variant">${o.style_no}</span>` : ''}
+            ${editableOrderField(o, 'style_no', 'Style No.', 'text-xs font-mono text-on-surface-variant')}
             ${o.style ? `<span class="text-xs font-mono font-semibold text-primary">${o.style}</span>` : ''}
             <span class="text-xs text-on-surface-variant">${o.colour||'—'}</span>
             <span class="text-xs text-on-surface-variant">Qty ${o.qty??'—'}</span>
@@ -2964,31 +2961,65 @@ async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactor
 }
 
 // ── Main import runner ────────────────────────────────────────────────────────
-function editDescription(orderId) {
-  const span = document.getElementById('desc-' + orderId)
-  if (!span) return
-  const original = span.textContent.trim()
+function editableOrderField(order, field, label, className) {
+  return `<div class="flex items-center gap-1 pr-3 min-w-0 group/field">
+    <span class="${className} truncate">${escHtml(order[field] || '—')}</span>
+    ${canEditOrders ? `<button onclick="event.stopPropagation();editOrderField('${order.id}', '${field}', this)" class="opacity-100 md:opacity-0 md:group-hover/field:opacity-100 focus:opacity-100 flex-shrink-0 text-on-surface-variant hover:text-primary transition-opacity" title="Edit ${label}" aria-label="Edit ${label}"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>` : ''}
+  </div>`
+}
+
+function editOrderField(orderId, field, button) {
+  if (!canEditOrders || !['po', 'style_no', 'description'].includes(field)) return
+  const order = allOrders.find(o => o.id === orderId)
+  const span = button.previousElementSibling
+  if (!order || !span || span.tagName !== 'SPAN') return
+  const original = order[field] || null
   const input = document.createElement('input')
-  input.value = original === '—' ? '' : original
-  input.className = 'text-xs text-on-surface bg-surface-container border border-primary rounded px-1 outline-none'
-  input.style.width = '220px'
+  input.type = 'text'
+  input.value = original || ''
+  input.setAttribute('aria-label', button.getAttribute('aria-label'))
+  input.className = 'text-xs text-on-surface bg-surface-container border border-primary rounded px-1 outline-none w-full min-w-0'
+  input.addEventListener('click', e => e.stopPropagation())
+  button.disabled = true
   span.replaceWith(input)
   input.focus()
   input.select()
+  let finished = false
+  let cancelled = false
   const save = async () => {
+    if (finished) return
+    finished = true
     const newVal = input.value.trim() || null
-    input.replaceWith(span)
-    span.textContent = newVal || '—'
-    if (newVal !== (original === '—' ? null : original)) {
-      await sb.from('orders').update({ description: newVal }).eq('id', orderId)
-      const o = allOrders.find(x => x.id === orderId)
-      if (o) o.description = newVal
+    if (cancelled || newVal === original) {
+      input.replaceWith(span)
+      button.disabled = false
+      return
+    }
+    input.disabled = true
+    try {
+      const { data, error } = await sb.from('orders').update({ [field]: newVal }).eq('id', orderId).select('id').single()
+      if (error) throw error
+      if (!data) throw new Error('The order could not be updated.')
+      const currentOrder = allOrders.find(o => o.id === orderId)
+      if (currentOrder) currentOrder[field] = newVal
+      renderOrders()
+      if (selectedOrderId === orderId && currentOrder) {
+        populatePanelContent(currentOrder)
+        document.getElementById('drawer-po').textContent = 'PO ' + (currentOrder.po || '—')
+        renderDrawerContent(currentOrder)
+      }
+    } catch (error) {
+      input.replaceWith(span)
+      alert('Could not save this change: ' + error.message)
+    } finally {
+      button.disabled = false
     }
   }
   input.addEventListener('blur', save)
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') input.blur()
-    if (e.key === 'Escape') { input.value = original === '—' ? '' : original; input.blur() }
+    e.stopPropagation()
+    if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+    if (e.key === 'Escape') { e.preventDefault(); cancelled = true; input.blur() }
   })
 }
 
