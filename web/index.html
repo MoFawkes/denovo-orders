@@ -2963,7 +2963,7 @@ async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactor
 // ── Main import runner ────────────────────────────────────────────────────────
 function editableOrderField(order, field, label, className) {
   return `<div class="flex items-center gap-1 pr-3 min-w-0 group/field">
-    <span class="${className} ${field === 'description' ? 'truncate' : 'min-w-0 whitespace-normal break-all'}">${escHtml(order[field] || '—')}</span>
+    <span class="${className} min-w-0 whitespace-normal ${field === 'description' ? 'break-words' : 'break-all'}">${escHtml(order[field] || '—')}</span>
     ${canEditOrders ? `<button onclick="event.stopPropagation();editOrderField('${order.id}', '${field}', this)" class="opacity-100 md:opacity-0 md:group-hover/field:opacity-100 focus:opacity-100 flex-shrink-0 text-on-surface-variant hover:text-primary transition-opacity" title="Edit ${label}" aria-label="Edit ${label}"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>` : ''}
   </div>`
 }
