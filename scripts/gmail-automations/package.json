@@ -1,7 +1,7 @@
 {
   "name": "gmail-automations",
   "private": true,
-  "description": "Deps for generate-docket.mjs and the packing-list scripts. mark-sample-approved.mjs and mark-order-booked.mjs use only built-in fetch, no deps needed. Kept separate from the root package.json so the mobile app's dependency tree doesn't grow for server-only libraries.",
+  "description": "Deps for generate-docket.mjs and the packing-list scripts. import-sample-approval-csv.mjs and mark-order-booked.mjs use only built-in fetch, no deps needed. Kept separate from the root package.json so the mobile app's dependency tree doesn't grow for server-only libraries.",
   "scripts": {
     "test": "node --test"
   },
