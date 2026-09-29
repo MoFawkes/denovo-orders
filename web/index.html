@@ -594,12 +594,23 @@
     <button onclick="showView('orders')" class="text-on-surface-variant hover:text-on-surface">
       <span class="material-symbols-outlined" style="font-size:22px;">arrow_back</span>
     </button>
-    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Import PO</h2>
+    <h2 class="text-base font-bold text-on-surface tracking-tight flex-1">Import Orders &amp; Sample Approvals</h2>
   </div>
 
   <div class="flex-1 overflow-auto p-6 md:p-10">
     <div class="max-w-2xl mx-auto space-y-6">
 
+      <section class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm space-y-4" aria-labelledby="sample-import-heading">
+        <h3 id="sample-import-heading" class="text-sm font-bold">Sample approvals from OPO chase CSV</h3>
+        <p class="text-sm text-on-surface-variant">Upload the buyer’s CSV to preview approvals matched by PO and buyer style. Only Yes approvals are applied. No values never remove existing approvals, as the buyer’s system may lag behind.</p>
+        <label for="sample-import-file" class="block text-xs font-bold">OPO chase CSV</label>
+        <input id="sample-import-file" type="file" accept=".csv,text/csv" onchange="previewSampleApprovals(this)" class="block w-full text-sm"/>
+        <p id="sample-import-message" class="text-sm" role="status" aria-live="polite"></p>
+        <div id="sample-import-preview" class="overflow-auto max-h-80"></div>
+        <button id="sample-import-apply" onclick="applySampleApprovals()" disabled class="w-full h-12 bg-primary text-on-primary text-sm font-bold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed">Apply approvals</button>
+      </section>
+
+      <h3 class="text-sm font-bold">Import a new purchase order</h3>
       <!-- Drop zones -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <!-- PDF drop -->
@@ -2380,6 +2391,155 @@ function parseCSV(text) {
     headers.forEach((h, i) => row[h] = (vals[i] || '').replace(/^"|"$/g, '').trim())
     return row
   })
+}
+
+// OPO chase imports only grant approval; they never revoke it or change order details.
+let sampleApprovalPreview = []
+let sampleImportBusy = false
+
+function parseSampleApprovalCSV(text) {
+  const records = []
+  let row = [], value = '', quoted = false, closed = false
+  const finishField = () => { row.push(value.trim()); value = ''; closed = false }
+  const finishRow = () => {
+    finishField()
+    if (row.some(cell => cell !== '')) records.push(row)
+    row = []
+  }
+  text = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { value += '"'; i++ }
+      else if (c === '"') { quoted = false; closed = true }
+      else value += c
+    } else if (c === ',') finishField()
+    else if (c === '\n' || c === '\r') {
+      finishRow()
+      if (c === '\r' && text[i + 1] === '\n') i++
+    } else if (c === '"') {
+      if (value.trim() || closed) throw new Error('Invalid CSV quoting.')
+      value = ''; quoted = true
+    } else {
+      if (closed && c.trim()) throw new Error('Invalid text after a quoted CSV field.')
+      value += c
+    }
+  }
+  if (quoted) throw new Error('The CSV has an unclosed quoted field.')
+  finishRow()
+  const headers = (records.shift() || []).map(h => h.toLowerCase())
+  const required = ['po', 'style', 'sage sample approved']
+  if (required.some(h => headers.filter(v => v === h).length !== 1)) {
+    throw new Error('Expected one each of these columns: PO, Style, Sage Sample Approved.')
+  }
+  if (!records.length) throw new Error('The CSV contains no order rows.')
+  return records.map((cells, index) => {
+    if (cells.length !== headers.length) throw new Error('CSV row ' + (index + 2) + ' has the wrong number of columns.')
+    return { po: cells[headers.indexOf('po')], style: cells[headers.indexOf('style')].toUpperCase(), approval: cells[headers.indexOf('sage sample approved')].toLowerCase() }
+  })
+}
+
+function buildSampleApprovalPreview(rows, orders) {
+  const key = row => JSON.stringify([row.po, row.style])
+  const counts = new Map()
+  rows.forEach(row => counts.set(key(row), (counts.get(key(row)) || 0) + 1))
+  return rows.map(row => {
+    const result = { ...row, targets: [], status: '' }
+    const matches = orders.filter(o => String(o.po ?? '').trim() === row.po && String(o.style ?? '').trim().toUpperCase() === row.style)
+    if (!row.po || !row.style) result.status = 'Missing PO or style — skipped'
+    else if (!['yes', 'no'].includes(row.approval)) result.status = 'Invalid approval value — skipped'
+    else if (counts.get(key(row)) > 1) result.status = 'Duplicate PO/style in CSV — review and re-upload'
+    else if (!matches.length) result.status = 'No matching PO and buyer style — skipped'
+    else {
+      const active = matches.filter(o => !['Completed', 'Cancelled'].includes(o.stage))
+      if (!active.length) result.status = 'Completed/cancelled — skipped'
+      else if (row.approval === 'no') result.status = active.some(o => o.sample_approved) ? 'Review: CSV says No; existing approval kept' : 'Not approved — unchanged'
+      else {
+        result.targets = active.filter(o => !o.sample_approved)
+        result.status = result.targets.length ? 'Approve ' + result.targets.length + ' order row(s)' : 'Already approved — unchanged'
+      }
+    }
+    return result
+  })
+}
+
+async function fetchSampleApprovalOrders() {
+  const orders = []
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await sb.from('orders').select('id,po,style,stage,sample_approved').order('id').range(offset, offset + 499)
+    if (error) throw error
+    orders.push(...data)
+    if (data.length < 500) return orders
+  }
+}
+
+async function previewSampleApprovals(input) {
+  if (!canEditOrders || sampleImportBusy) return
+  sampleApprovalPreview = []
+  const button = document.getElementById('sample-import-apply')
+  const message = document.getElementById('sample-import-message')
+  const preview = document.getElementById('sample-import-preview')
+  button.disabled = true
+  preview.innerHTML = ''
+  message.textContent = ''
+  const file = input.files[0]
+  if (!file) return
+  sampleImportBusy = true
+  input.disabled = true
+  message.textContent = 'Reading CSV and checking current orders…'
+  try {
+    const rows = parseSampleApprovalCSV(await file.text())
+    sampleApprovalPreview = buildSampleApprovalPreview(rows, await fetchSampleApprovalOrders())
+    const total = sampleApprovalPreview.reduce((sum, row) => sum + row.targets.length, 0)
+    preview.innerHTML = '<table class="w-full text-xs text-left"><thead><tr><th class="p-2">PO</th><th class="p-2">Buyer style</th><th class="p-2">CSV approval</th><th class="p-2">Action</th></tr></thead><tbody>' + sampleApprovalPreview.map(row => '<tr class="border-t border-outline-variant/20"><td class="p-2">' + escHtml(row.po) + '</td><td class="p-2">' + escHtml(row.style) + '</td><td class="p-2">' + escHtml(row.approval) + '</td><td class="p-2">' + escHtml(row.status) + '</td></tr>').join('') + '</tbody></table>'
+    message.textContent = rows.length + ' CSV rows checked. ' + total + ' order row(s) will be approved. Orders absent from the CSV are unchanged.'
+    button.textContent = 'Apply ' + total + ' approval(s)'
+    button.disabled = total === 0
+  } catch (error) {
+    sampleApprovalPreview = []
+    message.textContent = 'Could not preview: ' + error.message
+  } finally {
+    sampleImportBusy = false
+    input.disabled = false
+  }
+}
+
+async function applySampleApprovals() {
+  if (!canEditOrders || sampleImportBusy) return
+  const targets = sampleApprovalPreview.flatMap(row => row.targets)
+  if (!targets.length) return
+  sampleImportBusy = true
+  const button = document.getElementById('sample-import-apply')
+  const input = document.getElementById('sample-import-file')
+  const message = document.getElementById('sample-import-message')
+  button.disabled = true
+  input.disabled = true
+  let updated = 0, skipped = 0
+  const failures = []
+  try {
+    for (const order of targets) {
+      try {
+        // Recheck identity, stage and approval in the write itself, including changes since preview.
+        const { data, error } = await sb.from('orders').update({ sample_approved: true })
+          .eq('id', order.id).eq('po', order.po).eq('style', order.style)
+          .not('stage', 'in', '(Completed,Cancelled)')
+          .or('sample_approved.eq.false,sample_approved.is.null').select('id')
+        if (error) throw error
+        if (data?.length) updated += data.length
+        else skipped++
+      } catch (error) { failures.push('PO ' + order.po + ' / ' + order.style + ': ' + error.message) }
+      message.textContent = 'Applying approvals… ' + updated + ' saved.'
+    }
+    message.textContent = updated + ' approval(s) saved. ' + skipped + ' unchanged (already approved, no longer eligible or unavailable).' + (failures.length ? ' ' + failures.length + ' failed: ' + failures.join('; ') : '') + ' Upload the CSV again to refresh the preview.'
+    document.getElementById('sample-import-preview').innerHTML = ''
+    await loadOrders()
+  } finally {
+    sampleApprovalPreview = []
+    sampleImportBusy = false
+    input.disabled = false
+    input.value = ''
+    button.textContent = 'Apply approvals'
+  }
 }
 
 function pickColourCol(row) {
