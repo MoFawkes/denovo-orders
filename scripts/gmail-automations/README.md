@@ -267,3 +267,26 @@ where automation = 'draft-packing-list'
   and source_id = '<gmail-thread-id>'
   and step in ('drive-upload:<invoice>', 'creation-confirmation-sent:<invoice>');
 ```
+
+## OPO chase CSV sample approvals
+
+The hourly Gmail job also runs `import-sample-approval-csv.mjs` against
+`denovogb@gmail.com`. It automatically finds Lulu Marshall's Dresses OPO
+Chase emails for Denovo Sourcing from 25 September 2026 onward, checks Gmail's
+DKIM/DMARC result, and reads attached CSVs without an LLM or manual label.
+Only explicit `Sage Sample Approved = Yes` rows approve orders, matching the
+numeric PO (with or without leading zeros) and buyer `style`. No values never
+revoke approvals; completed/cancelled orders are unchanged. Duplicate pairs
+across the message's CSVs are skipped for review.
+
+Each message receives `Sample-CSV-Processed` or `Sample-CSV-Needs-Review`.
+New messages in an existing thread are processed independently. Remove the
+review label after resolving unmatched orders to retry. Network/database
+failures leave the message unprocessed and fail the workflow step for retry;
+previous approvals are safe to repeat. Dry-run does not approve or label.
+No replies are sent.
+
+Deploy the updated `mark-sample-approved` edge function before enabling this
+workflow revision. The CSV batch request fails safely on the older endpoint
+rather than using its broader legacy matching rules. Uses the existing
+`SAMPLE_APPROVAL_SECRET`; no new secrets or schema changes are required.

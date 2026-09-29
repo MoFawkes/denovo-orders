@@ -76,6 +76,16 @@ jobs:
           SAMPLE_APPROVAL_SECRET: ${{ secrets.SAMPLE_APPROVAL_SECRET }}
         run: node scripts/gmail-automations/mark-sample-approved.mjs
 
+      - name: Import OPO chase sample approvals from CSV
+        id: sample_csv
+        continue-on-error: true
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          SAMPLE_APPROVAL_SECRET: ${{ secrets.SAMPLE_APPROVAL_SECRET }}
+        run: node scripts/gmail-automations/import-sample-approval-csv.mjs
+
       - name: Run booking-confirmation automation
         id: booking
         continue-on-error: true
@@ -133,6 +143,7 @@ jobs:
       - name: Report combined job failures
         if: ${{ always() }}
         env:
+          SAMPLE_CSV_OUTCOME: ${{ steps.sample_csv.outcome }}
           SAMPLE_OUTCOME: ${{ steps.sample.outcome }}
           BOOKING_OUTCOME: ${{ steps.booking.outcome }}
           DOCKET_OUTCOME: ${{ steps.docket.outcome }}
@@ -140,6 +151,7 @@ jobs:
           COMPLETION_OUTCOME: ${{ steps.completion.outcome }}
         run: |
           failed=()
+          [ "${SAMPLE_CSV_OUTCOME}" = success ] || failed+=("sample CSV approvals")
           [ "${SAMPLE_OUTCOME}" = success ] || failed+=("sample approvals")
           [ "${BOOKING_OUTCOME}" = success ] || failed+=("booking confirmations")
           [ "${DOCKET_OUTCOME}" = success ] || failed+=("docket generation")

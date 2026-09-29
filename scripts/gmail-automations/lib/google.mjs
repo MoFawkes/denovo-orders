@@ -325,3 +325,32 @@ export async function driveUploadFile(accessToken, { name, mimeType, buffer, app
   }
   return res.json();
 }
+
+// Message-level tracking lets a later CSV in the same conversation run independently.
+export async function searchMessages(accessToken, query) {
+  const messages = [];
+  let pageToken;
+  do {
+    const url = new URL(`${GMAIL_BASE}/messages`);
+    url.searchParams.set('q', query);
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const json = await apiFetch(url, accessToken);
+    messages.push(...(json.messages ?? []));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return messages;
+}
+
+export async function getMessage(accessToken, messageId) {
+  return apiFetch(`${GMAIL_BASE}/messages/${messageId}?format=full`, accessToken);
+}
+
+export async function modifyMessageLabels(accessToken, messageId, { add = [], remove = [] }) {
+  if (DRY_RUN) {
+    logDryRun('modify Gmail message labels', { messageId, add, remove });
+    return null;
+  }
+  return apiFetch(`${GMAIL_BASE}/messages/${messageId}/modify`, accessToken, {
+    method: 'POST', body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
+  });
+}

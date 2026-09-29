@@ -6,6 +6,7 @@
 // never leaves this function.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { validateCsvPairs, approveCsvPairs } from './csv.mjs'
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
@@ -17,11 +18,23 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
   }
 
-  let body: { po?: string; style_no?: string }
+  let body: { po?: string; style_no?: string; mode?: string; pairs?: { po: string; style: string }[] }
   try {
     body = await req.json()
   } catch {
     return new Response(JSON.stringify({ error: 'invalid json body' }), { status: 400 })
+  }
+
+  if (body?.mode === 'csv') {
+    if (!validateCsvPairs(body.pairs)) {
+      return Response.json({ error: 'Valid PO and buyer style pairs are required' }, { status: 400 })
+    }
+    const database = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    try {
+      return Response.json(await approveCsvPairs(database, body.pairs!))
+    } catch (error) {
+      return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
   }
 
   const po = (body.po ?? '').trim()
