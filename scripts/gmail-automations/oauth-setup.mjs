@@ -24,6 +24,9 @@ const SCOPES = [
   // creates the generated "INV ..." sheets in Drive. Same re-run rule as
   // above if uploads 403.
   'https://www.googleapis.com/auth/drive.file',
+  // Sheets write access: send-plt-invoices.mjs adds each new invoice to the
+  // shared PLT statement sheet (denovosourcing token). Same re-run rule.
+  'https://www.googleapis.com/auth/spreadsheets',
 ].join(' ');
 
 const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;

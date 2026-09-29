@@ -354,3 +354,118 @@ export async function modifyMessageLabels(accessToken, messageId, { add = [], re
     method: 'POST', body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
   });
 }
+
+// ── PLT invoicing (send-plt-invoices.mjs) ───────────────────────────────────
+
+const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+
+// Completed tasks on the default list, including ones Tasks has hidden
+// after completion. completedMin bounds the scan to recent bookings.
+export async function listCompletedTasks(accessToken, { completedMin } = {}) {
+  const tasks = [];
+  let pageToken;
+  do {
+    const url = new URL(`${TASKS_BASE}/lists/@default/tasks`);
+    url.searchParams.set('showCompleted', 'true');
+    url.searchParams.set('showHidden', 'true');
+    url.searchParams.set('maxResults', '100');
+    if (completedMin) url.searchParams.set('completedMin', completedMin);
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const json = await apiFetch(url, accessToken);
+    tasks.push(...(json.items ?? []).filter((task) => task.status === 'completed'));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return tasks;
+}
+
+// Requires the spreadsheets scope on the refresh token (see oauth-setup.mjs).
+export async function sheetsGetSheetId(accessToken, spreadsheetId, title) {
+  const url = new URL(`${SHEETS_BASE}/${spreadsheetId}`);
+  url.searchParams.set('fields', 'sheets.properties(sheetId,title)');
+  const json = await apiFetch(url, accessToken);
+  const sheet = (json.sheets ?? []).find((s) => s.properties.title === title);
+  if (!sheet) throw new Error(`sheet "${title}" not found in spreadsheet ${spreadsheetId}`);
+  return sheet.properties.sheetId;
+}
+
+// Cell values with formulas as written (FORMULA) and dates as serial numbers.
+export async function sheetsGetValues(accessToken, spreadsheetId, range) {
+  const url = new URL(`${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(range)}`);
+  url.searchParams.set('valueRenderOption', 'FORMULA');
+  url.searchParams.set('dateTimeRenderOption', 'SERIAL_NUMBER');
+  const json = await apiFetch(url, accessToken);
+  return json.values ?? [];
+}
+
+export async function sheetsInsertRows(accessToken, spreadsheetId, sheetId, startIndex, count) {
+  if (DRY_RUN) {
+    logDryRun('insert statement rows', { spreadsheetId, sheetId, startIndex, count });
+    return null;
+  }
+  return apiFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{
+        insertDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex, endIndex: startIndex + count },
+          inheritFromBefore: true,
+        },
+      }],
+    }),
+  });
+}
+
+export async function sheetsUpdateValues(accessToken, spreadsheetId, data, valueInputOption) {
+  if (data.length === 0) return null;
+  if (DRY_RUN) {
+    logDryRun('update statement cells', { spreadsheetId, valueInputOption, data });
+    return null;
+  }
+  return apiFetch(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption, data }),
+  });
+}
+
+// Exports a Google-native file (e.g. the statement sheet) to another format.
+export async function driveExportFile(accessToken, fileId, mimeType) {
+  const url = new URL(`${DRIVE_BASE}/files/${fileId}/export`);
+  url.searchParams.set('mimeType', mimeType);
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error(`GET drive export ${fileId} -> ${res.status} ${await res.text()}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export function buildMessageMime({ to, subject, body, attachments = [] }) {
+  const encodedSubject = /^[\x20-\x7e]*$/.test(subject)
+    ? subject
+    : `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`;
+  const boundary = `denovo-${Date.now()}`;
+  const headers = [
+    `To: ${to.join(', ')}`,
+    `Subject: ${encodedSubject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+  ];
+  const parts = [
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${body}`,
+    ...attachments.map(({ filename, mimeType, buffer }) => {
+      const encoded = buffer.toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
+      return `--${boundary}\r\nContent-Type: ${mimeType}; name="${filename}"\r\nContent-Disposition: attachment; filename="${filename}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${encoded}`;
+    }),
+  ];
+  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}\r\n--${boundary}--`;
+}
+
+// Saves (does not send) a new message in the mailbox's Drafts.
+export async function createDraft(accessToken, { to, subject, body, attachments = [] }) {
+  if (DRY_RUN) {
+    logDryRun('create Gmail draft', { to, subject, attachments: attachments.map((a) => a.filename) });
+    return { id: 'dry-run-draft' };
+  }
+  const raw = Buffer.from(buildMessageMime({ to, subject, body, attachments }), 'utf-8').toString('base64url');
+  return apiFetch(`${GMAIL_BASE}/drafts`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ message: { raw } }),
+  });
+}

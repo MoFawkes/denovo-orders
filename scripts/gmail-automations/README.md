@@ -1,6 +1,6 @@
 # Gmail automations (GitHub Actions)
 
-Six automations, one workflow (`.github/workflows/gmail-automations.yml`).
+Seven automations, one workflow (`.github/workflows/gmail-automations.yml`).
 The Gmail/Supabase job runs hourly on a GitHub-hosted Ubuntu runner; Portal
 browser work is routed to the separate self-hosted Windows runner so it can
 use installed Chrome in headed mode:
@@ -37,6 +37,10 @@ use installed Chrome in headed mode:
   BEL PDF, downloads the Portal's official packing list, stamps its Invoice
   Serial Number and dispatch date, then replies with both files. Any failure
   after Submit becomes `uncertain-after-submit` and is never retried.
+- `send-plt-invoices.mjs` — once an order's booking task is completed
+  (`INV <n> — ...`) and its booked delivery time has passed, builds the
+  invoice PDF, adds it to the PLT statement sheet and saves a Gmail draft in
+  `denovosourcing@gmail.com` for PLT. See [PLT invoices and statement](#plt-invoices-and-statement).
 
 ## Current rollout status (27 August 2026)
 
@@ -292,3 +296,56 @@ Deploy the updated `mark-sample-approved` edge function before enabling this
 workflow revision. The CSV batch request fails safely on the older endpoint
 rather than using its broader legacy matching rules. Uses the existing
 `SAMPLE_APPROVAL_SECRET`; no new secrets or schema changes are required.
+
+## PLT invoices and statement
+
+`send-plt-invoices.mjs` runs hourly after the packing-list steps. An order
+is invoiced when its booking Google Task in `denovogb` is **completed** with
+an `INV <n> — <description>` title (done by `draft-packing-list.mjs` when the
+cartons are packed) **and** the booked delivery date/time in the task notes
+has passed (UK time). Invoices below 274 were issued by hand and are ignored.
+
+For each such invoice it:
+
+1. Builds `Invoice_<nnnn>_PO_<po>.pdf` in the same layout as the hand-made
+   invoices: quantity = packed qty, price = PPU, VAT at 20%, "<boxes> Cartons
+   sent via Jacks", booking ref, 45-day terms. The invoice date is the day it
+   is generated.
+2. Adds a row (invoice no, date, PO, amount incl. VAT, due date +45 days,
+   `UPCOMING`) to the end of **Not Yet Due** on the `PLT Statement` tab of
+   `PLT_Statement_Denovo_Sourcing_2026`, rewrites every subtotal, the TOTAL
+   OUTSTANDING row and the summary block (H:I) as formulas, and sets the
+   statement date. Moving older invoices between Upcoming / Due Soon /
+   Overdue stays manual.
+3. Saves **one draft** in `denovosourcing@gmail.com` per run, to Medius PLT
+   Invoices UK and Jade Wynne, subject `Invoice 274 and Statement` /
+   `Invoices 274-276 and Statement`, with every new invoice PDF plus the
+   statement as a PDF. Nothing is sent: review the draft and press Send.
+
+Checkpoints (`automation = 'plt-invoice'`, `source_id` = invoice number,
+steps `statement-row` then `draft-created`) make each step happen once. An
+invoice that is already on the statement but has no `statement-row`
+checkpoint is treated as issued by hand and skipped.
+
+Tasks that can't be invoiced automatically (no booking/delivery date, more
+than one PPU on one task, missing packed qty or box count) fail the step with
+the reason in the log. Issue that invoice by hand and add it to the
+statement; the automation then leaves it alone.
+
+### Enabling it
+
+1. Share the statement sheet with `denovosourcing@gmail.com` as an editor.
+2. Re-run `oauth-setup.mjs` signed in as `denovosourcing@gmail.com` (it now
+   also asks for Google Sheets access) and replace the
+   `GMAIL_SOURCING_OAUTH_REFRESH_TOKEN` secret with the new token.
+3. Add the repository variable `PLT_INVOICES_ENABLED` = `1` (Settings >
+   Secrets and variables > Actions > Variables). Until then the step logs
+   that it is disabled and does nothing.
+
+To replay a draft (e.g. it was deleted before sending), delete that
+invoice's `draft-created` checkpoint; the statement row is not added again:
+
+```sql
+delete from public.automation_executions
+where automation = 'plt-invoice' and source_id = '<invoice>' and step = 'draft-created';
+```
