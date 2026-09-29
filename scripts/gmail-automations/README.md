@@ -5,16 +5,18 @@ The Gmail/Supabase job runs hourly on a GitHub-hosted Ubuntu runner; Portal
 browser work is routed to the separate self-hosted Windows runner so it can
 use installed Chrome in headed mode:
 
-- `mark-sample-approved.mjs` / `mark-order-booked.mjs` — read
-  `denovogb@gmail.com`, use Claude (Haiku) to judge/extract data from
-  labeled threads, call a Supabase edge function.
+- `import-sample-approval-csv.mjs` — reads buyer OPO chase CSV attachments in
+  `denovogb@gmail.com` and approves matching PO/buyer-style pairs from explicit
+  Yes values. This replaces the retired LLM-based sample approval email reader.
+- `mark-order-booked.mjs` — reads `denovogb@gmail.com`, uses Claude (Haiku)
+  to extract booking data from labeled threads, and calls a Supabase edge function.
 - `generate-docket.mjs` — reads **`denovosourcing@gmail.com`** for incoming
   PO emails (CSV of order rows + PDF PO confirmation), and automates the
   "Generate Dockets & Import Orders" button in `web/index.html`: no LLM step,
   writes to Supabase directly with a service-role key and retains the original
   buyer CSV by PO for shipment-time Portal carton uploads. Its `Docket-Processed`
   / `Docket-Needs-Review` labels are created automatically by the script on
-  first run — unlike `Sample-Approval` / `Bookings`, there's no manual
+  first run — unlike `Bookings`, there's no manual
   labeling step to set up.
 - `complete-order-from-packing-list.mjs` — retains compatibility with older
   Denovo Drive packing lists. New Portal-only deliveries do not create these
@@ -270,7 +272,7 @@ where automation = 'draft-packing-list'
 
 ## OPO chase CSV sample approvals
 
-The hourly Gmail job also runs `import-sample-approval-csv.mjs` against
+The hourly Gmail job uses only `import-sample-approval-csv.mjs` against
 `denovogb@gmail.com`. It automatically finds Lulu Marshall's Dresses OPO
 Chase emails for Denovo Sourcing from 25 September 2026 onward, checks Gmail's
 DKIM/DMARC result, and reads attached CSVs without an LLM or manual label.
