@@ -25,7 +25,7 @@ const LABEL = {
 };
 
 const SEARCH_QUERY =
-  'label:Sample-Approval -label:Sample-Approval-Processed -label:Sample-Approval-Needs-Review';
+  'label:Sample-Approval -label:Sample-Approval-Processed -label:Sample-Approval-Needs-Review -subject:"Dresses OPO Chase"';
 
 // georgia.matulka's team sends approvals as "PROCEED WITH BOOKING" emails
 // straight to the inbox instead of the hand-labeled correspondence the main
