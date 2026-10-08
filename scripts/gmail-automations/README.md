@@ -299,6 +299,57 @@ rather than using its broader legacy matching rules. Uses the existing
 
 ## PLT invoices and statement
 
+### Remittance payments and disputed deductions
+
+`process-plt-remittances.mjs` runs before invoice generation, using the
+denovogb mailbox for incoming remittances and the sourcing token for statement
+edits (set `PLT_REMITTANCE_MAILBOX=denovosourcing` if received there).
+It sends scanned PDFs to the existing Anthropic extraction service twice and
+requires matching transcriptions, the printed supplier/payer/currency,
+valid dates and references, and payments minus deductions equal to the total.
+Only configured exact sender addresses with Gmail DKIM/DMARC authentication
+are accepted. Unreadable or mismatching documents receive
+`PLT-Remittance-Needs-Review`; remove that label after resolving the cause.
+Transient API failures remain unlabeled and retry on the next run.
+
+PI lines match an invoice number AND PO. Fully paid rows are marked PAID,
+hidden from the visible/exported statement and excluded from totals. They
+remain in the sheet, with payment history in the amount cell note; unhide
+rows to inspect history. Partial payments reduce the outstanding amount.
+Every PC deduction, including discounts and CM references, creates a positive
+`CHARGE <reference>` row in Overdue with due date Immediate and status
+`OVERDUE / DISPUTED`. These rows are not aged or accepted as credit notes.
+The remittance confirms the buyer's reported payment, not bank clearance.
+
+Immutable remittance data is saved before one atomic Sheets transaction
+containing amounts, notes, statuses, row visibility, charge insertion and
+totals. Row notes and stable supplier/date/voucher identity prevent repeat
+payments or deductions even if the following checkpoint fails or the same
+PDF arrives in another email. A changed duplicate, manually settled invoice,
+unknown invoice/PO, existing manual charge or overpayment stops the whole
+remittance for reconciliation. Invoice sending waits if remittance processing
+fails, so invoices do not send with a knowingly stale statement.
+
+Activation variables:
+
+- `PLT_REMITTANCES_ENABLED=1` activates processing (unset is disabled).
+- `PLT_REMITTANCE_SENDERS`: comma-separated exact sender email addresses.
+- `PLT_REMITTANCE_START_DATE`: first unapplied remittance date, YYYY-MM-DD.
+  Both received-message search and document dates enforce this boundary.
+  Start with the activation date to avoid replaying manually applied history.
+- `PLT_REMITTANCE_MAILBOX`: `denovogb` (default) or `denovosourcing`.
+
+Run the workflow with `dry_run=true` and `portal_mode=disabled` first.
+Dry-run reads and validates PDFs but does not change amounts, rows, notes,
+labels, or checkpoints. It does not prove write permissions or validate the
+final exported layout. No remittance processing sends emails or disputes to
+the buyer; `OVERDUE / DISPUTED` is a statement status only.
+
+Audit checkpoints use automation `plt-remittance`, source identity
+`DEN0203A:<remittance-date>:<voucher>`, with steps `prepared` and `applied`.
+Do not remove payment notes or reset these checkpoints to replay a payment.
+Reconcile any edited history manually before retrying.
+
 `send-plt-invoices.mjs` runs hourly after packing-list steps. A completed
 booking task titled `INV <n> — <description>` becomes eligible after its
 booked delivery date/time passes in Europe/London. This is the chosen trigger,

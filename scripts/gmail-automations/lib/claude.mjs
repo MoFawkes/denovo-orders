@@ -16,8 +16,9 @@ const MODEL = 'claude-haiku-4-5-20251001';
 
 // `images`: optional array of { mediaType, data } (base64, no data: prefix)
 // sent as vision inputs ahead of the prompt text.
-export async function extractJson({ apiKey, system, prompt, maxTokens = 1024, model = MODEL, images = [] }) {
+export async function extractJson({ apiKey, system, prompt, maxTokens = 1024, model = MODEL, images = [], documents = [] }) {
   const content = [
+    ...documents.map((document) => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: document.data } })),
     ...images.map((img) => ({
       type: 'image',
       source: { type: 'base64', media_type: img.mediaType, data: img.data },
