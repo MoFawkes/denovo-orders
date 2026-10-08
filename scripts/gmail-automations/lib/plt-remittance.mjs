@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { validDate, planStatementUpdate, dashDate } from './plt-invoice.mjs';
+import { validDate, planStatementUpdate } from './plt-invoice.mjs';
 import { getExecution, completeExecution } from './execution-state.mjs';
 
 const clean = value => String(value ?? '').trim();
@@ -75,7 +75,7 @@ export function planRemittance(grid, notes, remittance, { today, sheetId }) {
         if (rows.some(row => clean(row[0]).replace(/^0+(?=\d)/, '') === numericRef(line.reference))) {
           fail(`manual charge ${line.reference} already exists; reconcile before import`);
         }
-        pendingCharges.push({ line, values: [chargeRef, dashDate(line.date), line.po, line.amountPence / 100, 'Immediate', 'OVERDUE / DISPUTED'] });
+        pendingCharges.push({ line, values: [chargeRef, line.date.split('-').reverse().join('/'), line.po, line.amountPence / 100, 'Immediate', 'OVERDUE / DISPUTED'] });
       }
       audit.push({ type: 'disputed-charge', reference: line.reference, amountPence: line.amountPence });
       continue;
@@ -111,6 +111,8 @@ export function planRemittance(grid, notes, remittance, { today, sheetId }) {
   if (pendingCharges.length) {
     const at = rows.findIndex(row => /^subtotal/i.test(clean(row[0])) && /overdue/i.test(clean(row[0])));
     if (at < 0) fail('no Overdue subtotal section');
+    const styleSource = rows.slice(0, at).findLastIndex(row => clean(row[0]) && typeof row[3] === 'number' && !/^subtotal/i.test(clean(row[0])));
+    const stripeStart = rows.slice(0, at).filter(row => clean(row[0]) && typeof row[3] === 'number' && !/^subtotal/i.test(clean(row[0]))).length;
     // Value and note requests before this insert use the original row indices.
     for (const update of updates.splice(0)) {
       const match = update.range.match(/^D(\d+)/);
@@ -120,6 +122,14 @@ export function planRemittance(grid, notes, remittance, { today, sheetId }) {
     requests.push({ insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: at, endIndex: at + pendingCharges.length }, inheritFromBefore: false } });
     rows.splice(at, 0, ...pendingCharges.map(charge => charge.values));
     pendingCharges.forEach(({ values }, offset) => {
+      const row = at + offset;
+      const range = { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: 6 };
+      if (styleSource >= 0) requests.push({ copyPaste: { source: { ...range, startRowIndex: styleSource, endRowIndex: styleSource + 1 }, destination: range, pasteType: 'PASTE_FORMAT' } });
+      const shade = (stripeStart + offset) % 2 ? 0.9490196 : 1;
+      requests.push({ repeatCell: { range: { ...range, endColumnIndex: 5 }, cell: { userEnteredFormat: { backgroundColor: { red: shade, green: shade, blue: shade } } }, fields: 'userEnteredFormat.backgroundColor' } });
+      requests.push({ repeatCell: { range: { ...range, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/MM/yyyy' } } }, fields: 'userEnteredFormat.numberFormat' } });
+      requests.push({ repeatCell: { range: { ...range, startColumnIndex: 5 }, cell: { userEnteredFormat: { wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat.wrapStrategy' } });
+      requests.push({ autoResizeDimensions: { dimensions: { sheetId, dimension: 'ROWS', startIndex: row, endIndex: row + 1 } } });
       updates.push({ range: `A${at + offset + 1}:F${at + offset + 1}`, values: [values], raw: true });
       setNote(at + offset, 0, NOTE_MARKER + JSON.stringify({ payments: [], remittance: id, digest }));
     });

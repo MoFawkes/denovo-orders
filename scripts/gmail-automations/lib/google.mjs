@@ -497,6 +497,17 @@ export async function sheetsApplyPlan(accessToken, spreadsheetId, sheetId, plan)
     range: { sheetId, dimension: 'ROWS', startIndex: plan.insertAt, endIndex: plan.insertAt + plan.count },
     inheritFromBefore: true,
   } });
+  if (plan.count && Number.isInteger(plan.formatSourceIndex)) {
+    const source = plan.formatSourceIndex >= plan.insertAt ? plan.formatSourceIndex + plan.count : plan.formatSourceIndex;
+    for (let offset = 0; offset < plan.count; offset++) {
+      const row = plan.insertAt + offset;
+      const range = { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: 6 };
+      requests.push({ copyPaste: { source: { ...range, startRowIndex: source, endRowIndex: source + 1 }, destination: range, pasteType: 'PASTE_FORMAT' } });
+      const shade = (plan.stripeStart + offset) % 2 ? 0.9490196 : 1;
+      requests.push({ repeatCell: { range: { ...range, endColumnIndex: 5 }, cell: { userEnteredFormat: { backgroundColor: { red: shade, green: shade, blue: shade } } }, fields: 'userEnteredFormat.backgroundColor' } });
+      for (const col of [1, 4]) requests.push({ repeatCell: { range: { ...range, startColumnIndex: col, endColumnIndex: col + 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/MM/yyyy' } } }, fields: 'userEnteredFormat.numberFormat' } });
+    }
+  }
   for (const update of plan.updates) {
     const match = update.range.match(/^([A-Z]+)(\d+)/);
     if (!match) throw new Error(`Invalid statement update range: ${update.range}`);
@@ -506,6 +517,12 @@ export async function sheetsApplyPlan(accessToken, spreadsheetId, sheetId, plan)
       fields: 'userEnteredValue',
     } });
   }
+  // Size wrapped charge rows after their new values have been written.
+  const resizeRequests = requests.filter(request => request.autoResizeDimensions);
+  for (let index = requests.length - 1; index >= 0; index--) {
+    if (requests[index].autoResizeDimensions) requests.splice(index, 1);
+  }
+  requests.push(...resizeRequests);
   if (DRY_RUN) { logDryRun('atomic statement update', { spreadsheetId, requests }); return null; }
   return apiFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
     method: 'POST', body: JSON.stringify({ requests }),

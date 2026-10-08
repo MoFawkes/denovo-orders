@@ -179,9 +179,9 @@ test('statement plan inserts new invoices at the end of Not Yet Due and rebuilds
   assert.equal(plan.insertAt, 14);
   assert.equal(plan.count, 2);
   const byRange = Object.fromEntries(plan.updates.map((u) => [u.range, u]));
-  assert.deepEqual(byRange['A15:F15'].values, [[274, '29-09-2026', 70062955, 1910.4, '13-11-2026', 'UPCOMING']]);
+  assert.deepEqual(byRange['A15:F15'].values, [[274, '29/09/2026', 70062955, 1910.4, '13/11/2026', 'UPCOMING']]);
   assert.equal(byRange['A15:F15'].raw, true);
-  assert.deepEqual(byRange['A16:F16'].values[0].slice(0, 4), [275, '29-09-2026', 70070000, 1000]);
+  assert.deepEqual(byRange['A16:F16'].values[0].slice(0, 4), [275, '29/09/2026', 70070000, 1000]);
   assert.deepEqual(byRange.D8.values, [['=SUM(D7:D7)']]);
   assert.deepEqual(byRange.D10.values, [['=SUM(D9:D9)']]);
   assert.deepEqual(byRange.D12.values, [['=SUM(D11:D11)']]);
@@ -198,7 +198,7 @@ test('statement plan keeps text cells as text when the sheet stores them that wa
   const grid = statementGrid().map((row) => (typeof row[0] === 'number' ? [String(row[0]), row[1], String(row[2]), ...row.slice(3)] : row));
   const inv = { ...parseInvoiceTask({ ...TASK_269, title: 'INV 274 — Black Dress' }), invoiceDate: '2026-09-29' };
   const plan = planStatementUpdate(grid, [inv], { today: '2026-09-29' });
-  assert.deepEqual(plan.updates[0].values[0].slice(0, 3), ['274', '29-09-2026', '70062955']);
+  assert.deepEqual(plan.updates[0].values[0].slice(0, 3), ['274', '29/09/2026', '70062955']);
 });
 
 test('draft subject follows the hand-sent format', () => {
