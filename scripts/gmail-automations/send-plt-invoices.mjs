@@ -57,6 +57,7 @@ async function main() {
   }
   const ready = [];
   let problems = 0;
+  let needsReview = 0;
   for (const parsed of [...byInvoice.values()].sort((a, b) => a.invoice - b.invoice)) {
     const source = String(parsed.invoice);
     const done = await getExecution(database, 'plt-invoice', source, 'email-sent');
@@ -66,8 +67,8 @@ async function main() {
     if (!inv) throw new Error(`INV ${source}: invalid saved invoice record`);
     if (inv.problem) {
       if (onStatement.has(String(inv.invoice)) && prepared?.status !== 'completed') continue;
-      console.error(`INV ${inv.invoice}: ${inv.problem}. Correct the completed task notes or issue manually.`);
-      problems++;
+      console.warn(`Needs review — INV ${inv.invoice}: ${inv.problem}. Correct the completed task notes or issue manually.`);
+      needsReview++;
       continue;
     }
     if (!deliveryHasPassed(inv, now)) {
@@ -103,6 +104,7 @@ async function main() {
       } catch (error) { console.error(`INV ${inv.invoice}: ${error.message}`); problems++; }
     }
   }
+  console.log(`PLT invoice summary: ${needsReview} need review; ${problems} processing failures.`);
   if (problems) process.exitCode = 1;
 }
 
