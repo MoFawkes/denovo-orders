@@ -397,6 +397,9 @@ quantities, box counts or booking dates, invalid dates, conflicting tasks or
 invoices too large for the A4 template stop that invoice with a visible error.
 Correct the completed task's notes or issue the invoice manually and add it
 to the statement. No prices, quantities or delivery dates are guessed.
+Incomplete or conflicting task data is logged as Needs review without failing
+the workflow. API errors, statement-write failures and email-send failures
+still fail the run and trigger the normal failure alert.
 All completed tasks are scanned, so old unissued invoices do not expire from
 a lookback window. No order schema, frontend changes or new Supabase grants
 are needed.
