@@ -2,14 +2,14 @@
 import { pathToFileURL } from 'node:url';
 import {
   getAccessToken, listCompletedTasks, sheetsGetSheetId, sheetsGetValues,
-  sheetsApplyPlan, driveExportFile, sendInvoiceMessage, searchMessages, getMessage,
+  sheetsApplyPlan, sendInvoiceMessage, searchMessages, getMessage,
 } from './lib/google.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution } from './lib/execution-state.mjs';
 import {
   PLT_RECIPIENTS, FIRST_AUTOMATED_INVOICE, parseInvoiceTask, deliveryHasPassed,
   londonToday, dashDate, buildInvoicePdf, invoiceFilename, statementInvoiceNumbers,
-  planStatementAgeing, draftSubject, draftBody,
+  planStatementAgeing, draftSubject, draftBody, buildStatementCsv,
 } from './lib/plt-invoice.mjs';
 import { ensureInvoiceStatement, ensureInvoiceSent } from './lib/invoice-delivery.mjs';
 
@@ -81,10 +81,10 @@ async function main() {
       if (prepared) ready.push(prepared);
     } catch (error) { console.error(`INV ${inv.invoice}: ${error.message}`); problems++; }
   }
-  // All new rows are on the statement before its PDF is exported.
+  // All new rows are on the statement before its CSV is generated.
   if (ready.length) {
     await writePlan(planStatementAgeing(await readGrid(), { today, sheetId }));
-    const statementPdf = await driveExportFile(sourcingToken, STATEMENT_SPREADSHEET_ID, 'application/pdf');
+    const statementCsv = buildStatementCsv(await readGrid());
     for (const inv of ready) {
       try {
         await ensureInvoiceSent({ database, inv, dryRun: process.env.DRY_RUN === '1',
@@ -96,7 +96,7 @@ async function main() {
             to: PLT_RECIPIENTS, subject: draftSubject([inv.invoice]), body: draftBody(1), messageId,
             attachments: [
               { filename: invoiceFilename(inv), mimeType: 'application/pdf', buffer: buildInvoicePdf(inv, { invoiceDate: inv.invoiceDate, createdAt: now }) },
-              { filename: `PLT_Statement_Denovo_Sourcing_${dashDate(today)}.pdf`, mimeType: 'application/pdf', buffer: statementPdf },
+              { filename: `PLT_Statement_Denovo_Sourcing_${dashDate(today)}.csv`, mimeType: 'text/csv; charset=utf-8', buffer: statementCsv },
             ],
           }),
         });

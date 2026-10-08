@@ -534,5 +534,23 @@ export function draftSubject(invoiceNumbers) {
 }
 
 export function draftBody(count) {
-  return `Hi,\nPlease find ${count === 1 ? 'invoice' : 'invoices'} and statement attached below.\nThanks\n`;
+  return `Hi,\nPlease find ${count === 1 ? 'invoice' : 'invoices'} and CSV statement attached below.\nThanks\n`;
+}
+
+// Keep the statement's sections and summary columns, excluding settled history.
+export function buildStatementCsv(grid) {
+  const rows = grid.filter(row => !/^(paid|settled)$/i.test(cellText(row[5])));
+  while (rows.length && rows.at(-1).every(value => cellText(value) === '')) rows.pop();
+  const escape = value => {
+    const text = String(value ?? '');
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return Buffer.from(rows.map(row => Array.from({ length: 9 }, (_, col) => {
+    const value = row[col];
+    if ([1, 4].includes(col) && typeof row[3] === 'number' && !/^subtotal|^total/i.test(cellText(row[0]))) {
+      const date = statementDueDate(value);
+      if (date) return escape(date.split('-').reverse().join('/'));
+    }
+    return escape(value);
+  }).join(',')).join('\r\n') + '\r\n', 'utf8');
 }

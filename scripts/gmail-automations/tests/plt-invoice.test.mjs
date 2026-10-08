@@ -17,8 +17,26 @@ import {
   planStatementAgeing,
   remittanceFriday,
   fridayOfWeek,
+  buildStatementCsv,
 } from '../lib/plt-invoice.mjs';
 import { buildMessageMime } from '../lib/google.mjs';
+
+test('statement CSV preserves sections, quotes and balances with UK dates and excludes paid history', () => {
+  const csv = buildStatementCsv([
+    ['DENOVO SOURCING'],
+    ['Invoice No', 'Date', 'PO', 'Amount', 'Due', 'Status'],
+    [279, 46303, '0070012345', 123.45, 46348, 'UPCOMING'],
+    [278, 46303, '0070012344', 0, 46348, 'PAID'],
+    ['CHARGE "fine", 1', '2026-10-08', '0070012345', 109.2, 'Immediate', 'OVERDUE / DISPUTED'],
+    ['Subtotal — Overdue', '', '', 109.2],
+    [],
+  ]).toString('utf8');
+  assert.ok(csv.includes('279,08/10/2026,0070012345,123.45,22/11/2026,UPCOMING'));
+  assert.ok(!csv.includes('278,'));
+  assert.ok(csv.includes('"CHARGE ""fine"", 1",08/10/2026,0070012345,109.2,Immediate,OVERDUE / DISPUTED'));
+  assert.ok(csv.includes('Subtotal — Overdue,,,109.2'));
+  assert.ok(csv.endsWith('\r\n'));
+});
 
 // The real booking task behind Invoice_0269_PO_70062955.pdf.
 const TASK_269 = {
