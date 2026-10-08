@@ -34,6 +34,7 @@ const attachments = listAttachments(source);
 const invoicePdfs = attachments.filter(part => part.mimeType === 'application/pdf' && !/statement/i.test(part.filename));
 if (invoicePdfs.length !== 1) throw new Error('Expected one original invoice PDF');
 const pdf = invoicePdfs[0];
+if (dryRun) console.log(JSON.stringify({ originalMessageId: source.id, subject: header(source, 'Subject'), originalAttachments: attachments.map(part => ({ filename: part.filename, mimeType: part.mimeType })) }));
 if (!pdf.filename.match(new RegExp(`(^|[^0-9])${invoice}([^0-9]|$)`))) throw new Error('Invoice attachment filename differs from subject');
 const messageId = `denovo-plt-invoice-${invoice}-csv-correction-v1@denovosourcing.com`;
 const matches = await searchMessages(token, `in:anywhere rfc822msgid:${messageId}`);
