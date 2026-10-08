@@ -24,6 +24,7 @@
 // numbers shown in that email.
 //
 import { pathToFileURL } from 'node:url';
+import { packingInvoiceLines } from './lib/plt-invoice.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -509,7 +510,10 @@ async function finalisePortalHandoff(ctx, thread, full, payload, manualInvoice =
         if (!task || updatedTaskIds.has(task.id)) continue;
         await patchTask(accessToken, task.id, {
           title: `INV ${invoice} — ${task.title}`,
-          notes: addPackingSummaryToTaskNotes(task.notes, completedOrders.map((matchedOrder) => matchedOrder.ppu), packedTotal, totalBoxes),
+          notes: addPackingSummaryToTaskNotes(task.notes, completedOrders.map((matchedOrder) => matchedOrder.ppu), packedTotal, totalBoxes,
+            packingInvoiceLines(payload.groups.map((group) => ({ ...group,
+              ppu: completedOrders.find((matchedOrder) => matchedOrder.style?.toUpperCase() === group.sku?.toUpperCase())?.ppu ?? group.ppu,
+            })))),
           status: 'completed',
         });
         updatedTaskIds.add(task.id);

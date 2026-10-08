@@ -43,6 +43,7 @@ export function parseInvoiceTask(task) {
   const qtyLine = lines.find((line) => /^Packed qty \(total\):/i.test(line));
   const boxesLine = lines.find((line) => /^Total boxes:/i.test(line));
   const poLine = lines.find((line) => /^\d{6,10}$/.test(line));
+  const itemLine = lines.find((line) => /^Invoice lines:/i.test(line));
 
   let deliveryDate = null;
   let deliveryTime = null;
@@ -58,7 +59,7 @@ export function parseInvoiceTask(task) {
     deliveryTime = timeLine ?? null;
   }
 
-  const known = new Set([dtLine, isoDateLine, timeLine, priceLine, qtyLine, boxesLine, poLine].filter(Boolean));
+  const known = new Set([dtLine, isoDateLine, timeLine, priceLine, qtyLine, boxesLine, poLine, itemLine].filter(Boolean));
   // Line 2 of the notes is the SKU(s) ("CNO6432" or "CNQ1/CNQ2"); the
   // booking reference is always the last line.
   const skuLine = lines[1] && !known.has(lines[1]) && /^[A-Z0-9]+(?:\/[A-Z0-9]+)*$/i.test(lines[1]) ? lines[1] : null;
@@ -71,15 +72,54 @@ export function parseInvoiceTask(task) {
   const po = poLine ? poLine.replace(/^0+(?=\d)/, '') : null;
 
   const base = { invoice, taskId: task.id, po, description, sku: skuLine, bookingRef, deliveryDate, deliveryTime };
+  if (!Number.isSafeInteger(invoice) || invoice <= 0) return { ...base, problem: 'invalid invoice number' };
   if (!po) return { ...base, problem: 'no PO in the task notes' };
   if (!deliveryDate) return { ...base, problem: 'no delivery date in the task notes (no booking)' };
-  if (ppus.length === 0) return { ...base, problem: 'no "Price (PPU)" line in the task notes' };
-  if (new Set(ppus).size > 1) return { ...base, problem: `more than one PPU (${priceLine}); the invoice needs one line per price` };
+  if (!validDate(deliveryDate) || (deliveryTime && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(deliveryTime))) {
+    return { ...base, problem: 'invalid delivery date or time' };
+  }
   if (!Number.isInteger(quantity) || quantity <= 0) return { ...base, problem: 'no "Packed qty (total)" line in the task notes' };
   if (!Number.isInteger(cartons) || cartons <= 0) return { ...base, problem: 'no "Total boxes" line in the task notes' };
-
+  if (itemLine) {
+    try {
+      const items = JSON.parse(itemLine.replace(/^[^:]*:/, '').trim());
+      if (!Array.isArray(items) || !items.length || items.some((item) =>
+        !item || typeof item.sku !== 'string' || !item.sku.trim() ||
+        typeof item.description !== 'string' || !item.description.trim() ||
+        !Number.isSafeInteger(item.quantity) || item.quantity <= 0 ||
+        !Number.isSafeInteger(item.unitPricePence) || item.unitPricePence <= 0)) {
+        throw new Error('each line needs SKU, description, positive quantity and price in pence');
+      }
+      if (items.reduce((sum, item) => sum + item.quantity, 0) !== quantity) throw new Error('line quantities do not match packed total');
+      const netPence = items.reduce((sum, item) => sum + item.quantity * item.unitPricePence, 0);
+      if (!Number.isSafeInteger(netPence)) throw new Error('invoice amount is too large');
+      const vatPence = Math.round(netPence * VAT_RATE_PERCENT / 100);
+      return { ...base, quantity, cartons, items, netPence, vatPence, totalPence: netPence + vatPence };
+    } catch (error) { return { ...base, problem: `invalid Invoice lines: ${error.message}` }; }
+  }
+  if (ppus.length === 0) return { ...base, problem: 'no "Price (PPU)" line in the task notes' };
+  if (!skuLine) return { ...base, problem: 'no SKU in the task notes' };
+  if (new Set(ppus.map(Number)).size > 1) return { ...base, problem: `more than one PPU (${priceLine}); add Invoice lines with per-SKU quantities and prices` };
   const unitPricePence = Math.round(Number(ppus[0]) * 100);
+  if (!Number.isSafeInteger(unitPricePence) || unitPricePence <= 0) return { ...base, problem: 'invalid or zero PPU' };
   return { ...base, quantity, cartons, unitPricePence, ...invoiceAmounts(quantity, unitPricePence) };
+}
+
+export function validDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+// Written when cartons are packed, while exact per-SKU quantities still exist.
+export function packingInvoiceLines(groups) {
+  return groups.map((group) => {
+    const price = group.ppu;
+    return {
+      sku: group.sku, description: group.description,
+      quantity: group.cartons.reduce((sum, carton) => sum + Number(carton.qty), 0),
+      unitPricePence: price === null || price === undefined || String(price).trim() === '' ? null : Math.round(Number(price) * 100),
+    };
+  });
 }
 
 export function invoiceAmounts(quantity, unitPricePence) {
@@ -266,20 +306,21 @@ export function buildInvoicePdf(inv, { invoiceDate, createdAt = new Date() }) {
   right('F1', 9.5, 494, 454.5, 'Price');
   right('F1', 9.5, 550, 454.5, '£');
 
-  const price = money(inv.unitPricePence);
-  const descriptionLines = wrapText(
-    [inv.sku, inv.description].filter(Boolean).join(' '),
-    9.5,
-    494 - helveticaWidth(price, 9.5) - 12 - 160,
-  );
-  text('F1', 9.5, 45, 430, productType(inv.description));
-  text('F1', 9.5, 119, 430, String(inv.quantity));
-  descriptionLines.forEach((line, i) => text('F1', 9.5, 160, 430 - i * 11.4, line));
-  right('F1', 9.5, 494, 430, price);
-  right('F1', 9.5, 550, 430, money(inv.netPence));
-
-  // Everything below the item row moves down with a wrapped description.
-  const shift = (descriptionLines.length - 1) * 11.4;
+  let itemY = 430;
+  const items = inv.items ?? [{ sku: inv.sku, description: inv.description, quantity: inv.quantity, unitPricePence: inv.unitPricePence }];
+  for (const [index, item] of items.entries()) {
+    const price = money(item.unitPricePence);
+    const descriptionLines = wrapText([item.sku, item.description].filter(Boolean).join(' '), 9.5,
+      494 - helveticaWidth(price, 9.5) - 12 - 160);
+    text('F1', 9.5, 45, itemY, productType(item.description));
+    text('F1', 9.5, 119, itemY, String(item.quantity));
+    descriptionLines.forEach((line, i) => text('F1', 9.5, 160, itemY - i * 11.4, line));
+    right('F1', 9.5, 494, itemY, price);
+    right('F1', 9.5, 550, itemY, money(item.quantity * item.unitPricePence));
+    itemY -= (descriptionLines.length - 1) * 11.4 + (index < items.length - 1 ? 25 : 0);
+  }
+  const shift = 430 - itemY;
+  if (260 - shift < 42) throw new Error(`INV ${inv.invoice}: too many invoice lines for the A4 template; issue manually`);
   rule('.8', 496, 553, 393 - shift);
   right('F1', 9.5, 550, 384 - shift, money(inv.netPence));
   text('F1', 9.5, 160, 366 - shift, `VAT at ${VAT_RATE_PERCENT}%`);
@@ -381,7 +422,10 @@ export function planStatementUpdate(grid, invoices, { today }) {
   let sectionStart = headerIdx + 1;
   rows.forEach((row, idx) => {
     if (idx <= headerIdx || !/^subtotal/i.test(cellText(row[0]))) return;
-    const formula = idx > sectionStart ? `=SUM(D${sectionStart + 1}:D${idx})` : '=0';
+    const paid = rows.slice(sectionStart, idx).some((item) => /^(paid|settled)$/i.test(cellText(item[5])));
+    const formula = idx <= sectionStart ? '=0' : paid
+      ? `=SUMIFS(D${sectionStart + 1}:D${idx},F${sectionStart + 1}:F${idx},"<>PAID",F${sectionStart + 1}:F${idx},"<>SETTLED")`
+      : `=SUM(D${sectionStart + 1}:D${idx})`;
     updates.push({ range: `D${idx + 1}`, values: [[formula]] });
     subtotals.push({ label: cellText(row[0]), cell: `D${idx + 1}` });
     sectionStart = idx + 1;
@@ -407,6 +451,75 @@ export function planStatementUpdate(grid, invoices, { today }) {
   if (dateIdx !== -1) updates.push({ range: `A${dateIdx + 1}`, values: [[`Statement Date: ${longDate(today)}`]], raw: true });
 
   return { insertAt, count: newRows.length, updates };
+}
+
+export function statementRowMatches(grid, inv) {
+  const matches = grid.filter((row) => cellText(row[0]).replace(/^0+(?=\d)/, '') === String(inv.invoice));
+  if (matches.length !== 1) throw new Error(`INV ${inv.invoice}: expected one statement row, found ${matches.length}`);
+  const row = matches[0];
+  if (cellText(row[2]).replace(/^0+(?=\d)/, '') !== inv.po || Math.round(Number(row[3]) * 100) !== inv.totalPence ||
+    statementDueDate(row[1]) !== inv.invoiceDate || statementDueDate(row[4]) !== addDays(inv.invoiceDate, PAYMENT_TERMS_DAYS)) {
+    throw new Error(`INV ${inv.invoice}: existing statement PO, amount or dates differ from saved invoice`);
+  }
+  return true;
+}
+
+function statementDueDate(value) {
+  if (typeof value === 'number') return new Date(Date.UTC(1899, 11, 30) + value * 86400000).toISOString().slice(0, 10);
+  const text = cellText(value);
+  if (validDate(text)) return text;
+  const parts = text.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  const iso = parts ? `${parts[3]}-${parts[2]}-${parts[1]}` : null;
+  return validDate(iso) ? iso : null;
+}
+
+export function remittanceFriday(dueDate) {
+  const weekday = new Date(`${dueDate}T00:00:00Z`).getUTCDay();
+  return addDays(dueDate, (5 - weekday + 7) % 7);
+}
+
+export function fridayOfWeek(today) {
+  const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return addDays(today, 4 - weekday);
+}
+
+// Whole-row moves preserve the statement's formatting, notes and credit rows.
+// Only unpaid numeric invoices with dated terms are aged; immediate credits
+// stay in their existing section. All moves and formula changes are atomic.
+export function planStatementAgeing(grid, { today, sheetId }) {
+  const rows = grid.map((row) => [...row]);
+  const requests = [];
+  const changes = [];
+  const bucket = (label) => /immediate/i.test(label) ? 'immediate' : /overdue/i.test(label) ? 'overdue' : /due soon/i.test(label) ? 'due soon' : /not yet due/i.test(label) ? 'not yet due' : null;
+  const invoices = rows.filter((row) => /^\d+$/.test(cellText(row[0])) && !/^(paid|settled)$/i.test(cellText(row[5])));
+  for (const invoiceRow of invoices) {
+    let idx = rows.indexOf(invoiceRow);
+    const due = statementDueDate(invoiceRow[4]);
+    if (!due) {
+      if (/^immediate$/i.test(cellText(invoiceRow[4]))) continue;
+      throw new Error(`Statement invoice ${invoiceRow[0]} has an invalid payment due date`);
+    }
+    const paymentFriday = remittanceFriday(due);
+    const wanted = paymentFriday < today ? 'overdue' : paymentFriday <= fridayOfWeek(today) ? 'due soon' : 'not yet due';
+    const boundary = rows.slice(idx + 1).find((row) => /^subtotal/i.test(cellText(row[0])));
+    if (!boundary) throw new Error(`Statement invoice ${invoiceRow[0]} has no section subtotal`);
+    if (bucket(cellText(boundary[0])) !== wanted) {
+      const target = rows.findIndex((row) => /^subtotal/i.test(cellText(row[0])) && bucket(cellText(row[0])) === wanted);
+      if (target < 0) throw new Error(`Statement has no ${wanted} subtotal section`);
+      requests.push({ moveDimension: { source: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 }, destinationIndex: target } });
+      rows.splice(idx, 1);
+      rows.splice(target > idx ? target - 1 : target, 0, invoiceRow);
+    }
+    idx = rows.indexOf(invoiceRow);
+    invoiceRow[5] = wanted === 'overdue' ? 'OVERDUE' : wanted === 'due soon' ? 'DUE' : 'UPCOMING';
+    changes.push(invoiceRow);
+  }
+  // Due-specific headings become stale as rows age into those sections.
+  const updates = rows.flatMap((row, idx) => /^subtotal.*overdue/i.test(cellText(row[0])) && !/immediate/i.test(cellText(row[0]))
+    ? [{ range: `A${idx + 1}`, values: [['Subtotal — Overdue']], raw: true }] : []);
+  for (const row of changes) updates.push({ range: `F${rows.indexOf(row) + 1}`, values: [[row[5]]], raw: true });
+  updates.push(...planStatementUpdate(rows, [], { today }).updates);
+  return { requests, updates, rows };
 }
 
 export function draftSubject(invoiceNumbers) {

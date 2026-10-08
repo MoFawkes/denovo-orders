@@ -299,53 +299,161 @@ rather than using its broader legacy matching rules. Uses the existing
 
 ## PLT invoices and statement
 
-`send-plt-invoices.mjs` runs hourly after the packing-list steps. An order
-is invoiced when its booking Google Task in `denovogb` is **completed** with
-an `INV <n> — <description>` title (done by `draft-packing-list.mjs` when the
-cartons are packed) **and** the booked delivery date/time in the task notes
-has passed (UK time). Invoices below 274 were issued by hand and are ignored.
+`send-plt-invoices.mjs` runs hourly after packing-list steps. A completed
+booking task titled `INV <n> — <description>` becomes eligible after its
+booked delivery date/time passes in Europe/London. This is the chosen trigger,
+not proof of physical delivery. Invoices below 274 are ignored by default.
 
-For each such invoice it:
+For each eligible invoice, the automation:
 
-1. Builds `Invoice_<nnnn>_PO_<po>.pdf` in the same layout as the hand-made
-   invoices: quantity = packed qty, price = PPU, VAT at 20%, "<boxes> Cartons
-   sent via Jacks", booking ref, 45-day terms. The invoice date is the day it
-   is generated.
-2. Adds a row (invoice no, date, PO, amount incl. VAT, due date +45 days,
-   `UPCOMING`) to the end of **Not Yet Due** on the `PLT Statement` tab of
-   `PLT_Statement_Denovo_Sourcing_2026`, rewrites every subtotal, the TOTAL
-   OUTSTANDING row and the summary block (H:I) as formulas, and sets the
-   statement date. Moving older invoices between Upcoming / Due Soon /
-   Overdue stays manual.
-3. Saves **one draft** in `denovosourcing@gmail.com` per run, to Medius PLT
-   Invoices UK and Jade Wynne, subject `Invoice 274 and Statement` /
-   `Invoices 274-276 and Statement`, with every new invoice PDF plus the
-   statement as a PDF. Nothing is sent: review the draft and press Send.
+1. Saves immutable invoice data in the existing `automation_executions`
+   table before external writes. It creates an A4 invoice PDF using packed
+   quantities, PPU, 20% VAT, booking reference and 45-day payment terms.
+   The invoice date is the date first prepared and survives retries.
+2. Adds its row to the shared PLT statement. Row insertion, cell values and
+   formula updates commit in one atomic Sheets request. A retry verifies the
+   existing invoice number, PO, amount and dates before recovering a row.
+   Existing rows without an automation intent/checkpoint remain manual invoices.
+3. Creates one Gmail **draft per invoice** in `denovosourcing@gmail.com`,
+   addressed to Medius PLT Invoices UK and Jade Wynne, with the invoice and
+   current statement PDF attached. **No emails are sent automatically.**
+   All new invoice rows are written before the statement is exported.
 
-Checkpoints (`automation = 'plt-invoice'`, `source_id` = invoice number,
-steps `statement-row` then `draft-created`) make each step happen once. An
-invoice that is already on the statement but has no `statement-row`
-checkpoint is treated as issued by hand and skipped.
+Each run also ages the statement, even without new invoices, around Friday
+remittance runs. Each dated invoice is assigned to the first Friday on or
+after its contractual due date (Friday itself is included). **Due Soon** /
+status **DUE** covers this week's Friday run; **Overdue** means its remittance
+Friday has already passed without payment. Future runs remain **Not Yet Due**.
+For example, on Thursday 8 October, invoices due 5–9 October are DUE;
+invoices due by Friday 2 October are OVERDUE. Unpaid invoices from the
+9 October run become OVERDUE on Saturday 10 October. The original 45-day
+payment due date is unchanged. Whole-row moves preserve formatting and credit rows. Immediate-term
+credits stay in their existing section. Rows marked `PAID` or `SETTLED` are
+not moved and are excluded from outstanding totals. Payments/credit notes
+still need recording by a person; the automation cannot infer them.
 
-Tasks that can't be invoiced automatically (no booking/delivery date, more
-than one PPU on one task, missing packed qty or box count) fail the step with
-the reason in the log. Issue that invoice by hand and add it to the
-statement; the automation then leaves it alone.
+New Portal packing tasks carry an `Invoice lines:` JSON line with exact
+per-SKU quantities, descriptions and unit prices in pence, supporting multiple
+prices on one invoice. Legacy tasks with one PPU still work. For an older
+multi-price task, add an explicit line such as:
 
-### Enabling it
+```text
+Invoice lines: [{"sku":"CNQ1","description":"Black Dress","quantity":100,"unitPricePence":800},{"sku":"CNQ2","description":"Cream Dress","quantity":99,"unitPricePence":950}]
+```
 
-1. Share the statement sheet with `denovosourcing@gmail.com` as an editor.
-2. Re-run `oauth-setup.mjs` signed in as `denovosourcing@gmail.com` (it now
-   also asks for Google Sheets access) and replace the
-   `GMAIL_SOURCING_OAUTH_REFRESH_TOKEN` secret with the new token.
-3. Add the repository variable `PLT_INVOICES_ENABLED` = `1` (Settings >
-   Secrets and variables > Actions > Variables). Until then the step logs
-   that it is disabled and does nothing.
+The line quantities must equal `Packed qty (total)`. Missing prices,
+quantities, box counts or booking dates, invalid dates, conflicting tasks or
+invoices too large for the A4 template stop that invoice with a visible error.
+Correct the completed task's notes or issue the invoice manually and add it
+to the statement. No prices, quantities or delivery dates are guessed.
+All completed tasks are scanned, so old unissued invoices do not expire from
+a lookback window. No order schema, frontend changes or new Supabase grants
+are needed.
 
-To replay a draft (e.g. it was deleted before sending), delete that
-invoice's `draft-created` checkpoint; the statement row is not added again:
+### Permissions and activation
+
+Merge this change into `main` before scheduled runs can use it. Leave
+`PLT_INVOICES_ENABLED` unset until the preview succeeds.
+
+1. In the existing Google Cloud project containing the OAuth client, enable
+   **Google Sheets API** (APIs & Services > Library). Gmail API, Tasks API
+   and Drive API must also be enabled; existing automations already use them.
+2. Open the statement spreadsheet and share it with
+   **denovosourcing@gmail.com as Editor**. If its ranges are protected,
+   allow that account to edit them too. The account must be able to insert
+   and move invoice rows and update the A:F table plus H:I summary.
+3. Under Google Auth Platform > Data Access (or OAuth consent screen),
+   add `https://www.googleapis.com/auth/spreadsheets` to the existing
+   application's scopes. Sheets authorization applies to the whole file,
+   not just the PLT tab. Keep the app's Audience publishing status
+   **In production**; Testing refresh tokens with these scopes expire
+   after seven days.
+4. Re-authorize **only the sourcing mailbox** with the updated helper.
+   Use the existing Desktop OAuth client ID/secret from Google Cloud >
+   Credentials. In your own PowerShell terminal at the repository root:
+
+   ```powershell
+   $env:GMAIL_OAUTH_CLIENT_ID = Read-Host 'OAuth client ID'
+   $env:GMAIL_OAUTH_CLIENT_SECRET = [System.Net.NetworkCredential]::new('', (Read-Host 'OAuth client secret' -AsSecureString)).Password
+   node .\scripts\gmail-automations\oauth-setup.mjs
+   Remove-Item Env:GMAIL_OAUTH_CLIENT_ID, Env:GMAIL_OAUTH_CLIENT_SECRET
+   ```
+
+   Open the printed URL, choose **denovosourcing@gmail.com**, and approve
+   the requested access. The helper retains the existing Gmail/Tasks/Drive
+   scopes and adds Sheets. The refresh token is printed only in your own
+   terminal; do not paste it into chat or commit it.
+5. At GitHub > repository Settings > Secrets and variables > Actions >
+   Secrets, replace **GMAIL_SOURCING_OAUTH_REFRESH_TOKEN** with that token.
+   If the existing value is an environment secret in **production**, replace
+   it there instead (Settings > Environments > production > Environment
+   secrets); environment secrets override repository secrets.
+   The existing `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`,
+   `GMAIL_OAUTH_REFRESH_TOKEN` (denovogb Tasks) and
+   `PACKING_LIST_DB_SECRET` stay in use. No new Supabase secret is required.
+6. In GitHub Actions > Gmail automations > Run workflow, choose this branch
+   for a pre-merge check, or `main` after merging. Check **plt_invoice_preview**.
+   This forces every Gmail automation to dry-run and skips the Portal job,
+   regardless of the other inputs. It reads real Tasks/Sheets and logs the
+   planned statement edits and drafts without saving rows, drafts or
+   checkpoints. Its exported statement remains the live unchanged sheet;
+   the preview does not validate the final combined statement PDF or prove
+   write permission.
+7. After the preview is clean and the change is merged, set repository
+   variable **PLT_INVOICES_ENABLED = 1** under Actions > Variables.
+   Run normally with **portal_mode = disabled** to process invoices without
+   a Portal submission, or let the next hourly schedule run. Check the
+   first invoice draft, statement row and PDF before sending it.
+
+Optional repository variables (the workflow passes them through):
+
+| Variable | Default |
+| --- | --- |
+| `PLT_FIRST_INVOICE` | `274` |
+| `PLT_STATEMENT_SPREADSHEET_ID` | `1DK9ht3fSXRopjnkZyufVPVsZaKB1jqnOndVWeYHMOy4` |
+| `PLT_STATEMENT_SHEET` | `PLT Statement` |
+
+The existing sourcing token needs `gmail.modify` for drafts and recovery
+searches, `drive.readonly` for the statement PDF export, and the new
+`spreadsheets` scope for statement edits. The denovogb token's existing
+Tasks access is sufficient; it does not need re-authorization for this change.
+
+### Recovery
+
+Checkpoints use automation `plt-invoice`, source ID = invoice number:
+
+- `prepared`: immutable invoice inputs/date saved before the first Sheets write.
+- `statement-row`: row confirmed; a missing checkpoint is repaired from the
+  saved intent and verified live row.
+- `draft-started`: intent saved immediately before Gmail draft creation.
+- `draft-created`: draft saved or existing draft/sent email recovered.
+
+Each email has a stable Message-ID
+`denovo-plt-invoice-<number>@denovosourcing.com`. If creation times out or its
+final checkpoint fails, the next run searches Gmail (including Bin) for
+that identifier. Existing Draft/Sent emails are recovered; an ambiguous or
+deleted email is never blindly recreated. A very brief Gmail search-index
+delay can therefore require a later run before recovery.
+
+If `draft-started` exists but no email is found, check Drafts, Sent and Bin
+in the sourcing mailbox (search
+`in:anywhere rfc822msgid:denovo-plt-invoice-274@denovosourcing.com`).
+Only after confirming no draft/email exists, reset that invoice's
+`draft-started` checkpoint via the Supabase SQL editor:
 
 ```sql
 delete from public.automation_executions
-where automation = 'plt-invoice' and source_id = '<invoice>' and step = 'draft-created';
+where automation = 'plt-invoice' and source_id = '<invoice>'
+  and step = 'draft-started';
 ```
+
+To deliberately replace a deleted unsent draft, first verify it was never
+sent and remove the old draft from Bin, then delete both `draft-started`
+and `draft-created` for that invoice. Keep `prepared` and `statement-row`;
+the invoice date and statement row must not change. Never reset these
+checkpoints for an already sent invoice.
+
+A PO/amount/date mismatch in a recovered statement row requires manual
+reconciliation rather than overwriting financial records. Original Claude
+runs that wrote a row but no checkpoint/intent cannot be distinguished from
+manual invoices; reconcile those individually before retrying.

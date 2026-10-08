@@ -388,10 +388,10 @@ export async function sheetsGetSheetId(accessToken, spreadsheetId, title) {
   return sheet.properties.sheetId;
 }
 
-// Cell values with formulas as written (FORMULA) and dates as serial numbers.
+// Evaluated amounts/dates, so formula-based due dates can also be aged.
 export async function sheetsGetValues(accessToken, spreadsheetId, range) {
   const url = new URL(`${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(range)}`);
-  url.searchParams.set('valueRenderOption', 'FORMULA');
+  url.searchParams.set('valueRenderOption', 'UNFORMATTED_VALUE');
   url.searchParams.set('dateTimeRenderOption', 'SERIAL_NUMBER');
   const json = await apiFetch(url, accessToken);
   return json.values ?? [];
@@ -436,7 +436,7 @@ export async function driveExportFile(accessToken, fileId, mimeType) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-export function buildMessageMime({ to, subject, body, attachments = [] }) {
+export function buildMessageMime({ to, subject, body, attachments = [], messageId }) {
   const encodedSubject = /^[\x20-\x7e]*$/.test(subject)
     ? subject
     : `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`;
@@ -444,6 +444,7 @@ export function buildMessageMime({ to, subject, body, attachments = [] }) {
   const headers = [
     `To: ${to.join(', ')}`,
     `Subject: ${encodedSubject}`,
+    ...(messageId ? [`Message-ID: <${messageId}>`] : []),
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
   ];
@@ -458,14 +459,44 @@ export function buildMessageMime({ to, subject, body, attachments = [] }) {
 }
 
 // Saves (does not send) a new message in the mailbox's Drafts.
-export async function createDraft(accessToken, { to, subject, body, attachments = [] }) {
+export async function createDraft(accessToken, { to, subject, body, attachments = [], messageId }) {
   if (DRY_RUN) {
     logDryRun('create Gmail draft', { to, subject, attachments: attachments.map((a) => a.filename) });
     return { id: 'dry-run-draft' };
   }
-  const raw = Buffer.from(buildMessageMime({ to, subject, body, attachments }), 'utf-8').toString('base64url');
+  const raw = Buffer.from(buildMessageMime({ to, subject, body, attachments, messageId }), 'utf-8').toString('base64url');
   return apiFetch(`${GMAIL_BASE}/drafts`, accessToken, {
     method: 'POST',
     body: JSON.stringify({ message: { raw } }),
+  });
+}
+
+// Insert/move rows and set values in one atomic Sheets request. A retry reads
+// the live sheet before planning again, so it never repeats a row insertion.
+export async function sheetsApplyPlan(accessToken, spreadsheetId, sheetId, plan) {
+  const cellValue = (value, raw) => {
+    if (typeof value === 'number') return { numberValue: value };
+    if (typeof value === 'boolean') return { boolValue: value };
+    if (!raw && String(value).startsWith('=')) return { formulaValue: value };
+    return { stringValue: String(value ?? '') };
+  };
+  const columnIndex = (letters) => [...letters].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
+  const requests = [...(plan.requests ?? [])];
+  if (plan.count) requests.push({ insertDimension: {
+    range: { sheetId, dimension: 'ROWS', startIndex: plan.insertAt, endIndex: plan.insertAt + plan.count },
+    inheritFromBefore: true,
+  } });
+  for (const update of plan.updates) {
+    const match = update.range.match(/^([A-Z]+)(\d+)/);
+    if (!match) throw new Error(`Invalid statement update range: ${update.range}`);
+    requests.push({ updateCells: {
+      start: { sheetId, rowIndex: Number(match[2]) - 1, columnIndex: columnIndex(match[1]) },
+      rows: update.values.map((row) => ({ values: row.map((value) => ({ userEnteredValue: cellValue(value, update.raw) })) })),
+      fields: 'userEnteredValue',
+    } });
+  }
+  if (DRY_RUN) { logDryRun('atomic statement update', { spreadsheetId, requests }); return null; }
+  return apiFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
+    method: 'POST', body: JSON.stringify({ requests }),
   });
 }

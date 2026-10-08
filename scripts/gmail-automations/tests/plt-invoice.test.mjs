@@ -13,6 +13,10 @@ import {
   planStatementUpdate,
   draftSubject,
   helveticaWidth,
+  packingInvoiceLines,
+  planStatementAgeing,
+  remittanceFriday,
+  fridayOfWeek,
 } from '../lib/plt-invoice.mjs';
 import { buildMessageMime } from '../lib/google.mjs';
 
@@ -212,4 +216,91 @@ test('draft MIME addresses both PLT contacts with PDF attachments', () => {
   });
   assert.match(mime, /^To: Medius PLT Invoices UK <pltukinvoices@prettylittlething\.com>, Jade Wynne <jade\.wynne@prettylittlething\.com>\r\n/);
   assert.match(mime, /Content-Disposition: attachment; filename="Invoice_0274_PO_70062955\.pdf"/);
+});
+
+test('per-SKU packed lines price a multi-price shipment without guessing quantities', () => {
+  const items = packingInvoiceLines([
+    { sku: 'CNQ1', description: 'Black Dress', ppu: 8, cartons: [{ qty: 100 }] },
+    { sku: 'CNQ2', description: 'Cream Dress', ppu: 9.50, cartons: [{ qty: 99 }] },
+  ]);
+  const task = { ...TASK_269, notes: TASK_269.notes.replace('CNO6432', 'CNQ1/CNQ2').replace('£8.00', '£8.00 / £9.50')
+    .replace('EBUK22709-113', `Invoice lines: ${JSON.stringify(items)}\nEBUK22709-113`) };
+  const inv = parseInvoiceTask(task);
+  assert.equal(inv.problem, undefined);
+  assert.equal(inv.netPence, 174050);
+  assert.equal(inv.totalPence, 208860);
+  const content = pdfContent(buildInvoicePdf(inv, { invoiceDate: '2026-10-08' }));
+  assert.match(content, /CNQ1 Black Dress/);
+  assert.match(content, /CNQ2 Cream Dress/);
+  assert.match(content, /\(9.50\)/);
+  assert.match(content, /\(2,088.60\)/);
+  const invalid = parseInvoiceTask({ ...task, notes: task.notes.replace('"quantity":99', '"quantity":98') });
+  assert.match(invalid.problem, /do not match packed total/);
+});
+
+test('missing per-SKU prices and impossible dates fail safely', () => {
+  assert.equal(packingInvoiceLines([{ sku: 'A', description: 'Dress', ppu: null, cartons: [{ qty: 1 }] }])[0].unitPricePence, null);
+  assert.match(parseInvoiceTask({ ...TASK_269, notes: TASK_269.notes.replace('27-Sep-26', '31-Sep-26') }).problem, /invalid delivery/);
+});
+
+test('statement ageing moves whole rows and changes statuses at due-date boundaries', () => {
+  const grid = statementGrid();
+  grid[8][4] = '08-10-2026'; // due today, moves back from overdue to due soon
+  grid[10][4] = '02-10-2026'; // previous Friday, moves from due soon to overdue
+  grid[12][4] = '09-10-2026'; // this Friday is included, moves to due soon
+  const plan = planStatementAgeing(grid, { today: '2026-10-08', sheetId: 123 });
+  assert.equal(plan.requests.length, 3);
+  // Apply every planned move to the original grid to verify Sheets indices.
+  const actual = structuredClone(grid);
+  for (const { moveDimension: move } of plan.requests) {
+    const [row] = actual.splice(move.source.startIndex, 1);
+    actual.splice(move.destinationIndex > move.source.startIndex ? move.destinationIndex - 1 : move.destinationIndex, 0, row);
+    assert.equal(move.source.sheetId, 123);
+  }
+  assert.deepEqual(actual.map((row) => row[0]), plan.rows.map((row) => row[0]));
+  for (const [invoice, status] of [[231, 'DUE'], [247, 'OVERDUE'], [272, 'DUE'], [273, 'UPCOMING']]) {
+    const idx = plan.rows.findIndex((row) => row[0] === invoice);
+    assert.ok(plan.updates.some((u) => u.range === `F${idx + 1}` && u.values[0][0] === status));
+  }
+  assert.equal(plan.rows.find((row) => row[0] === '0193CM')[4], 'IMMEDIATE');
+  assert.ok(plan.updates.some((u) => u.values[0][0] === 'Subtotal — Overdue'));
+});
+
+test('ageing is idempotent and excludes paid invoices from outstanding totals', () => {
+  const grid = statementGrid();
+  grid[13][5] = 'PAID';
+  const first = planStatementAgeing(grid, { today: '2026-10-08', sheetId: 1 });
+  const again = planStatementAgeing(first.rows, { today: '2026-10-08', sheetId: 1 });
+  assert.equal(again.requests.length, 0);
+  assert.equal(again.rows.find((row) => row[0] === 273)[5], 'PAID');
+  assert.ok(again.updates.some((u) => String(u.values[0][0]).includes('SUMIFS')));
+});
+
+test('invalid due dates and absent destination sections stop ageing before a write', () => {
+  const grid = statementGrid();
+  grid[12][4] = '31-02-2026';
+  assert.throws(() => planStatementAgeing(grid, { today: '2026-10-08', sheetId: 1 }), /invalid payment due date/);
+  const missingSection = statementGrid().filter((row) => row[0] !== 'Subtotal — Due Soon');
+  missingSection.find((row) => row[0] === 272)[4] = '02-10-2026';
+  assert.throws(() => planStatementAgeing(missingSection, { today: '2026-10-01', sheetId: 1 }), /no due soon/);
+});
+
+test('Friday remittance includes Friday due dates and ages unpaid invoices after the run', () => {
+  assert.equal(remittanceFriday('2026-10-05'), '2026-10-09');
+  assert.equal(remittanceFriday('2026-10-09'), '2026-10-09');
+  assert.equal(remittanceFriday('2026-10-10'), '2026-10-16');
+  assert.equal(fridayOfWeek('2026-10-08'), '2026-10-09');
+  assert.equal(fridayOfWeek('2026-10-11'), '2026-10-09');
+  const grid = statementGrid();
+  grid[12][4] = '05-10-2026';
+  grid[13][4] = '09-10-2026';
+  for (const day of ['2026-10-05', '2026-10-08', '2026-10-09']) {
+    const plan = planStatementAgeing(grid, { today: day, sheetId: 1 });
+    assert.equal(plan.rows.find((row) => row[0] === 272)[5], 'DUE');
+    assert.equal(plan.rows.find((row) => row[0] === 273)[5], 'DUE');
+  }
+  const saturday = planStatementAgeing(grid, { today: '2026-10-10', sheetId: 1 });
+  assert.equal(saturday.rows.find((row) => row[0] === 272)[5], 'OVERDUE');
+  assert.equal(saturday.rows.find((row) => row[0] === 273)[5], 'OVERDUE');
+  assert.equal(remittanceFriday('2026-12-31'), '2027-01-01');
 });
