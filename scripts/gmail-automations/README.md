@@ -512,4 +512,3 @@ A PO/amount/date mismatch in a recovered statement row requires manual
 reconciliation rather than overwriting financial records. Original Claude
 runs that wrote a row but no checkpoint/intent cannot be distinguished from
 manual invoices; reconcile those individually before retrying.
-
