@@ -12,9 +12,11 @@ const token = await getAccessToken({ clientId: process.env.GMAIL_OAUTH_CLIENT_ID
 let sourceId = process.env.ORIGINAL_MESSAGE_ID;
 if (!sourceId) {
   if (!dryRun) throw new Error('Select the original message ID from a dry-run before sending');
-  const candidates = await searchMessages(token, 'in:sent to:pltukinvoices@prettylittlething.com subject:Statement has:attachment newer_than:30d');
+  const candidates = await searchMessages(token, 'in:sent to:pltukinvoices@prettylittlething.com subject:Statement has:attachment');
   const messages = await Promise.all(candidates.map(message => getMessage(token, message.id)));
   const originals = messages.filter(message => /^<?denovo-plt-invoice-\d+@denovosourcing\.com>?$/.test(header(message, 'Message-ID')));
+  if (!originals.length) console.log(JSON.stringify({ candidateCount: messages.length,
+    candidates: messages.slice(0, 10).map(message => ({ id: message.id, subject: header(message, 'Subject'), messageId: header(message, 'Message-ID') })) }));
   originals.sort((a, b) => Number(b.internalDate) - Number(a.internalDate));
   sourceId = originals[0]?.id;
   if (!sourceId) throw new Error('No original automated invoice email found');
