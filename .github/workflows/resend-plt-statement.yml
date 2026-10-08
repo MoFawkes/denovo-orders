@@ -1,0 +1,37 @@
+name: Resend PLT statement as CSV
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Inspect the latest sent invoice without sending
+        type: boolean
+        default: true
+      original_message_id:
+        description: Original Gmail message ID from the dry-run, required for sending
+        type: string
+        default: ''
+permissions:
+  contents: read
+jobs:
+  resend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: gmail-automations
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: Resend original invoice with CSV statement
+        env:
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          ORIGINAL_MESSAGE_ID: ${{ inputs.original_message_id }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_SOURCING_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_SOURCING_OAUTH_REFRESH_TOKEN }}
+          PACKING_LIST_DB_SECRET: ${{ secrets.PACKING_LIST_DB_SECRET }}
+          PLT_STATEMENT_SPREADSHEET_ID: ${{ vars.PLT_STATEMENT_SPREADSHEET_ID }}
+          PLT_STATEMENT_SHEET: ${{ vars.PLT_STATEMENT_SHEET }}
+        run: node scripts/gmail-automations/resend-plt-statement.mjs
