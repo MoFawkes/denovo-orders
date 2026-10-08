@@ -21,6 +21,14 @@ test('Google write adapters return synthetic results without calling fetch in dr
     assert.equal(reply.id, 'dry-run-message');
     assert.equal(task.id, 'dry-run-task');
     assert.equal(file.id, 'dry-run-drive-file');
+    await google.sheetsApplyPlan('token', 'spreadsheet', 1, {
+      insertAt: 7, count: 1, updates: [{ range: 'A8', values: [[274]], raw: true }],
+    });
+    const draft = await google.createDraft('token', {
+      to: ['buyer@example.com'], subject: 'Invoice', body: 'Preview', messageId: 'preview@example.com',
+      attachments: [{ filename: 'invoice.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF') }],
+    });
+    assert.equal(draft.id, 'dry-run-draft');
   } finally {
     globalThis.fetch = originalFetch;
     delete process.env.DRY_RUN;

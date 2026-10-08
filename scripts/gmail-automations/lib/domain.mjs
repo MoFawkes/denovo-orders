@@ -118,8 +118,9 @@ export function findBookingTask(openTasks, order, invoice) {
   );
 }
 
-export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal, totalBoxes) {
-  const lines = String(notes ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
+export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal, totalBoxes, invoiceLines) {
+  const lines = String(notes ?? '').split('\n').map((line) => line.trim()).filter(Boolean)
+    .filter((line) => !/^(Price \(PPU\)|Packed qty \(total\)|Total boxes|Invoice lines):/i.test(line));
   const uniquePpus = [...new Set(
     (ppus ?? [])
       .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
@@ -131,6 +132,7 @@ export function addPackingSummaryToTaskNotes(notes, ppus, packedTotal, totalBoxe
   if (uniquePpus.length) summary.push(`Price (PPU): ${uniquePpus.join(' / ')}`);
   if (Number.isFinite(Number(packedTotal))) summary.push(`Packed qty (total): ${Number(packedTotal)}`);
   if (Number.isFinite(Number(totalBoxes))) summary.push(`Total boxes: ${Number(totalBoxes)}`);
+  if (invoiceLines?.length) summary.push(`Invoice lines: ${JSON.stringify(invoiceLines)}`);
   if (!summary.length) return lines.join('\n');
   const reference = lines.pop();
   return [...lines, ...summary, reference].filter(Boolean).join('\n');
