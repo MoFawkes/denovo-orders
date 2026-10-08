@@ -471,6 +471,17 @@ export async function createDraft(accessToken, { to, subject, body, attachments 
   });
 }
 
+export async function sendInvoiceMessage(accessToken, { to, subject, body, attachments = [], messageId }) {
+  if (DRY_RUN) {
+    logDryRun('send invoice email', { to, subject, attachments: attachments.map((a) => a.filename) });
+    return { id: 'dry-run-message' };
+  }
+  const raw = Buffer.from(buildMessageMime({ to, subject, body, attachments, messageId }), 'utf-8').toString('base64url');
+  return apiFetch(`${GMAIL_BASE}/messages/send`, accessToken, {
+    method: 'POST', body: JSON.stringify({ raw }),
+  });
+}
+
 // Insert/move rows and set values in one atomic Sheets request. A retry reads
 // the live sheet before planning again, so it never repeats a row insertion.
 export async function sheetsApplyPlan(accessToken, spreadsheetId, sheetId, plan) {

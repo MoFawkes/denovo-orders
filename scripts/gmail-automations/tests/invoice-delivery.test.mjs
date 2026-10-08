@@ -1,9 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureInvoiceStatement, ensureInvoiceDraft, invoiceMessageId } from '../lib/invoice-delivery.mjs';
+import { ensureInvoiceStatement, ensureInvoiceDraft, ensureInvoiceSent, invoiceMessageId } from '../lib/invoice-delivery.mjs';
 import { sheetsApplyPlan, sheetsGetValues, buildMessageMime } from '../lib/google.mjs';
 
 const invoice = { invoice: 274, po: '70062955', totalPence: 191040 };
+
+test('automatic sending recovers a sent message after checkpoint failure without sending twice', async () => {
+  const h = harness();
+  let messages = [];
+  let sends = 0;
+  const options = { database: h.options.database, inv: invoice, findMessage: async () => messages,
+    sendInvoice: async () => { sends++; messages = [{ id: 'sent-1', labelIds: ['SENT'] }]; return messages[0]; } };
+  h.fail('email-sent');
+  await assert.rejects(ensureInvoiceSent(options), /checkpoint outage/);
+  assert.deepEqual(await ensureInvoiceSent(options), { recovered: true });
+  assert.equal(sends, 1);
+  assert.deepEqual(await ensureInvoiceSent(options), { skipped: true });
+});
+
+test('ambiguous sends and existing drafts block duplicate automatic sending', async () => {
+  const h = harness();
+  let sends = 0;
+  const options = { database: h.options.database, inv: invoice, findMessage: async () => [],
+    sendInvoice: async () => { sends++; throw new Error('send timeout'); } };
+  await assert.rejects(ensureInvoiceSent(options), /send timeout/);
+  await assert.rejects(ensureInvoiceSent(options), /reconcile/);
+  assert.equal(sends, 1);
+  await assert.rejects(ensureInvoiceSent({ ...options, findMessage: async () => [{ id: 'draft', labelIds: ['DRAFT'] }] }), /existing draft/);
+});
+
+test('automatic send preview saves no checkpoints', async () => {
+  const h = harness();
+  let sends = 0;
+  await ensureInvoiceSent({ database: h.options.database, inv: invoice, dryRun: true,
+    findMessage: async () => [], sendInvoice: async () => { sends++; } });
+  assert.equal(sends, 1);
+  assert.equal(h.state.size, 0);
+});
 const initialGrid = () => [
   ['Invoice No', 'Invoice Date', 'PO No', 'Invoice Amount', 'Payment Due', 'Status'],
   ['Subtotal — Overdue'], ['Subtotal — Due Soon'], ['Subtotal — Not Yet Due'], ['TOTAL OUTSTANDING'],
