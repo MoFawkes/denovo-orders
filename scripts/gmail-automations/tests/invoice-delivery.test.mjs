@@ -1,9 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureInvoiceStatement, ensureInvoiceDraft, ensureInvoiceSent, invoiceMessageId } from '../lib/invoice-delivery.mjs';
-import { sheetsApplyPlan, sheetsGetValues, buildMessageMime } from '../lib/google.mjs';
+import { sheetsApplyPlan, sheetsGetValues, buildMessageMime, sendInvoiceMessage } from '../lib/google.mjs';
 
 const invoice = { invoice: 274, po: '70062955', totalPence: 191040 };
+
+test('invoice send submits the complete MIME message to Gmail messages/send', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.match(String(url), /messages\/send$/);
+    const mime = Buffer.from(JSON.parse(options.body).raw, 'base64url').toString('utf8');
+    assert.match(mime, /To: buyer@example.com/);
+    assert.match(mime, /Message-ID: <denovo-plt-invoice-274@denovosourcing.com>/);
+    assert.match(mime, /filename="invoice.pdf"/);
+    return { ok: true, status: 200, json: async () => ({ id: 'sent' }) };
+  });
+  assert.deepEqual(await sendInvoiceMessage('token', { to: ['buyer@example.com'], subject: 'Invoice', body: 'Attached',
+    messageId: invoiceMessageId(274), attachments: [{ filename: 'invoice.pdf', mimeType: 'application/pdf', buffer: Buffer.from('pdf') }] }), { id: 'sent' });
+});
 
 test('automatic sending recovers a sent message after checkpoint failure without sending twice', async () => {
   const h = harness();
