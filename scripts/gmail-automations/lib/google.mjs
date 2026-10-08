@@ -511,3 +511,18 @@ export async function sheetsApplyPlan(accessToken, spreadsheetId, sheetId, plan)
     method: 'POST', body: JSON.stringify({ requests }),
   });
 }
+
+export async function sheetsGetNotes(accessToken, spreadsheetId, sheet) {
+  const url = new URL(`${SHEETS_BASE}/${spreadsheetId}`);
+  url.searchParams.set('ranges', `'${sheet.replaceAll("'", "''")}'!A1:I`);
+  url.searchParams.set('includeGridData', 'true');
+  url.searchParams.set('fields', 'sheets(data(startRow,startColumn,rowData(values(note))))');
+  const data = await apiFetch(url, accessToken);
+  const notes = new Map();
+  for (const block of data.sheets?.[0]?.data ?? []) {
+    (block.rowData ?? []).forEach((row, r) => row.values?.forEach((cell, c) => {
+      if (cell.note) notes.set(`${(block.startRow ?? 0) + r}:${(block.startColumn ?? 0) + c}`, cell.note);
+    }));
+  }
+  return notes;
+}
