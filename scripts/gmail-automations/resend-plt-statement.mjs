@@ -14,7 +14,7 @@ if (!sourceId) {
   if (!dryRun) throw new Error('Select the original message ID from a dry-run before sending');
   const candidates = await searchMessages(token, 'in:sent to:pltukinvoices@prettylittlething.com subject:Statement has:attachment');
   const messages = await Promise.all(candidates.map(message => getMessage(token, message.id)));
-  const originals = messages.filter(message => /^<?denovo-plt-invoice-\d+@denovosourcing\.com>?$/.test(header(message, 'Message-ID')));
+  const originals = messages.filter(message => /^Invoice \d+ and Statement$/.test(header(message, 'Subject')));
   if (!originals.length) console.log(JSON.stringify({ candidateCount: messages.length,
     candidates: messages.slice(0, 10).map(message => ({ id: message.id, subject: header(message, 'Subject'), messageId: header(message, 'Message-ID') })) }));
   originals.sort((a, b) => Number(b.internalDate) - Number(a.internalDate));
@@ -23,8 +23,8 @@ if (!sourceId) {
 }
 const source = await getMessage(token, sourceId);
 if (!source.labelIds?.includes('SENT') || source.labelIds.includes('TRASH')) throw new Error('Original must be a sent message');
-const invoice = header(source, 'Message-ID').match(/^<?denovo-plt-invoice-(\d+)@denovosourcing\.com>?$/)?.[1];
-if (!invoice) throw new Error('Original is not an automated invoice email');
+const invoice = header(source, 'Subject').match(/^Invoice (\d+) and Statement$/)?.[1];
+if (!invoice) throw new Error('Original is not a single-invoice statement email');
 if (!header(source, 'From').includes('denovosourcing@gmail.com')) throw new Error('Unexpected original sender');
 for (const recipient of PLT_RECIPIENTS) {
   const email = recipient.match(/<([^>]+)>/)[1];
@@ -34,6 +34,7 @@ const attachments = listAttachments(source);
 const invoicePdfs = attachments.filter(part => part.mimeType === 'application/pdf' && !/statement/i.test(part.filename));
 if (invoicePdfs.length !== 1) throw new Error('Expected one original invoice PDF');
 const pdf = invoicePdfs[0];
+if (!pdf.filename.match(new RegExp(`(^|[^0-9])${invoice}([^0-9]|$)`))) throw new Error('Invoice attachment filename differs from subject');
 const messageId = `denovo-plt-invoice-${invoice}-csv-correction-v1@denovosourcing.com`;
 const matches = await searchMessages(token, `in:anywhere rfc822msgid:${messageId}`);
 if (matches.length) {
