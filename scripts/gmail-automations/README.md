@@ -316,7 +316,9 @@ For each eligible invoice, the automation:
    Existing rows without an automation intent/checkpoint remain manual invoices.
 3. Creates one Gmail **draft per invoice** in `denovosourcing@gmail.com`,
    addressed to Medius PLT Invoices UK and Jade Wynne, with the invoice and
-   current statement PDF attached. **No emails are sent automatically.**
+   current classic statement Excel workbook (`.xlsx`) attached, preserving the
+   source sheet's grouped invoices, subtotals, formatting and formulas.
+   **No emails are sent automatically.**
    All new invoice rows are written before the statement is exported.
 
 Each run also ages the statement, even without new invoices, around Friday
@@ -397,13 +399,13 @@ Merge this change into `main` before scheduled runs can use it. Leave
    regardless of the other inputs. It reads real Tasks/Sheets and logs the
    planned statement edits and drafts without saving rows, drafts or
    checkpoints. Its exported statement remains the live unchanged sheet;
-   the preview does not validate the final combined statement PDF or prove
+   the preview does not validate the final combined statement workbook or prove
    write permission.
 7. After the preview is clean and the change is merged, set repository
    variable **PLT_INVOICES_ENABLED = 1** under Actions > Variables.
    Run normally with **portal_mode = disabled** to process invoices without
    a Portal submission, or let the next hourly schedule run. Check the
-   first invoice draft, statement row and PDF before sending it.
+   first invoice draft, statement row and Excel attachment before sending it.
 
 Optional repository variables (the workflow passes them through):
 
@@ -414,7 +416,7 @@ Optional repository variables (the workflow passes them through):
 | `PLT_STATEMENT_SHEET` | `PLT Statement` |
 
 The existing sourcing token needs `gmail.modify` for drafts and recovery
-searches, `drive.readonly` for the statement PDF export, and the new
+searches, `drive.readonly` for the statement Excel export, and the new
 `spreadsheets` scope for statement edits. The denovogb token's existing
 Tasks access is sufficient; it does not need re-authorization for this change.
 
