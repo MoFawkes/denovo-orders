@@ -39,7 +39,7 @@ use installed Chrome in headed mode:
   after Submit becomes `uncertain-after-submit` and is never retried.
 - `send-plt-invoices.mjs` — once an order's booking task is completed
   (`INV <n> — ...`) and its booked delivery time has passed, builds the
-  invoice PDF, adds it to the PLT statement sheet and saves a Gmail draft in
+  invoice PDF, adds it to the PLT statement sheet and sends an invoice email from
   `denovosourcing@gmail.com` for PLT. See [PLT invoices and statement](#plt-invoices-and-statement).
 
 ## Current rollout status (27 August 2026)
@@ -314,11 +314,11 @@ For each eligible invoice, the automation:
    formula updates commit in one atomic Sheets request. A retry verifies the
    existing invoice number, PO, amount and dates before recovering a row.
    Existing rows without an automation intent/checkpoint remain manual invoices.
-3. Creates one Gmail **draft per invoice** in `denovosourcing@gmail.com`,
+3. Sends one Gmail **email per invoice** from `denovosourcing@gmail.com`,
    addressed to Medius PLT Invoices UK and Jade Wynne, with the invoice and
    current classic statement Excel workbook (`.xlsx`) attached, preserving the
    source sheet's grouped invoices, subtotals, formatting and formulas.
-   **No emails are sent automatically.**
+   Emails are sent automatically.
    All new invoice rows are written before the statement is exported.
 
 Each run also ages the statement, even without new invoices, around Friday
@@ -397,7 +397,7 @@ Merge this change into `main` before scheduled runs can use it. Leave
    for a pre-merge check, or `main` after merging. Check **plt_invoice_preview**.
    This forces every Gmail automation to dry-run and skips the Portal job,
    regardless of the other inputs. It reads real Tasks/Sheets and logs the
-   planned statement edits and drafts without saving rows, drafts or
+   planned statement edits and emails without saving rows, sending emails or
    checkpoints. Its exported statement remains the live unchanged sheet;
    the preview does not validate the final combined statement workbook or prove
    write permission.
@@ -405,7 +405,7 @@ Merge this change into `main` before scheduled runs can use it. Leave
    variable **PLT_INVOICES_ENABLED = 1** under Actions > Variables.
    Run normally with **portal_mode = disabled** to process invoices without
    a Portal submission, or let the next hourly schedule run. Check the
-   first invoice draft, statement row and Excel attachment before sending it.
+   first sent invoice, statement row and Excel attachment.
 
 Optional repository variables (the workflow passes them through):
 
@@ -415,7 +415,7 @@ Optional repository variables (the workflow passes them through):
 | `PLT_STATEMENT_SPREADSHEET_ID` | `1DK9ht3fSXRopjnkZyufVPVsZaKB1jqnOndVWeYHMOy4` |
 | `PLT_STATEMENT_SHEET` | `PLT Statement` |
 
-The existing sourcing token needs `gmail.modify` for drafts and recovery
+The existing sourcing token needs `gmail.modify` for sending and recovery
 searches, `drive.readonly` for the statement Excel export, and the new
 `spreadsheets` scope for statement edits. The denovogb token's existing
 Tasks access is sufficient; it does not need re-authorization for this change.
@@ -427,26 +427,27 @@ Checkpoints use automation `plt-invoice`, source ID = invoice number:
 - `prepared`: immutable invoice inputs/date saved before the first Sheets write.
 - `statement-row`: row confirmed; a missing checkpoint is repaired from the
   saved intent and verified live row.
-- `draft-started`: intent saved immediately before Gmail draft creation.
-- `draft-created`: draft saved or existing draft/sent email recovered.
+- `email-send-started`: intent saved immediately before sending.
+- `email-sent`: sent message confirmed or recovered from Gmail.
+- `draft-created`: retained for legacy draft/manual-row checkpoints.
 
 Each email has a stable Message-ID
 `denovo-plt-invoice-<number>@denovosourcing.com`. If creation times out or its
 final checkpoint fails, the next run searches Gmail (including Bin) for
-that identifier. Existing Draft/Sent emails are recovered; an ambiguous or
-deleted email is never blindly recreated. A very brief Gmail search-index
+that identifier. Existing Sent emails are recovered; existing drafts,
+ambiguous sends and deleted emails require reconciliation. A brief Gmail search-index
 delay can therefore require a later run before recovery.
 
-If `draft-started` exists but no email is found, check Drafts, Sent and Bin
+If `email-send-started` exists but no email is found, check Drafts, Sent and Bin
 in the sourcing mailbox (search
 `in:anywhere rfc822msgid:denovo-plt-invoice-274@denovosourcing.com`).
 Only after confirming no draft/email exists, reset that invoice's
-`draft-started` checkpoint via the Supabase SQL editor:
+`email-send-started` checkpoint via the Supabase SQL editor:
 
 ```sql
 delete from public.automation_executions
 where automation = 'plt-invoice' and source_id = '<invoice>'
-  and step = 'draft-started';
+  and step = 'email-send-started';
 ```
 
 To deliberately replace a deleted unsent draft, first verify it was never

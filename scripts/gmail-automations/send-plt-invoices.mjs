@@ -1,9 +1,8 @@
-// Hourly PLT drafts. The booked delivery time is the user's chosen trigger;
-// it does not confirm physical delivery. Nothing sends emails.
+// Hourly PLT invoices sent after the completed task's booked delivery time.
 import { pathToFileURL } from 'node:url';
 import {
   getAccessToken, listCompletedTasks, sheetsGetSheetId, sheetsGetValues,
-  sheetsApplyPlan, driveExportFile, createDraft, searchMessages, getMessage,
+  sheetsApplyPlan, driveExportFile, sendInvoiceMessage, searchMessages, getMessage,
 } from './lib/google.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution } from './lib/execution-state.mjs';
@@ -12,7 +11,7 @@ import {
   londonToday, dashDate, buildInvoicePdf, invoiceFilename, statementInvoiceNumbers,
   planStatementAgeing, draftSubject, draftBody,
 } from './lib/plt-invoice.mjs';
-import { ensureInvoiceStatement, ensureInvoiceDraft } from './lib/invoice-delivery.mjs';
+import { ensureInvoiceStatement, ensureInvoiceSent } from './lib/invoice-delivery.mjs';
 
 const STATEMENT_SPREADSHEET_ID = process.env.PLT_STATEMENT_SPREADSHEET_ID || '1DK9ht3fSXRopjnkZyufVPVsZaKB1jqnOndVWeYHMOy4';
 const STATEMENT_SHEET = process.env.PLT_STATEMENT_SHEET || 'PLT Statement';
@@ -61,7 +60,7 @@ async function main() {
   let problems = 0;
   for (const parsed of [...byInvoice.values()].sort((a, b) => a.invoice - b.invoice)) {
     const source = String(parsed.invoice);
-    const done = await getExecution(database, 'plt-invoice', source, 'draft-created');
+    const done = await getExecution(database, 'plt-invoice', source, 'email-sent');
     if (done?.status === 'completed') continue;
     const prepared = await getExecution(database, 'plt-invoice', source, 'prepared');
     const inv = prepared?.status === 'completed' && !parsed.conflict ? prepared.result.invoice : parsed;
@@ -89,12 +88,12 @@ async function main() {
     const statementWorkbook = await driveExportFile(sourcingToken, STATEMENT_SPREADSHEET_ID, STATEMENT_XLSX_MIME);
     for (const inv of ready) {
       try {
-        await ensureInvoiceDraft({ database, inv, dryRun: process.env.DRY_RUN === '1',
+        await ensureInvoiceSent({ database, inv, dryRun: process.env.DRY_RUN === '1',
           findMessage: async (messageId) => {
             const messages = await searchMessages(sourcingToken, `in:anywhere rfc822msgid:${messageId}`);
             return Promise.all(messages.map((message) => getMessage(sourcingToken, message.id)));
           },
-          createInvoiceDraft: (messageId) => createDraft(sourcingToken, {
+          sendInvoice: (messageId) => sendInvoiceMessage(sourcingToken, {
             to: PLT_RECIPIENTS, subject: draftSubject([inv.invoice]), body: draftBody(1), messageId,
             attachments: [
               { filename: invoiceFilename(inv), mimeType: 'application/pdf', buffer: buildInvoicePdf(inv, { invoiceDate: inv.invoiceDate, createdAt: now }) },
@@ -102,7 +101,7 @@ async function main() {
             ],
           }),
         });
-        console.log(`INV ${inv.invoice}: draft created or existing invoice email recovered.`);
+        console.log(`INV ${inv.invoice}: email sent or existing sent invoice recovered.`);
       } catch (error) { console.error(`INV ${inv.invoice}: ${error.message}`); problems++; }
     }
   }

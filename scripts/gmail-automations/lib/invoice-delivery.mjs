@@ -9,7 +9,7 @@ export const invoiceMessageId = (invoice) => `denovo-plt-invoice-${invoice}@deno
 export async function ensureInvoiceStatement({ database, inv, today, readGrid, writePlan, validatePdf }) {
   const source = String(inv.invoice);
   const drafted = await getExecution(database, AUTOMATION, source, 'draft-created');
-  if (drafted?.status === 'completed') return null;
+  if (drafted?.status === 'completed' && drafted.result?.skipped) return null;
   const prepared = await getExecution(database, AUTOMATION, source, 'prepared');
   const grid = await readGrid();
   const exists = statementInvoiceNumbers(grid).has(source);
@@ -32,6 +32,30 @@ export async function ensureInvoiceStatement({ database, inv, today, readGrid, w
     invoice_date: inv.invoiceDate, po: inv.po, total_pence: inv.totalPence,
   });
   return inv;
+}
+
+export async function ensureInvoiceSent({ database, inv, findMessage, sendInvoice, dryRun = false }) {
+  const source = String(inv.invoice);
+  const done = await getExecution(database, AUTOMATION, source, 'email-sent');
+  if (done?.status === 'completed') return { skipped: true };
+  const messageId = invoiceMessageId(source);
+  const matches = await findMessage(messageId);
+  if (matches.length > 1) throw new Error(`INV ${source}: multiple matching emails; reconcile manually`);
+  if (matches.length === 1) {
+    const message = matches[0];
+    if (!message.labelIds?.includes('SENT') || message.labelIds.includes('TRASH')) {
+      throw new Error(`INV ${source}: existing draft or deleted email; reconcile manually before automatic sending`);
+    }
+    if (!dryRun) await completeExecution(database, AUTOMATION, source, 'email-sent', { message_id: message.id, recovered: true });
+    return { recovered: true };
+  }
+  const started = await getExecution(database, AUTOMATION, source, 'email-send-started');
+  if (started?.status === 'completed') throw new Error(`INV ${source}: sending was attempted but no Sent message is visible; reconcile before retrying`);
+  if (dryRun) return sendInvoice(messageId);
+  await completeExecution(database, AUTOMATION, source, 'email-send-started', { message_id: messageId });
+  const message = await sendInvoice(messageId);
+  await completeExecution(database, AUTOMATION, source, 'email-sent', { message_id: message.id });
+  return message;
 }
 
 // Gmail drafts.create has no idempotency key. Recover by stable RFC Message-ID;
