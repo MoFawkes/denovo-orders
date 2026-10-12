@@ -5,6 +5,19 @@ import { sheetsApplyPlan, sheetsGetValues, buildMessageMime, sendInvoiceMessage 
 
 const invoice = { invoice: 274, po: '70062955', totalPence: 191040 };
 
+test('new statement rows copy format only and explicitly use UK date patterns', async (t) => {
+  let requests;
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requests=JSON.parse(options.body).requests;
+    return { ok:true,status:200,json:async()=>({}) };
+  });
+  await sheetsApplyPlan('token','sheet',10,{insertAt:8,count:1,formatSourceIndex:7,stripeStart:1,
+    updates:[{range:'A9:F9',values:[[275,46303,70069760,2917.2,46348,'UPCOMING']],raw:true}]});
+  assert.equal(requests.find(request=>request.copyPaste).copyPaste.pasteType,'PASTE_FORMAT');
+  assert.deepEqual(requests.filter(request=>request.repeatCell?.cell.userEnteredFormat.numberFormat).map(request=>request.repeatCell.cell.userEnteredFormat.numberFormat.pattern),['dd/MM/yyyy','dd/MM/yyyy']);
+  assert.equal(requests.at(-1).updateCells.rows[0].values[3].userEnteredValue.numberValue,2917.2);
+});
+
 test('invoice send submits the complete MIME message to Gmail messages/send', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     assert.match(String(url), /messages\/send$/);

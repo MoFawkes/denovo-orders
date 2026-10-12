@@ -17,8 +17,26 @@ import {
   planStatementAgeing,
   remittanceFriday,
   fridayOfWeek,
+  buildStatementCsv,
 } from '../lib/plt-invoice.mjs';
 import { buildMessageMime } from '../lib/google.mjs';
+
+test('statement CSV preserves sections, quotes and balances with UK dates and excludes paid history', () => {
+  const csv = buildStatementCsv([
+    ['DENOVO SOURCING'],
+    ['Invoice No', 'Date', 'PO', 'Amount', 'Due', 'Status'],
+    [279, 46303, '0070012345', 123.45, 46348, 'UPCOMING'],
+    [278, 46303, '0070012344', 0, 46348, 'PAID'],
+    ['CHARGE "fine", 1', '2026-10-08', '0070012345', 109.2, 'Immediate', 'OVERDUE / DISPUTED'],
+    ['Subtotal — Overdue', '', '', 109.2],
+    [],
+  ]).toString('utf8');
+  assert.ok(csv.includes('279,08/10/2026,0070012345,123.45,22/11/2026,UPCOMING'));
+  assert.ok(!csv.includes('278,'));
+  assert.ok(csv.includes('"CHARGE ""fine"", 1",08/10/2026,0070012345,109.2,Immediate,OVERDUE / DISPUTED'));
+  assert.ok(csv.includes('Subtotal — Overdue,,,109.2'));
+  assert.ok(csv.endsWith('\r\n'));
+});
 
 // The real booking task behind Invoice_0269_PO_70062955.pdf.
 const TASK_269 = {
@@ -179,9 +197,9 @@ test('statement plan inserts new invoices at the end of Not Yet Due and rebuilds
   assert.equal(plan.insertAt, 14);
   assert.equal(plan.count, 2);
   const byRange = Object.fromEntries(plan.updates.map((u) => [u.range, u]));
-  assert.deepEqual(byRange['A15:F15'].values, [[274, '29-09-2026', 70062955, 1910.4, '13-11-2026', 'UPCOMING']]);
+  assert.deepEqual(byRange['A15:F15'].values, [[274, '29/09/2026', 70062955, 1910.4, '13/11/2026', 'UPCOMING']]);
   assert.equal(byRange['A15:F15'].raw, true);
-  assert.deepEqual(byRange['A16:F16'].values[0].slice(0, 4), [275, '29-09-2026', 70070000, 1000]);
+  assert.deepEqual(byRange['A16:F16'].values[0].slice(0, 4), [275, '29/09/2026', 70070000, 1000]);
   assert.deepEqual(byRange.D8.values, [['=SUM(D7:D7)']]);
   assert.deepEqual(byRange.D10.values, [['=SUM(D9:D9)']]);
   assert.deepEqual(byRange.D12.values, [['=SUM(D11:D11)']]);
@@ -198,7 +216,7 @@ test('statement plan keeps text cells as text when the sheet stores them that wa
   const grid = statementGrid().map((row) => (typeof row[0] === 'number' ? [String(row[0]), row[1], String(row[2]), ...row.slice(3)] : row));
   const inv = { ...parseInvoiceTask({ ...TASK_269, title: 'INV 274 — Black Dress' }), invoiceDate: '2026-09-29' };
   const plan = planStatementUpdate(grid, [inv], { today: '2026-09-29' });
-  assert.deepEqual(plan.updates[0].values[0].slice(0, 3), ['274', '29-09-2026', '70062955']);
+  assert.deepEqual(plan.updates[0].values[0].slice(0, 3), ['274', '29/09/2026', '70062955']);
 });
 
 test('draft subject follows the hand-sent format', () => {

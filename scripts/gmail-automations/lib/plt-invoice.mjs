@@ -400,8 +400,11 @@ export function planStatementUpdate(grid, invoices, { today }) {
   // New rows copy the value types (number vs text, date serial vs text) of
   // the last invoice row so they display with the same formatting.
   const template = rows.slice(headerIdx + 1, insertAt).reverse().find((row) => /^\d+$/.test(cellText(row[0])));
-  const asDate = (isoDate) => (typeof template?.[1] === 'number' ? sheetSerial(isoDate) : dashDate(isoDate));
-  const asDue = (isoDate) => (typeof template?.[4] === 'number' ? sheetSerial(isoDate) : dashDate(isoDate));
+  const formatSourceIndex = template ? rows.indexOf(template) : undefined;
+  const stripeStart = rows.slice(headerIdx + 1, insertAt).filter(row => cellText(row[0]) && typeof row[3] === 'number' && !/^subtotal/i.test(cellText(row[0]))).length;
+  const ukDate = isoDate => isoDate.split('-').reverse().join('/');
+  const asDate = (isoDate) => (typeof template?.[1] === 'number' ? sheetSerial(isoDate) : ukDate(isoDate));
+  const asDue = (isoDate) => (typeof template?.[4] === 'number' ? sheetSerial(isoDate) : ukDate(isoDate));
   const asInvoice = (invoice) => (typeof template?.[0] === 'number' ? invoice : String(invoice));
   const asPo = (po) => (typeof template?.[2] === 'number' ? Number(po) : String(po));
 
@@ -450,7 +453,7 @@ export function planStatementUpdate(grid, invoices, { today }) {
   const dateIdx = rows.findIndex((row) => /^statement date:/i.test(cellText(row[0])));
   if (dateIdx !== -1) updates.push({ range: `A${dateIdx + 1}`, values: [[`Statement Date: ${longDate(today)}`]], raw: true });
 
-  return { insertAt, count: newRows.length, updates };
+  return { insertAt, count: newRows.length, updates, formatSourceIndex, stripeStart };
 }
 
 export function statementRowMatches(grid, inv) {
@@ -531,5 +534,23 @@ export function draftSubject(invoiceNumbers) {
 }
 
 export function draftBody(count) {
-  return `Hi,\nPlease find ${count === 1 ? 'invoice' : 'invoices'} and statement attached below.\nThanks\n`;
+  return `Hi,\nPlease find ${count === 1 ? 'invoice' : 'invoices'} and CSV statement attached below.\nThanks\n`;
+}
+
+// Keep the statement's sections and summary columns, excluding settled history.
+export function buildStatementCsv(grid) {
+  const rows = grid.filter(row => !/^(paid|settled)$/i.test(cellText(row[5])));
+  while (rows.length && rows.at(-1).every(value => cellText(value) === '')) rows.pop();
+  const escape = value => {
+    const text = String(value ?? '');
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return Buffer.from(rows.map(row => Array.from({ length: 9 }, (_, col) => {
+    const value = row[col];
+    if ([1, 4].includes(col) && typeof row[3] === 'number' && !/^subtotal|^total/i.test(cellText(row[0]))) {
+      const date = statementDueDate(value);
+      if (date) return escape(date.split('-').reverse().join('/'));
+    }
+    return escape(value);
+  }).join(',')).join('\r\n') + '\r\n', 'utf8');
 }
