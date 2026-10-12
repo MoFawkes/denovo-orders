@@ -2,19 +2,20 @@
 import { pathToFileURL } from 'node:url';
 import {
   getAccessToken, listCompletedTasks, sheetsGetSheetId, sheetsGetValues,
-  sheetsApplyPlan, sendInvoiceMessage, searchMessages, getMessage,
+  sheetsApplyPlan, driveExportFile, sendInvoiceMessage, searchMessages, getMessage,
 } from './lib/google.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { getExecution } from './lib/execution-state.mjs';
 import {
   PLT_RECIPIENTS, FIRST_AUTOMATED_INVOICE, parseInvoiceTask, deliveryHasPassed,
   londonToday, dashDate, buildInvoicePdf, invoiceFilename, statementInvoiceNumbers,
-  planStatementAgeing, draftSubject, draftBody, buildStatementCsv,
+  planStatementAgeing, draftSubject, draftBody,
 } from './lib/plt-invoice.mjs';
 import { ensureInvoiceStatement, ensureInvoiceSent } from './lib/invoice-delivery.mjs';
 
 const STATEMENT_SPREADSHEET_ID = process.env.PLT_STATEMENT_SPREADSHEET_ID || '1DK9ht3fSXRopjnkZyufVPVsZaKB1jqnOndVWeYHMOy4';
 const STATEMENT_SHEET = process.env.PLT_STATEMENT_SHEET || 'PLT Statement';
+const STATEMENT_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 async function main() {
   if (process.env.PLT_INVOICES_ENABLED !== '1') {
@@ -81,10 +82,11 @@ async function main() {
       if (prepared) ready.push(prepared);
     } catch (error) { console.error(`INV ${inv.invoice}: ${error.message}`); problems++; }
   }
-  // All new rows are on the statement before its CSV is generated.
+  // Export the existing classic statement layout, formatting and formulas as Excel.
+  // All new rows are on the statement before the workbook is exported.
   if (ready.length) {
     await writePlan(planStatementAgeing(await readGrid(), { today, sheetId }));
-    const statementCsv = buildStatementCsv(await readGrid());
+    const statementWorkbook = await driveExportFile(sourcingToken, STATEMENT_SPREADSHEET_ID, STATEMENT_XLSX_MIME);
     for (const inv of ready) {
       try {
         await ensureInvoiceSent({ database, inv, dryRun: process.env.DRY_RUN === '1',
@@ -96,7 +98,7 @@ async function main() {
             to: PLT_RECIPIENTS, subject: draftSubject([inv.invoice]), body: draftBody(1), messageId,
             attachments: [
               { filename: invoiceFilename(inv), mimeType: 'application/pdf', buffer: buildInvoicePdf(inv, { invoiceDate: inv.invoiceDate, createdAt: now }) },
-              { filename: `PLT_Statement_Denovo_Sourcing_${dashDate(today)}.csv`, mimeType: 'text/csv; charset=utf-8', buffer: statementCsv },
+              { filename: `PLT_Statement_Denovo_Sourcing_${dashDate(today)}.xlsx`, mimeType: STATEMENT_XLSX_MIME, buffer: statementWorkbook },
             ],
           }),
         });

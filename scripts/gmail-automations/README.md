@@ -367,7 +367,9 @@ For each eligible invoice, the automation:
    Existing rows without an automation intent/checkpoint remain manual invoices.
 3. Sends one Gmail **email per invoice** from `denovosourcing@gmail.com`,
    addressed to Medius PLT Invoices UK and Jade Wynne, with the invoice and
-   current statement CSV attached. Emails are sent automatically.
+   current classic statement Excel workbook (`.xlsx`) attached, preserving the
+   source sheet's grouped invoices, subtotals, formatting and formulas.
+   Emails are sent automatically.
    All new invoice rows are written before the statement is exported.
 
 Each run also ages the statement, even without new invoices, around Friday
@@ -451,13 +453,13 @@ Merge this change into `main` before scheduled runs can use it. Leave
    regardless of the other inputs. It reads real Tasks/Sheets and logs the
    planned statement edits and emails without saving rows, sending emails or
    checkpoints. Its exported statement remains the live unchanged sheet;
-   the preview does not validate the final statement CSV or prove
+   the preview does not validate the final combined statement workbook or prove
    write permission.
 7. After the preview is clean and the change is merged, set repository
    variable **PLT_INVOICES_ENABLED = 1** under Actions > Variables.
    Run normally with **portal_mode = disabled** to process invoices without
    a Portal submission, or let the next hourly schedule run. Check the
-   first sent invoice, statement row and CSV.
+   first sent invoice, statement row and Excel attachment.
 
 Optional repository variables (the workflow passes them through):
 
@@ -468,7 +470,7 @@ Optional repository variables (the workflow passes them through):
 | `PLT_STATEMENT_SHEET` | `PLT Statement` |
 
 The existing sourcing token needs `gmail.modify` for sending and recovery
-searches, `drive.readonly` for the statement PDF export, and the new
+searches, `drive.readonly` for the statement Excel export, and the new
 `spreadsheets` scope for statement edits. The denovogb token's existing
 Tasks access is sufficient; it does not need re-authorization for this change.
 
