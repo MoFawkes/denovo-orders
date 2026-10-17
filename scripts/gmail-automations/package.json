@@ -8,7 +8,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
     "exceljs": "^4.4.0",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "playwright": "^1.55.0",
     "sharp": "^0.34.5"
   },
