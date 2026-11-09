@@ -38,7 +38,7 @@ const SEARCH_QUERY = 'filename:csv -label:Docket-Processed -label:Docket-Needs-R
 
 const DRY_RUN = process.env.DRY_RUN === '1';
 
-const DEFAULT_FABRIC = 'Bengaline';
+
 const FALLBACK_DOCKET_BASE = 241; // matches nextDocketNumber() in web/index.html
 
 // PLT product names carry the UK size as a trailing suffix on productName. The
@@ -54,8 +54,9 @@ const SIZE_SUFFIX = /-\s*(?:UK\s*)?(\d+)(?:\s*,\s*US\s*\d+)?\s*$/i;
 // no runtime the two could actually share. See CLAUDE.md's "gotchas" for the
 // ex_factory YYYY-DD-MM quirk mirrored in ukDateToIso() below.
 
-function isD5StyleNo(ref) {
-  return ref && /^D\d+$/i.test(ref.trim());
+function normalizeStyleNo(ref) {
+  const match = String(ref || '').trim().match(/^D\s*-?\s*(\d+)$/i);
+  return match ? `D${match[1]}` : null;
 }
 
 function parseCSV(text) {
@@ -150,7 +151,13 @@ async function nextDocketNumber(database) {
 
 async function lookupCosting(database, sku, styleNo) {
   const result = await database('lookup-costing', { sku, styleNo });
-  return result.costing ?? null;
+  if (result.costing) return result.costing;
+  const normalized = normalizeStyleNo(styleNo) || normalizeStyleNo(sku);
+  if (normalized && (normalized !== sku || normalized !== styleNo)) {
+    const fallback = await database('lookup-costing', { sku: normalized, styleNo: normalized });
+    return fallback.costing ?? null;
+  }
+  return null;
 }
 
 // The PO PDF carries a "Product Code / Fabric Weight / Fabrication /
@@ -161,6 +168,11 @@ async function lookupCosting(database, sku, styleNo) {
 // (from the CSV), collects the word(s) immediately following it up to the
 // next productCode-shaped token (one containing a digit or "/") or a stop
 // word from the trailing "Deliver To:" section.
+function cleanFabric(value) {
+  const fabric = String(value || '').trim();
+  return /^(?:n\s*\/?\s*a|not applicable|none|-)$/i.test(fabric) ? '' : fabric;
+}
+
 function extractFabricByProductCode(text, productCodes) {
   const headerIdx = text.search(/Fabric\s*Weight\s*Fabrication/i);
   if (headerIdx === -1) return {};
@@ -425,15 +437,15 @@ async function processThread(accessToken, database, thread) {
     }
 
     const skuForDb = supplierRef.toUpperCase();
-    const costing = await lookupCosting(database, supplierRef, isD5StyleNo(supplierRef) ? supplierRef : null);
-    const styleNo = costing?.style_no || (isD5StyleNo(supplierRef) ? supplierRef : null);
+    const costing = await lookupCosting(database, supplierRef, normalizeStyleNo(supplierRef));
+    const styleNo = costing?.style_no || normalizeStyleNo(supplierRef);
     const costingCmt = costing?.cmt ?? null;
     if (!costing) anyMissingCosting = true;
 
     // All sizes of a style share one fabrication in this PO's table, so any
     // row in the group resolves it -- try each until one hits.
-    const fabrication = group.map((r) => fabricByProductCode[r['productCode'] || r['productcode']]).find(Boolean) || DEFAULT_FABRIC;
-    if (!group.some((r) => fabricByProductCode[r['productCode'] || r['productcode']])) anyMissingFabric = true;
+    const fabrication = group.map((r) => cleanFabric(fabricByProductCode[r['productCode'] || r['productcode']])).find(Boolean) || '';
+    if (!fabrication) anyMissingFabric = true;
 
     const sizeTable = {};
     const sizesSet = new Set();
@@ -538,7 +550,7 @@ async function processThread(accessToken, database, thread) {
       ? [
           ambiguousPdf && 'could not confidently identify the PO confirmation PDF',
           anyMissingCosting && 'one or more styles missing from style_costings',
-          anyMissingFabric && 'could not find a fabrication for one or more styles in the PDF',
+          anyMissingFabric && 'Fabric not supplied on PO—please enter (one or more styles)',
           uploadError && 'docket file upload failed',
         ].filter(Boolean).join('; ')
       : null,
@@ -627,4 +639,4 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   });
 }
 
-export { extractSizeFromName, extractColourFromName };
+export { extractSizeFromName, extractColourFromName, normalizeStyleNo, lookupCosting, cleanFabric, extractFabricByProductCode };

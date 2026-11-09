@@ -635,7 +635,7 @@
       <!-- Fabric override -->
       <div class="bg-white border border-outline-variant/20 rounded-xl p-5 shadow-sm">
         <label class="text-xs font-bold uppercase tracking-widest text-on-surface-variant block mb-2">Fabrication</label>
-        <input id="import-fabric" type="text" value="Bengaline" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary"/>
+        <input id="import-fabric" type="text" placeholder="Optional fabric override" class="w-full h-10 bg-surface-container border-none rounded px-3 text-sm focus:ring-1 focus:ring-primary"/>
       </div>
 
       <!-- Process button -->
@@ -2352,6 +2352,12 @@ function isD5StyleNo(ref) {
   return ref && /^D\d+$/i.test(ref.trim())
 }
 
+// Keep in sync with the email docket import's supplier reference matching.
+function normalizeStyleNo(ref) {
+  const match = String(ref || '').trim().match(/^D\s*-?\s*(\d+)$/i)
+  return match ? `D${match[1]}` : null
+}
+
 // Look up style_no from style_costings by matching description keywords
 async function lookupStyleNoByDesc(description) {
   if (!description) return null
@@ -2595,6 +2601,39 @@ async function nextDocketNumber() {
 }
 
 // ── Style costings lookup (returns { style_no, cmt, price } or null) ──────────
+function cleanFabric(value) {
+  const fabric = String(value || '').trim();
+  return /^(?:n\s*\/?\s*a|not applicable|none|-)$/i.test(fabric) ? '' : fabric;
+}
+
+function extractFabricByProductCode(text, productCodes) {
+  const headerIdx = text.search(/Fabric\s*Weight\s*Fabrication/i);
+  if (headerIdx === -1) return {};
+  const tokens = text.slice(headerIdx).split(/\s+/).filter(Boolean);
+  const knownCodes = new Map(productCodes.map((c) => [c.toUpperCase(), c]));
+  const stopWords = /^(Deliver|Styles|This|Workbook)/i;
+
+  const result = {};
+  let i = 0;
+  while (i < tokens.length) {
+    const original = knownCodes.get(tokens[i].toUpperCase());
+    if (!original) { i++; continue; }
+
+    const words = [];
+    let j = i + 1;
+    while (j < tokens.length && words.length < 3) {
+      const next = tokens[j];
+      if (/[\d/]/.test(next) || stopWords.test(next)) break;
+      words.push(next);
+      j++;
+    }
+    if (words.length) result[original] = words.join(' ');
+    i = j;
+  }
+  return result;
+}
+
+
 async function lookupCosting(sku, styleNo) {
   // 1) Try by SKU (style column) — most accurate
   if (sku) {
@@ -2605,6 +2644,18 @@ async function lookupCosting(sku, styleNo) {
   if (styleNo && isD5StyleNo(styleNo)) {
     const { data } = await sb.from('style_costings').select('style_no, cmt, price').ilike('style_no', styleNo).limit(1)
     if (data?.[0]) return data[0]
+  }
+  // Preserve exact matches first, then accept PO references such as D-5760.
+  const normalized = normalizeStyleNo(styleNo) || normalizeStyleNo(sku)
+  if (normalized) {
+    if (normalized !== sku) {
+      const { data } = await sb.from('style_costings').select('style_no, cmt, price').ilike('style', normalized).limit(1)
+      if (data?.[0]) return data[0]
+    }
+    if (normalized !== styleNo) {
+      const { data } = await sb.from('style_costings').select('style_no, cmt, price').ilike('style_no', normalized).limit(1)
+      if (data?.[0]) return data[0]
+    }
   }
   return null
 }
@@ -2996,7 +3047,7 @@ function downloadCartonUpload() {
 }
 
 // ── Excel docket generation (ExcelJS) ────────────────────────────────────────
-async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, fabrication, description, rows) {
+async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactory, description, rows) {
   const wb = new ExcelJS.Workbook()
   const thin = { style: 'thin', color: { argb: 'FF000000' } }
   const border = { top: thin, bottom: thin, left: thin, right: thin }
@@ -3004,7 +3055,7 @@ async function buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactor
   const tnrBold = (size) => ({ name: 'Times New Roman', bold: true, size })
   const tnr = (size) => ({ name: 'Times New Roman', bold: false, size })
 
-  for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes } of rows) {
+  for (const { styleNo, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes, fabrication } of rows) {
     const skuDisplay = Object.entries(colourSkuMap).map(([c, s]) => s ? `${c}: ${s}` : `${c}: (blank)`).join(' | ')
     const displaySizes = sizes.slice(0, 13)
     const ncols = displaySizes.length + 1  // col A + size cols
@@ -3292,7 +3343,7 @@ async function runImport() {
   document.getElementById('import-log').classList.remove('hidden')
   document.getElementById('import-results').classList.add('hidden')
 
-  const fabrication = document.getElementById('import-fabric').value || 'Bengaline'
+  const fabricOverride = cleanFabric(document.getElementById('import-fabric').value)
 
   try {
     // 1) Parse PDF
@@ -3312,6 +3363,8 @@ async function runImport() {
     if (!rows.length) throw new Error('CSV is empty or could not be parsed.')
     const poNumber = rows[0]['PONumber'] || rows[0]['poNumber'] || rows[0]['ponumber'] || ''
     importLog(`   PO Number: ${poNumber}`)
+    const productCodes = [...new Set(rows.map(r => r['productCode'] || r['productcode']).filter(Boolean))]
+    const fabricByProductCode = extractFabricByProductCode(pdfText, productCodes)
 
     // Build description
     const colourColSample = pickColourCol(rows[0])
@@ -3376,9 +3429,11 @@ async function runImport() {
       // supplierRef is the PLT SKU (e.g. cno7708 → CNO7708)
       // Look it up in style_costings by style column to get D5 style_no + CMT
       const skuForDb = supplierRef.toUpperCase()
-      const costing = await lookupCosting(supplierRef, isD5StyleNo(supplierRef) ? supplierRef : null)
-      const styleNo = costing?.style_no || (isD5StyleNo(supplierRef) ? supplierRef : null)
+      const costing = await lookupCosting(supplierRef, normalizeStyleNo(supplierRef))
+      const styleNo = costing?.style_no || normalizeStyleNo(supplierRef)
       const costingCmt = costing?.cmt ?? null
+      const fabrication = fabricOverride || group.map(r => cleanFabric(fabricByProductCode[r['productCode'] || r['productcode']])).find(Boolean) || ''
+      if (!fabrication) importLog('⚠️ Fabric not supplied on PO—please enter.', '#fbbf24')
 
       if (costing) importLog(`   Style No: ${styleNo} | CMT: £${(costingCmt||0).toFixed(2)}`, '#86efac')
       else importLog(`   Style No: not found — add SKU ${skuForDb} to style_costings`, '#fca5a5')
@@ -3403,19 +3458,19 @@ async function runImport() {
       const totalUnits = Object.values(colourTotals).reduce((a, b) => a + b, 0)
       importLog(`   ${Object.keys(colourTotals).join(', ')} — ${totalUnits} total`)
 
-      docketRows.push({ styleNo: styleNo || skuForDb, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes })
+      docketRows.push({ styleNo: styleNo || skuForDb, colourSkuMap, sizeTable, colourTotals, totalUnits, sizes, fabrication })
 
       // DB rows per colour
       for (const [colour, qty] of Object.entries(colourTotals)) {
         const sku = colourSkuMap[colour] || skuForDb
         const imageUrl = buildPltImageUrl(sku, colour)
-        dbRows.push({ styleNo, skuForDb: sku, colour, qty, imageUrl, cmt: costingCmt })
+        dbRows.push({ styleNo, skuForDb: sku, colour, qty, imageUrl, cmt: costingCmt, fabrication })
       }
     }
 
     // 6) Generate Excel docket
     importLog('\n📁 Generating docket workbook…')
-    const docketBlob = await buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, fabrication, descDisplay, docketRows)
+    const docketBlob = await buildDocketWorkbook(docketNumber, poNumber, dateOrdered, exFactoryRaw, descDisplay, docketRows)
     const docketFileName = `${docketNumber}_${poNumber}.xlsx`
 
     // 7) Upload docket to Supabase Storage (optional — continues even if upload fails)
@@ -3436,7 +3491,7 @@ async function runImport() {
     // 8) Upsert orders to DB
     importLog('\n💾 Saving orders to database…')
     const created = []
-    for (const { styleNo, skuForDb, colour, qty, imageUrl, cmt } of dbRows) {
+    for (const { styleNo, skuForDb, colour, qty, imageUrl, cmt, fabrication } of dbRows) {
       const colourTitle = colour.charAt(0) + colour.slice(1).toLowerCase()
       const row = {
         source_tab: 'OPO',
