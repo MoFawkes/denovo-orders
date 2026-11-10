@@ -58,6 +58,21 @@ test('missing invoices, mismatched PO and overpayments abort the entire plan', (
   assert.throws(()=>planRemittance(grid,new Map(),remittance,{today:'2026-10-08',sheetId:10}),/found 0/);
 });
 
+test('flat statement accepts remittance payments and appends disputed charges without section headings', () => {
+  const remittance = validateRemittance(charges);
+  const grid = gridFor(remittance).filter(row => !String(row[0]).startsWith('Subtotal'));
+  const plan = planRemittance(grid, new Map(), remittance, { today: '2026-11-10', sheetId: 10 });
+  const insert = plan.requests.find(request => request.insertDimension).insertDimension.range;
+  assert.equal(insert.startIndex, 8);
+  assert.equal(insert.endIndex, 10);
+  assert.equal(plan.audit.filter(line => line.type === 'paid').length, 7);
+  const chargesWritten = plan.updates.filter(update => /^A\d+:F/.test(update.range));
+  assert.equal(chargesWritten.length, 2);
+  assert.ok(chargesWritten.every(update => update.values[0][5] === 'OVERDUE / DISPUTED'));
+  const total = plan.updates.find(update => update.range === 'D11');
+  assert.equal(total.values[0][0], '=SUMIFS(D2:D10,A2:A10,"<>Subtotal*",F2:F10,"<>PAID",F2:F10,"<>SETTLED")');
+});
+
 test('partial payments retain their remaining balance and duplicate remittances cannot subtract twice', () => {
   const remittance=validateRemittance(normal), grid=gridFor(remittance), notes=new Map();
   grid[1][3]+=10;
