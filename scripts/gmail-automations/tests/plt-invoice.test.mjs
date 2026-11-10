@@ -294,13 +294,67 @@ test('ageing is idempotent and excludes paid invoices from outstanding totals', 
   assert.ok(again.updates.some((u) => String(u.values[0][0]).includes('SUMIFS')));
 });
 
-test('invalid due dates and absent destination sections stop ageing before a write', () => {
+test('invalid due dates stop ageing, while removed section headings select the flat layout', () => {
   const grid = statementGrid();
   grid[12][4] = '31-02-2026';
   assert.throws(() => planStatementAgeing(grid, { today: '2026-10-08', sheetId: 1 }), /invalid payment due date/);
   const missingSection = statementGrid().filter((row) => row[0] !== 'Subtotal — Due Soon');
   missingSection.find((row) => row[0] === 272)[4] = '02-10-2026';
-  assert.throws(() => planStatementAgeing(missingSection, { today: '2026-10-01', sheetId: 1 }), /no due soon/);
+  const flat = planStatementAgeing(missingSection, { today: '2026-10-01', sheetId: 1 });
+  assert.deepEqual(flat.requests, []);
+  assert.equal(flat.rows.find(row => row[0] === 272)[5], 'DUE');
+});
+
+test('flat statement ages in place, preserves corrected amounts/dates and rebuilds the entire summary', () => {
+  const grid = [
+    ['DENOVO SOURCING', '', '', '', '', '', '', 'SUMMARY'],
+    ['', '', '', '', '', '', '', 'Overdue', 1],
+    ['', '', '', '', '', '', '', 'Due ', 2],
+    ['', '', '', '', '', '', '', 'UPCOMING', 5460],
+    ['', '', '', '', '', '', '', 'Total Outstanding', 3],
+    ['Invoice No', 'Invoice Date', 'PO No', 'Invoice Amount', 'Payment Due', 'Status'],
+    ['258', '02/09/2026', '70061511', 5100.48, 'IMMEDIATE', 'OVERDUE'],
+    [273, '25/09/2026', '70069758', 2448, '09/11/2026', 'UPCOMING'],
+    [274, 46295, 70066874, 5460, 46340, 'UPCOMING'],
+    [275, 46303, 70069760, 2917.2, 46348, 'UPCOMING'],
+    [247, 46253, '70057687', 5762.88, 'IMMEDIATE', 'PAID'],
+    ['Subtotal — Not Yet Due', '', '', 2917.2],
+    ['TOTAL OUTSTANDING', '', '', '#REF!'],
+  ];
+  const before = structuredClone(grid);
+  const plan = planStatementAgeing(grid, { today: '2026-11-10', sheetId: 1 });
+  assert.deepEqual(grid, before);
+  assert.deepEqual(plan.requests, []);
+  assert.deepEqual(plan.rows.map(row => row[0]), grid.map(row => row[0]));
+  for (let i = 6; i <= 10; i++) assert.deepEqual(plan.rows[i].slice(0, 5), grid[i].slice(0, 5));
+  assert.equal(plan.rows[7][5], 'DUE');
+  // 14 November is Saturday; remittance falls on Friday 20 November.
+  assert.equal(plan.rows[8][5], 'UPCOMING');
+  assert.equal(plan.rows[10][5], 'PAID');
+  const updates = Object.fromEntries(plan.updates.map(u => [u.range, u.values[0][0]]));
+  assert.equal(updates.I2, '=SUMIF(F7:F11,"OVERDUE*",D7:D11)');
+  assert.equal(updates.I3, '=SUMIF(F7:F11,"DUE",D7:D11)');
+  assert.equal(updates.I4, '=SUMIF(F7:F11,"UPCOMING",D7:D11)');
+  assert.equal(updates.I5, '=SUMIFS(D7:D11,A7:A11,"<>Subtotal*",F7:F11,"<>PAID",F7:F11,"<>SETTLED")');
+  assert.equal(updates.D13, updates.I5);
+  assert.equal(updates.D12, updates.I4);
+});
+
+test('flat statement appends invoices without subtotals and uses exactly 45 days across year end', () => {
+  const grid = [
+    ['Invoice No', 'Invoice Date', 'PO No', 'Invoice Amount', 'Payment Due', 'Status'],
+    [274, 46295, 70066874, 5460, 46340, 'UPCOMING'],
+    [],
+    ['TOTAL OUTSTANDING', '', '', 5460],
+  ];
+  const inv = { ...parseInvoiceTask(TASK_269), invoice: 293, invoiceDate: '2026-12-01' };
+  const plan = planStatementUpdate(grid, [inv], { today: '2026-12-01' });
+  assert.equal(plan.insertAt, 2);
+  assert.equal(plan.formatSourceIndex, 1);
+  assert.deepEqual(plan.updates[0].values[0], [293, 46357, 70062955, 1910.4, 46402, 'UPCOMING']);
+  const updates = Object.fromEntries(plan.updates.map(u => [u.range, u.values[0][0]]));
+  assert.equal(updates.D5, '=SUMIFS(D2:D3,A2:A3,"<>Subtotal*",F2:F3,"<>PAID",F2:F3,"<>SETTLED")');
+  assert.equal(plan.updates.some(u => u.raw && String(u.values).includes('Subtotal')), false);
 });
 
 test('Friday remittance includes Friday due dates and ages unpaid invoices after the run', () => {
