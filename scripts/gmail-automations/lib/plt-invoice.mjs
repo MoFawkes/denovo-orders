@@ -383,6 +383,40 @@ export function buildInvoicePdf(inv, { invoiceDate, createdAt = new Date() }) {
 
 const cellText = (value) => String(value ?? '').trim();
 
+// A statement may be a single list after managers remove the section headings.
+// Use section moves only when all three dated sections still exist.
+export function statementLayout(grid) {
+  const header = grid.findIndex(row => /^invoice\s*no/i.test(cellText(row[0])));
+  if (header < 0) throw new Error('statement: no "Invoice No" header row found in column A');
+  const sectioned = ['overdue', 'due soon', 'not yet due'].every(label => grid.some(row =>
+    /^subtotal/i.test(cellText(row[0])) && cellText(row[0]).toLowerCase().includes(label)));
+  const dataIndexes = grid.flatMap((row, idx) => idx > header && cellText(row[0]) &&
+    !/^(subtotal|total outstanding|note:)/i.test(cellText(row[0])) && typeof row[3] === 'number' ? [idx] : []);
+  return { header, sectioned, insertAt: (dataIndexes.at(-1) ?? header) + 1 };
+}
+
+function flatStatementTotals(rows) {
+  const { header, insertAt } = statementLayout(rows);
+  const start = header + 2;
+  const end = Math.max(start, insertAt);
+  const empty = insertAt === header + 1;
+  const sum = criteria => empty ? '=0' : `=SUMIF(F${start}:F${end},"${criteria}",D${start}:D${end})`;
+  const outstanding = empty ? '=0' : `=SUMIFS(D${start}:D${end},A${start}:A${end},"<>Subtotal*",F${start}:F${end},"<>PAID",F${start}:F${end},"<>SETTLED")`;
+  const formulas = { overdue: sum('OVERDUE*'), due: sum('DUE'), 'due soon': sum('DUE'), upcoming: sum('UPCOMING'), 'not yet due': sum('UPCOMING'), 'total outstanding': outstanding };
+  return rows.flatMap((row, idx) => {
+    const updates = [];
+    const label = cellText(row[0]).toLowerCase();
+    if (label === 'total outstanding') updates.push({ range: `D${idx + 1}`, values: [[outstanding]] });
+    else if (/^subtotal/i.test(label)) {
+      const key = /immediate|overdue/i.test(label) ? 'overdue' : /due soon/i.test(label) ? 'due' : /not yet due/i.test(label) ? 'upcoming' : null;
+      if (key) updates.push({ range: `D${idx + 1}`, values: [[formulas[key]]] });
+    }
+    const summary = formulas[cellText(row[7]).toLowerCase()];
+    if (summary) updates.push({ range: `I${idx + 1}`, values: [[summary]] });
+    return updates;
+  });
+}
+
 export function statementInvoiceNumbers(grid) {
   return new Set(grid.map((row) => cellText(row?.[0]).replace(/^0+(?=\d)/, '')).filter((value) => /^\d+$/.test(value)));
 }
@@ -393,7 +427,8 @@ const sheetSerial = (isoDate) => Math.round((Date.parse(`${isoDate}T00:00:00Z`) 
 export function planStatementUpdate(grid, invoices, { today }) {
   const rows = grid.map((row) => [...(row ?? [])]);
   const headerIdx = rows.findIndex((row) => /^invoice\s*no/i.test(cellText(row[0])));
-  const insertAt = rows.findIndex((row) => /^subtotal/i.test(cellText(row[0])) && /not yet due/i.test(cellText(row[0])));
+  const layout = statementLayout(rows);
+  const insertAt = layout.sectioned ? rows.findIndex((row) => /^subtotal/i.test(cellText(row[0])) && /not yet due/i.test(cellText(row[0]))) : layout.insertAt;
   if (headerIdx === -1) throw new Error('statement: no "Invoice No" header row found in column A');
   if (insertAt === -1) throw new Error('statement: no "Subtotal — Not Yet Due" row found in column A');
 
@@ -419,6 +454,13 @@ export function planStatementUpdate(grid, invoices, { today }) {
   rows.splice(insertAt, 0, ...newRows);
 
   const updates = newRows.map((values, i) => ({ range: `A${insertAt + i + 1}:F${insertAt + i + 1}`, values: [values], raw: true }));
+
+  if (!layout.sectioned) {
+    updates.push(...flatStatementTotals(rows));
+    const dateIdx = rows.findIndex(row => /^statement date:/i.test(cellText(row[0])));
+    if (dateIdx >= 0) updates.push({ range: `A${dateIdx + 1}`, values: [[`Statement Date: ${longDate(today)}`]], raw: true });
+    return { insertAt, count: newRows.length, updates, formatSourceIndex, stripeStart };
+  }
 
   // Subtotals: SUM of the rows since the previous section boundary.
   const subtotals = [];
@@ -493,6 +535,7 @@ export function planStatementAgeing(grid, { today, sheetId }) {
   const rows = grid.map((row) => [...row]);
   const requests = [];
   const changes = [];
+  const { sectioned } = statementLayout(rows);
   const bucket = (label) => /immediate/i.test(label) ? 'immediate' : /overdue/i.test(label) ? 'overdue' : /due soon/i.test(label) ? 'due soon' : /not yet due/i.test(label) ? 'not yet due' : null;
   const invoices = rows.filter((row) => /^\d+$/.test(cellText(row[0])) && !/^(paid|settled)$/i.test(cellText(row[5])));
   for (const invoiceRow of invoices) {
@@ -504,9 +547,9 @@ export function planStatementAgeing(grid, { today, sheetId }) {
     }
     const paymentFriday = remittanceFriday(due);
     const wanted = paymentFriday < today ? 'overdue' : paymentFriday <= fridayOfWeek(today) ? 'due soon' : 'not yet due';
-    const boundary = rows.slice(idx + 1).find((row) => /^subtotal/i.test(cellText(row[0])));
-    if (!boundary) throw new Error(`Statement invoice ${invoiceRow[0]} has no section subtotal`);
-    if (bucket(cellText(boundary[0])) !== wanted) {
+    const boundary = sectioned ? rows.slice(idx + 1).find((row) => /^subtotal/i.test(cellText(row[0]))) : null;
+    if (sectioned && !boundary) throw new Error(`Statement invoice ${invoiceRow[0]} has no section subtotal`);
+    if (sectioned && bucket(cellText(boundary[0])) !== wanted) {
       const target = rows.findIndex((row) => /^subtotal/i.test(cellText(row[0])) && bucket(cellText(row[0])) === wanted);
       if (target < 0) throw new Error(`Statement has no ${wanted} subtotal section`);
       requests.push({ moveDimension: { source: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 }, destinationIndex: target } });

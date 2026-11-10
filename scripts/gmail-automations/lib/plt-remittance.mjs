@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { validDate, planStatementUpdate } from './plt-invoice.mjs';
+import { validDate, planStatementUpdate, statementLayout } from './plt-invoice.mjs';
 import { getExecution, completeExecution } from './execution-state.mjs';
 
 const clean = value => String(value ?? '').trim();
@@ -109,7 +109,8 @@ export function planRemittance(grid, notes, remittance, { today, sheetId }) {
     audit.push({ type: remaining ? 'partial-payment' : 'paid', reference: line.reference, amountPence: line.amountPence, remainingPence: remaining });
   }
   if (pendingCharges.length) {
-    const at = rows.findIndex(row => /^subtotal/i.test(clean(row[0])) && /overdue/i.test(clean(row[0])));
+    const layout = statementLayout(rows);
+    const at = layout.sectioned ? rows.findIndex(row => /^subtotal/i.test(clean(row[0])) && /overdue/i.test(clean(row[0]))) : layout.insertAt;
     if (at < 0) fail('no Overdue subtotal section');
     const styleSource = rows.slice(0, at).findLastIndex(row => clean(row[0]) && typeof row[3] === 'number' && !/^subtotal/i.test(clean(row[0])));
     const stripeStart = rows.slice(0, at).filter(row => clean(row[0]) && typeof row[3] === 'number' && !/^subtotal/i.test(clean(row[0]))).length;

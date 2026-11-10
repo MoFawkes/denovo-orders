@@ -385,6 +385,15 @@ credits stay in their existing section. Rows marked `PAID` or `SETTLED` are
 not moved and are excluded from outstanding totals. Payments/credit notes
 still need recording by a person; the automation cannot infer them.
 
+The statement can also use a single invoice list without section subheadings.
+If any of the three dated subtotal sections is absent, ageing updates statuses
+in place and new invoices/disputed charges append after the final data row.
+Amounts and contractual due dates are preserved. The top summary (`Overdue`,
+`Due`/`Due Soon`, `Upcoming`/`Not Yet Due`) and total outstanding are rebuilt
+from row statuses, excluding paid/settled rows; stale section references are
+not used. Removing paid rows or section headings does not require restoring
+the grouped layout.
+
 New Portal packing tasks carry an `Invoice lines:` JSON line with exact
 per-SKU quantities, descriptions and unit prices in pence, supporting multiple
 prices on one invoice. Legacy tasks with one PPU still work. For an older
