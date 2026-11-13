@@ -229,12 +229,35 @@ async function validateAndSubmit(page, config, onBeforeSubmit) {
   ]).catch(() => { throw new Error('Portal did not confirm the submission after Submit was clicked'); });
 }
 
-async function downloadFromButton(page, name, directory, filename, timeout) {
-  const downloadPromise = page.waitForEvent('download', { timeout });
+// Saves what a wizard button produces. "Download Packing List" is a normal
+// file download, but "Print Labels" builds the PDF in the page and opens it in
+// a new tab as a blob: URL, which never raises a download event. Blob URLs are
+// readable from the page that created them, so fetch the bytes from there.
+export async function downloadFromButton(page, name, directory, filename, timeout) {
+  const downloaded = page.waitForEvent('download', { timeout }).then((download) => ({ download }), () => null);
+  const opened = page.waitForEvent('popup', { timeout }).then((popup) => ({ popup }), () => null);
   await page.getByRole('button', { name, exact: true }).click();
-  const download = await downloadPromise;
+  const result = (await Promise.race([downloaded, opened])) ?? (await downloaded) ?? (await opened);
+  if (!result) throw new Error(`"${name}" produced neither a download nor a new tab within ${timeout}ms`);
   const path = join(directory, filename);
-  await download.saveAs(path);
+  if (result.download) {
+    await result.download.saveAs(path);
+    return path;
+  }
+  const { popup } = result;
+  await popup.waitForURL(/^blob:/, { timeout }).catch(() => {});
+  const blobUrl = popup.url();
+  if (!blobUrl.startsWith('blob:')) throw new Error(`"${name}" opened an unexpected tab: ${blobUrl.slice(0, 80)}`);
+  const base64 = await page.evaluate(async (url) => {
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
+  }, blobUrl);
+  await writeFile(path, Buffer.from(base64, 'base64'));
+  await popup.close().catch(() => {});
   return path;
 }
 
