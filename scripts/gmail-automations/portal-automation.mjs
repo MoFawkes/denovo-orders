@@ -15,7 +15,7 @@ import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
 import { checkPortalQuantities, extractPurchaseOrderLines } from './lib/portal-quantity.mjs';
 
-const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
 function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
@@ -224,6 +224,16 @@ async function downloadFromButton(page, name, directory, filename, timeout) {
   return path;
 }
 
+async function downloadPortalDocuments(page, config, manifest) {
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
+  const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
+  const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
+  const stampedPackingList = await stampPortalPackingList(await readFile(packingListPath), manifest);
+  await writeFile(packingListPath, stampedPackingList);
+  const validation = await validateBelPdf(belPath, manifest);
+  return { belPath, packingListPath, validation };
+}
+
 async function deliver(manifest, belPath, packingListPath, quantityWarnings = []) {
   const accessToken = await getAccessToken({
     clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID', process.env.GMAIL_OAUTH_CLIENT_ID),
@@ -295,12 +305,12 @@ async function main() {
     process.env.PORTAL_PO,
     mode === 'navigate-only',
   );
-  if (['navigate-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
-    if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
+  if (['navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
+    if (mode === 'submit-one' || mode === 'deliver-only') throw new Error(`${mode} found no fresh manifest for the requested PO`);
     console.log('No fresh Portal handoff manifests found.');
     return;
   }
-  if (mode === 'submit-one' && manifests.length !== 1) throw new Error('submit-one requires exactly one matching manifest');
+  if ((mode === 'submit-one' || mode === 'deliver-only') && manifests.length !== 1) throw new Error(`${mode} requires exactly one matching manifest`);
 
   const headless = process.env.PORTAL_HEADLESS !== '0';
   const browserChannel = process.env.PORTAL_BROWSER_CHANNEL?.trim() || undefined;
@@ -323,6 +333,17 @@ async function main() {
       if (mode === 'navigate-only') {
         await page.locator(config.selectors.sku).waitFor({ state: 'visible' });
         console.log(`PO ${manifest.po} carton-entry UI is available.`);
+        continue;
+      }
+      if (mode === 'deliver-only') {
+        // Read-only recovery for a PO submitted outside this run: fetch the
+        // Portal's labels and packing list and email them. No Portal writes
+        // and no submission-state changes.
+        if (!portalState.submitted) throw new Error(`PO ${manifest.po} is not Submitted in the Portal; deliver-only has nothing to fetch`);
+        const { belPath, packingListPath, validation } = await downloadPortalDocuments(page, config, manifest);
+        if (process.env.DRY_RUN === '1') console.log(`[dry-run] deliver PO ${manifest.po}: ${validation.pages} BELs validated; email not sent.`);
+        else await deliver(manifest, belPath, packingListPath);
+        console.log(`PO ${manifest.po} documents downloaded${process.env.DRY_RUN === '1' ? '' : ' and delivered'} (${validation.pages} BELs).`);
         continue;
       }
       if (portalState.submitted) {
@@ -361,12 +382,7 @@ async function main() {
         state = 'portal-submitted';
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-generated');
         state = 'bels-generated';
-        const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
-        const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
-        const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
-        const stampedPackingList = await stampPortalPackingList(await readFile(packingListPath), manifest);
-        await writeFile(packingListPath, stampedPackingList);
-        const validation = await validateBelPdf(belPath, manifest);
+        const { belPath, packingListPath, validation } = await downloadPortalDocuments(page, config, manifest);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
         state = 'bels-downloaded';
         await deliver(manifest, belPath, packingListPath, quantityWarnings);

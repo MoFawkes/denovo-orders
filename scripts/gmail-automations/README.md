@@ -154,7 +154,10 @@ is replaced by a `[dry-run]` log line.
 
 Portal rollout is deliberately separate from `dry_run`: `validate-config`
 does not open a browser; `login-smoke` stops after MFA; `navigate-only` opens
-the PO without changing it; `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
+the PO without changing it; `deliver-only` re-downloads the labels and Portal
+packing list for one already-Submitted PO and emails them, without changing the
+Portal or the submission state (it needs that PO's handoff, so pass
+`portal_run_id` if the handoff came from an earlier run); `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
 through the protected environment. Use the read-only modes before enabling submission. Scheduled Portal
 submission stays disabled unless `PORTAL_SCHEDULED_ENABLED=1`.
 
