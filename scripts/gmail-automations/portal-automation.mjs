@@ -151,7 +151,10 @@ async function readPurchaseOrderStatus(page, config, po) {
   // The Portal renders each PO as <tr role="button">, so getByRole('row') never matches.
   const row = page.locator('tbody tr').filter({ hasText: po }).first();
   await row.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
-  return { submitted: /\bSubmitted\b/i.test((await row.textContent()) ?? '') };
+  // Compare whole cells: the row's textContent joins cells with no separator
+  // ("…Denovo ApparelSubmitted"), which hides the status from a word match.
+  const cells = await row.locator('td').allTextContents();
+  return { submitted: cells.some((cell) => /^submitted$/i.test(cell.trim())) };
 }
 
 async function chooseOption(page, control, matcher) {
