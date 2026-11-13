@@ -182,10 +182,19 @@ async function addCarton(page, config, carton) {
 async function validateAndSubmit(page, config, onBeforeSubmit) {
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  if (await dialog.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await dialog.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) {
     const warnings = (await dialog.textContent())?.trim() ?? '';
     console.warn(`Portal validation warnings: ${warnings}`);
-    await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+    // The live dialog only lists the issues and has a close (X) button; there
+    // is no Confirm. Blocking errors leave Submit disabled, which stops the
+    // run at the Submit click below before anything is submitted.
+    const confirm = dialog.getByRole('button', { name: /^(confirm|continue|proceed|yes)$/i });
+    if (await confirm.count()) await confirm.first().click();
+    else await page.keyboard.press('Escape');
+    if (!await dialog.waitFor({ state: 'hidden', timeout: 3000 }).then(() => true, () => false)) {
+      await dialog.getByRole('button').first().click();
+      await dialog.waitFor({ state: 'hidden', timeout: config.timeouts.actionMs });
+    }
   }
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   onBeforeSubmit();
