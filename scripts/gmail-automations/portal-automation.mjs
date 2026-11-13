@@ -13,6 +13,7 @@ import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearP
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines } from './lib/portal-quantity.mjs';
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
@@ -71,6 +72,11 @@ async function login(page, config) {
 }
 
 async function openWizard(page, config, po) {
+  // The wizard's own data call lists every PO line with its ordered quantity.
+  const linesPromise = page.waitForResponse(
+    (candidate) => candidate.url().includes('purchaseOrders.single') && candidate.ok(),
+    { timeout: config.timeouts.navigationMs },
+  ).then(async (candidate) => extractPurchaseOrderLines(await candidate.json())).catch(() => null);
   const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
@@ -85,6 +91,7 @@ async function openWizard(page, config, po) {
     submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
     sampleApproved: parsePortalSampleApproval(pageText),
+    lines: await linesPromise,
   };
 }
 
@@ -153,8 +160,9 @@ async function chooseSkuForSize(page, config, carton) {
     await sku.click();
     await sku.fill(carton.baseSku);
     await page.getByRole('option', { name: optionText, exact: true }).click();
-    const portalSize = await page.locator(config.selectors.size).inputValue().catch(async () =>
-      (await page.locator(config.selectors.size).textContent()) ?? '');
+    // The wizard shows the selected SKU's size as plain text beside the SKU
+    // field (third column of the entry row), not as an input.
+    const portalSize = (await page.locator(config.selectors.size).last().textContent()) ?? '';
     if (portalSize.trim().toUpperCase() === carton.size.trim().toUpperCase()) return;
   }
   throw new Error(`Portal has no ${carton.baseSku} SKU whose derived size is ${carton.size}`);
@@ -162,12 +170,9 @@ async function chooseSkuForSize(page, config, carton) {
 
 async function addCarton(page, config, carton) {
   await chooseSkuForSize(page, config, carton);
+  // Quantities are checked against the PO lines for the whole manifest before
+  // the first carton is added (see checkPortalQuantities).
   await page.locator(config.selectors.cartonQuantity).fill(String(carton.quantity));
-  const remainingText = await page.getByText(/\d+\s+Remaining/i).first().textContent().catch(() => null);
-  if (remainingText) {
-    const remaining = Number(remainingText.match(/\d+/)?.[0]);
-    if (Number.isFinite(remaining) && carton.quantity > remaining) throw new Error(`carton ${carton.cartonId} exceeds Portal remaining quantity`);
-  }
   if (carton.cartonSize !== 'BDCM1') {
     await chooseOption(page, page.locator(config.selectors.cartonSize), new RegExp(`^${carton.cartonSize}$`, 'i'));
   }
@@ -177,15 +182,37 @@ async function addCarton(page, config, carton) {
 async function validateAndSubmit(page, config, onBeforeSubmit) {
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  if (await dialog.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await dialog.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) {
     const warnings = (await dialog.textContent())?.trim() ?? '';
     console.warn(`Portal validation warnings: ${warnings}`);
-    await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+    // The live dialog only lists the issues and has a close (X) button; there
+    // is no Confirm. Blocking errors leave Submit disabled, which stops the
+    // run at the Submit click below before anything is submitted.
+    const confirm = dialog.getByRole('button', { name: /^(confirm|continue|proceed|yes)$/i });
+    if (await confirm.count()) await confirm.first().click();
+    else await page.keyboard.press('Escape');
+    if (!await dialog.waitFor({ state: 'hidden', timeout: 3000 }).then(() => true, () => false)) {
+      await dialog.getByRole('button').first().click();
+      await dialog.waitFor({ state: 'hidden', timeout: config.timeouts.actionMs });
+    }
   }
+  const saved = page.waitForResponse(
+    (candidate) => candidate.url().includes('cartons.save'), { timeout: config.timeouts.actionMs },
+  );
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  if (!(await saved).ok()) throw new Error('Portal did not save the cartons');
   onBeforeSubmit();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
-  await page.getByText('Cartons submitted successfully!', { exact: true }).waitFor({ timeout: config.timeouts.actionMs });
+  // When there are warnings the Portal shows them again after Submit, this
+  // time with Cancel / Confirm; nothing is submitted until Confirm is clicked.
+  const confirm = page.getByRole('dialog').getByRole('button', { name: /^confirm$/i });
+  if (await confirm.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) await confirm.click();
+  // Accept either the success message or the wizard switching to its
+  // submitted state, so a reworded message cannot hide a real submission.
+  await Promise.any([
+    page.getByText(/submitted successfully/i).first().waitFor({ timeout: config.timeouts.navigationMs }),
+    page.getByRole('button', { name: 'Unsubmit', exact: true }).waitFor({ timeout: config.timeouts.navigationMs }),
+  ]).catch(() => { throw new Error('Portal did not confirm the submission after Submit was clicked'); });
 }
 
 async function downloadFromButton(page, name, directory, filename, timeout) {
@@ -197,7 +224,7 @@ async function downloadFromButton(page, name, directory, filename, timeout) {
   return path;
 }
 
-async function deliver(manifest, belPath, packingListPath) {
+async function deliver(manifest, belPath, packingListPath, quantityWarnings = []) {
   const accessToken = await getAccessToken({
     clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID', process.env.GMAIL_OAUTH_CLIENT_ID),
     clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET', process.env.GMAIL_OAUTH_CLIENT_SECRET),
@@ -210,7 +237,8 @@ async function deliver(manifest, belPath, packingListPath) {
     replyTo: latest,
     to: getHeader(latest, 'From'),
     subject: getHeader(latest, 'Subject') || `Portal labels ${manifest.po}`,
-    body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.`,
+    body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.` +
+      (quantityWarnings.length ? `\n\nQuantity warnings (submitted within tolerance):\n${quantityWarnings.map((warning) => `- ${warning}`).join('\n')}` : ''),
     attachments: [
       { filename: `${manifest.po}_BELs.pdf`, mimeType: 'application/pdf', buffer: await readFile(belPath) },
       { filename: `${manifest.po}_packing_list.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: await readFile(packingListPath) },
@@ -314,7 +342,19 @@ async function main() {
       if (!claim.claimed) throw new Error(`PO ${manifest.po} is claimed by another runner`);
       let submitted = false;
       let state = 'claimed';
+      let quantityWarnings = [];
       try {
+        // Cartons saved by an earlier attempt or by hand are not visible to this
+        // script; adding the manifest on top of them would duplicate cartons.
+        if (!await page.getByText('No cartons available', { exact: true }).isVisible().catch(() => false)) {
+          throw new Error(`PO ${manifest.po} already has cartons entered in the Portal; clear them there before retrying`);
+        }
+        const quantityCheck = checkPortalQuantities(portalState.lines, manifest.cartons);
+        for (const warning of quantityCheck.warnings) console.warn(`Quantity warning — PO ${manifest.po}: ${warning}`);
+        if (quantityCheck.errors.length) {
+          throw new Error(`PO ${manifest.po} quantities are outside tolerance: ${quantityCheck.errors.join('; ')}`);
+        }
+        quantityWarnings = quantityCheck.warnings;
         for (const carton of manifest.cartons) await addCarton(page, config, carton);
         await validateAndSubmit(page, config, () => { submitted = true; });
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'portal-submitted', { confirmedBy: 'success-toast' });
@@ -329,7 +369,7 @@ async function main() {
         const validation = await validateBelPdf(belPath, manifest);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
         state = 'bels-downloaded';
-        await deliver(manifest, belPath, packingListPath);
+        await deliver(manifest, belPath, packingListPath, quantityWarnings);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'delivered');
         console.log(`PO ${manifest.po} submitted and delivered (${validation.pages} BELs).`);
       } catch (error) {
