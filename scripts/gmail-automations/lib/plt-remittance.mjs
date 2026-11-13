@@ -15,11 +15,17 @@ export function validateRemittance(input) {
   }
   if (!Number.isSafeInteger(input.totalPence) || input.totalPence < 0) fail('invalid remittance total');
   const seen = new Set();
-  const lines = input.lines.map(line => {
-    if (!validDate(line.date) || !['PI', 'PC'].includes(line.type) ||
-        !/^[A-Za-z0-9-]{1,50}$/.test(line.reference ?? '') ||
-        !Number.isSafeInteger(line.amountPence) || line.amountPence <= 0 ||
-        !(line.po === 'Discount' || /^\d{6,10}$/.test(line.po ?? ''))) fail('invalid or unsupported line');
+  const lines = input.lines.map((line, index) => {
+    // Name the line and the failing fields so a Needs Review email can be
+    // resolved from the log without re-reading the PDF by trial and error.
+    const bad = [
+      !validDate(line?.date) && `date ${JSON.stringify(line?.date)}`,
+      !['PI', 'PC'].includes(line?.type) && `type ${JSON.stringify(line?.type)}`,
+      !/^[A-Za-z0-9-]{1,50}$/.test(line?.reference ?? '') && `reference ${JSON.stringify(line?.reference)}`,
+      !(Number.isSafeInteger(line?.amountPence) && line.amountPence > 0) && `amountPence ${JSON.stringify(line?.amountPence)}`,
+      !(line?.po === 'Discount' || /^\d{6,10}$/.test(line?.po ?? '')) && `po ${JSON.stringify(line?.po)}`,
+    ].filter(Boolean);
+    if (bad.length) fail(`invalid or unsupported line ${index + 1} (reference ${JSON.stringify(line?.reference)}): ${bad.join(', ')}`);
     if (line.type === 'PI' && !/^\d+$/.test(line.reference)) fail('invoice reference must be numeric');
     const normalized = { date: line.date, po: line.po === 'Discount' ? 'Discount' : numericRef(line.po),
       reference: line.type === 'PI' ? numericRef(line.reference) : clean(line.reference), type: line.type, amountPence: line.amountPence };

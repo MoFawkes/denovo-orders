@@ -160,3 +160,15 @@ test('requires exact sender and Gmail domain authentication', () => {
   message.payload.headers[1].value='mx.google.com; dkim=fail; dmarc=fail header.from=prettylittlething.com';
   assert.equal(isTrustedRemittance(message,['accounts@prettylittlething.com']),false);
 });
+
+test('an unsupported remittance line names the line and the failing field', async () => {
+  const { validateRemittance } = await import('../lib/plt-remittance.mjs');
+  assert.throws(() => validateRemittance({
+    uncertain: false, currency: 'GBP', supplierCode: 'DEN0203A', payer: 'prettylittlething.com Limited',
+    date: '2026-10-21', reference: '17', totalPence: 100,
+    lines: [
+      { date: '2026-09-01', po: '70062960', reference: '267', type: 'PI', amountPence: 100 },
+      { date: '2026-09-01', po: 'Returns', reference: '268', type: 'PI', amountPence: 100 },
+    ],
+  }), /invalid or unsupported line 2 \(reference "268"\): po "Returns"/);
+});

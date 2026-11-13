@@ -31,3 +31,67 @@ test('packing-list DB wrapper includes the action in HTTP errors', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('packing-list DB wrapper retries transient gateway errors on reads', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return { ok: false, status: 520, text: async () => '<html>520</html>' };
+    if (calls === 2) throw new Error('fetch failed');
+    return { ok: true, json: async () => ({ execution: { status: 'completed' } }) };
+  };
+  try {
+    const { callPackingListDb } = await import(`../lib/automation-db.mjs?retry=${Date.now()}`);
+    const result = await callPackingListDb('checkpoint-get', {}, { retryDelaysMs: [0, 0, 0] });
+    assert.equal(calls, 3);
+    assert.equal(result.execution.status, 'completed');
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test('packing-list DB wrapper gives up after the retries and shortens gateway pages', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return { ok: false, status: 520, text: async () => `<html>\n${'x'.repeat(5000)}</html>` };
+  };
+  try {
+    const { callPackingListDb } = await import(`../lib/automation-db.mjs?exhaust=${Date.now()}`);
+    await assert.rejects(callPackingListDb('checkpoint-get', {}, { retryDelaysMs: [0, 0] }), (error) => {
+      assert.match(error.message, /packing-list-db checkpoint-get failed: HTTP 520/);
+      assert.ok(error.message.length < 500);
+      return true;
+    });
+    assert.equal(calls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test('packing-list DB wrapper never retries writes or non-transient errors', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return { ok: false, status: 520, text: async () => 'gateway' };
+  };
+  try {
+    const { callPackingListDb } = await import(`../lib/automation-db.mjs?writes=${Date.now()}`);
+    await assert.rejects(callPackingListDb('invoice-allocate', {}, { retryDelaysMs: [0, 0] }), /HTTP 520/);
+    assert.equal(calls, 1);
+    globalThis.fetch = async () => { calls++; return { ok: false, status: 401, text: async () => 'unauthorized' }; };
+    await assert.rejects(callPackingListDb('checkpoint-get', {}, { retryDelaysMs: [0, 0] }), /HTTP 401/);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
