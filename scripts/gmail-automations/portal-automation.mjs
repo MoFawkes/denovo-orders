@@ -196,10 +196,23 @@ async function validateAndSubmit(page, config, onBeforeSubmit) {
       await dialog.waitFor({ state: 'hidden', timeout: config.timeouts.actionMs });
     }
   }
+  const saved = page.waitForResponse(
+    (candidate) => candidate.url().includes('cartons.save'), { timeout: config.timeouts.actionMs },
+  );
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  if (!(await saved).ok()) throw new Error('Portal did not save the cartons');
   onBeforeSubmit();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
-  await page.getByText('Cartons submitted successfully!', { exact: true }).waitFor({ timeout: config.timeouts.actionMs });
+  // When there are warnings the Portal shows them again after Submit, this
+  // time with Cancel / Confirm; nothing is submitted until Confirm is clicked.
+  const confirm = page.getByRole('dialog').getByRole('button', { name: /^confirm$/i });
+  if (await confirm.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) await confirm.click();
+  // Accept either the success message or the wizard switching to its
+  // submitted state, so a reworded message cannot hide a real submission.
+  await Promise.any([
+    page.getByText(/submitted successfully/i).first().waitFor({ timeout: config.timeouts.navigationMs }),
+    page.getByRole('button', { name: 'Unsubmit', exact: true }).waitFor({ timeout: config.timeouts.navigationMs }),
+  ]).catch(() => { throw new Error('Portal did not confirm the submission after Submit was clicked'); });
 }
 
 async function downloadFromButton(page, name, directory, filename, timeout) {
