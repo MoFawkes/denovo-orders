@@ -107,3 +107,12 @@ test('does nothing when the Portal has no active filters', async () => {
   }, 30000);
   assert.equal(cleared, false);
 });
+test('Portal URL matcher ignores the Portal address inside a Cognito redirect_uri', async () => {
+  const { portalUrlMatcher } = await import('../lib/portal-access.mjs');
+  const arrived = portalUrlMatcher('https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders');
+  assert.equal(arrived(new URL('https://isc-portal.auth.eu-west-1.amazoncognito.com/login/continue?redirect_uri=https%3A%2F%2Fisc-portal.debenhamsgroup.com%2Foauth2%2Fidpresponse')), false);
+  assert.equal(arrived(new URL('https://isc-portal.auth.eu-west-1.amazoncognito.com/mfa/totp?redirect_uri=https://isc-portal.debenhamsgroup.com/oauth2/idpresponse')), false);
+  assert.equal(arrived(new URL('https://isc-portal.debenhamsgroup.com/oauth2/idpresponse?code=x')), true);
+  assert.equal(arrived(new URL('https://isc-portal.debenhamsgroup.com/en/ssccLabels/purchaseOrders')), true);
+  assert.equal(arrived('not a url'), false);
+});

@@ -9,7 +9,7 @@ import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
 import { claimPortalSubmission, transitionPortalSubmission } from './lib/portal-state.mjs';
 import { validateBelPdf } from './lib/bel-validation.mjs';
-import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearPortalSearchFilters } from './lib/portal-access.mjs';
+import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearPortalSearchFilters, portalUrlMatcher } from './lib/portal-access.mjs';
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
@@ -24,7 +24,7 @@ function requireSecret(name, value) {
 async function completeCognitoAccountConfirmation(page, config) {
   if (!page.url().includes('amazoncognito.com')) return false;
   await page.getByRole('button', { name: /Sign in as /i }).click();
-  await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+  await page.waitForURL(portalUrlMatcher(config.urls.purchaseOrders), { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito account confirmation callback');
   await redirectToPortalRoot(page, config.urls.purchaseOrders, config.timeouts.navigationMs);
   return true;
@@ -62,7 +62,7 @@ async function login(page, config) {
     await totp.fill(generateTotp(requireSecret('PORTAL_TOTP_SECRET', process.env.PORTAL_TOTP_SECRET)));
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
-  await page.waitForURL(/isc-portal\.debenhamsgroup\.com/, { timeout: config.timeouts.navigationMs });
+  await page.waitForURL(portalUrlMatcher(config.urls.purchaseOrders), { timeout: config.timeouts.navigationMs });
   await assertPortalAccess(null, page, 'Cognito callback');
 
   // Cognito can return to its account-confirmation screen more than once.
