@@ -126,7 +126,8 @@ async function readPurchaseOrderStatus(page, config, po) {
   const addOption = page.getByRole('option').filter({ hasText: 'Add' }).first();
   await addOption.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   await addOption.click();
-  const row = page.getByRole('row').filter({ hasText: po }).first();
+  // The Portal renders each PO as <tr role="button">, so getByRole('row') never matches.
+  const row = page.locator('tbody tr').filter({ hasText: po }).first();
   await row.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   return { submitted: /\bSubmitted\b/i.test((await row.textContent()) ?? '') };
 }
