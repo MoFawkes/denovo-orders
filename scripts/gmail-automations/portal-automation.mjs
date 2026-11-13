@@ -13,6 +13,7 @@ import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearP
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines } from './lib/portal-quantity.mjs';
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
@@ -71,6 +72,11 @@ async function login(page, config) {
 }
 
 async function openWizard(page, config, po) {
+  // The wizard's own data call lists every PO line with its ordered quantity.
+  const linesPromise = page.waitForResponse(
+    (candidate) => candidate.url().includes('purchaseOrders.single') && candidate.ok(),
+    { timeout: config.timeouts.navigationMs },
+  ).then(async (candidate) => extractPurchaseOrderLines(await candidate.json())).catch(() => null);
   const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
@@ -85,6 +91,7 @@ async function openWizard(page, config, po) {
     submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
     sampleApproved: parsePortalSampleApproval(pageText),
+    lines: await linesPromise,
   };
 }
 
@@ -163,12 +170,9 @@ async function chooseSkuForSize(page, config, carton) {
 
 async function addCarton(page, config, carton) {
   await chooseSkuForSize(page, config, carton);
+  // Quantities are checked against the PO lines for the whole manifest before
+  // the first carton is added (see checkPortalQuantities).
   await page.locator(config.selectors.cartonQuantity).fill(String(carton.quantity));
-  const remainingText = await page.getByText(/\d+\s+Remaining/i).first().textContent().catch(() => null);
-  if (remainingText) {
-    const remaining = Number(remainingText.match(/\d+/)?.[0]);
-    if (Number.isFinite(remaining) && carton.quantity > remaining) throw new Error(`carton ${carton.cartonId} exceeds Portal remaining quantity`);
-  }
   if (carton.cartonSize !== 'BDCM1') {
     await chooseOption(page, page.locator(config.selectors.cartonSize), new RegExp(`^${carton.cartonSize}$`, 'i'));
   }
@@ -198,7 +202,7 @@ async function downloadFromButton(page, name, directory, filename, timeout) {
   return path;
 }
 
-async function deliver(manifest, belPath, packingListPath) {
+async function deliver(manifest, belPath, packingListPath, quantityWarnings = []) {
   const accessToken = await getAccessToken({
     clientId: requireSecret('GMAIL_OAUTH_CLIENT_ID', process.env.GMAIL_OAUTH_CLIENT_ID),
     clientSecret: requireSecret('GMAIL_OAUTH_CLIENT_SECRET', process.env.GMAIL_OAUTH_CLIENT_SECRET),
@@ -211,7 +215,8 @@ async function deliver(manifest, belPath, packingListPath) {
     replyTo: latest,
     to: getHeader(latest, 'From'),
     subject: getHeader(latest, 'Subject') || `Portal labels ${manifest.po}`,
-    body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.`,
+    body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.` +
+      (quantityWarnings.length ? `\n\nQuantity warnings (submitted within tolerance):\n${quantityWarnings.map((warning) => `- ${warning}`).join('\n')}` : ''),
     attachments: [
       { filename: `${manifest.po}_BELs.pdf`, mimeType: 'application/pdf', buffer: await readFile(belPath) },
       { filename: `${manifest.po}_packing_list.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: await readFile(packingListPath) },
@@ -315,12 +320,19 @@ async function main() {
       if (!claim.claimed) throw new Error(`PO ${manifest.po} is claimed by another runner`);
       let submitted = false;
       let state = 'claimed';
+      let quantityWarnings = [];
       try {
         // Cartons saved by an earlier attempt or by hand are not visible to this
         // script; adding the manifest on top of them would duplicate cartons.
         if (!await page.getByText('No cartons available', { exact: true }).isVisible().catch(() => false)) {
           throw new Error(`PO ${manifest.po} already has cartons entered in the Portal; clear them there before retrying`);
         }
+        const quantityCheck = checkPortalQuantities(portalState.lines, manifest.cartons);
+        for (const warning of quantityCheck.warnings) console.warn(`Quantity warning — PO ${manifest.po}: ${warning}`);
+        if (quantityCheck.errors.length) {
+          throw new Error(`PO ${manifest.po} quantities are outside tolerance: ${quantityCheck.errors.join('; ')}`);
+        }
+        quantityWarnings = quantityCheck.warnings;
         for (const carton of manifest.cartons) await addCarton(page, config, carton);
         await validateAndSubmit(page, config, () => { submitted = true; });
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'portal-submitted', { confirmedBy: 'success-toast' });
@@ -335,7 +347,7 @@ async function main() {
         const validation = await validateBelPdf(belPath, manifest);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
         state = 'bels-downloaded';
-        await deliver(manifest, belPath, packingListPath);
+        await deliver(manifest, belPath, packingListPath, quantityWarnings);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'delivered');
         console.log(`PO ${manifest.po} submitted and delivered (${validation.pages} BELs).`);
       } catch (error) {
