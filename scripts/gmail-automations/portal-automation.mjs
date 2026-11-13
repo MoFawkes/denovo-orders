@@ -153,8 +153,9 @@ async function chooseSkuForSize(page, config, carton) {
     await sku.click();
     await sku.fill(carton.baseSku);
     await page.getByRole('option', { name: optionText, exact: true }).click();
-    const portalSize = await page.locator(config.selectors.size).inputValue().catch(async () =>
-      (await page.locator(config.selectors.size).textContent()) ?? '');
+    // The wizard shows the selected SKU's size as plain text beside the SKU
+    // field (third column of the entry row), not as an input.
+    const portalSize = (await page.locator(config.selectors.size).last().textContent()) ?? '';
     if (portalSize.trim().toUpperCase() === carton.size.trim().toUpperCase()) return;
   }
   throw new Error(`Portal has no ${carton.baseSku} SKU whose derived size is ${carton.size}`);
@@ -315,6 +316,11 @@ async function main() {
       let submitted = false;
       let state = 'claimed';
       try {
+        // Cartons saved by an earlier attempt or by hand are not visible to this
+        // script; adding the manifest on top of them would duplicate cartons.
+        if (!await page.getByText('No cartons available', { exact: true }).isVisible().catch(() => false)) {
+          throw new Error(`PO ${manifest.po} already has cartons entered in the Portal; clear them there before retrying`);
+        }
         for (const carton of manifest.cartons) await addCarton(page, config, carton);
         await validateAndSubmit(page, config, () => { submitted = true; });
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'portal-submitted', { confirmedBy: 'success-toast' });

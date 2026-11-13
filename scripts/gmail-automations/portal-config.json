@@ -9,9 +9,9 @@
     "password": "input[name=password]",
     "totp": "input[name=totp], input[name=code], input[autocomplete=one-time-code]",
     "sku": "#sku",
-    "size": "#size, input[name=size]",
+    "size": "div.MuiGrid-container:has(> div #sku) > div:nth-child(3) p",
     "cartonQuantity": "input[name=cartonQuantity], #cartonQuantity",
-    "cartonSize": "#cartonSize, [name=cartonSize]",
+    "cartonSize": "[name=cartonSize] input",
     "poNumberFilter": "#purchaseOrderId input",
     "poNumberButton": "body > div.MuiBox-root.mui-t3xolk > div.MuiBox-root.mui-11dfn0q > main > div > div > div:nth-child(2) > div > div > div:nth-child(1) > div > button"
   },
