@@ -76,6 +76,10 @@ async function openWizard(page, config, po) {
   });
   await assertPortalAccess(response, page, `carton-wizard navigation for PO ${po}`);
   await page.getByRole('button', { name: /Back/i }).waitFor({ timeout: config.timeouts.actionMs });
+  // The wizard shows its frame (including Back) while the PO is still loading.
+  // Reading the Submit/Unsubmit buttons before then reports "not submitted"
+  // for a PO that is in fact already submitted.
+  await page.getByText('Loading purchase order data').waitFor({ state: 'hidden', timeout: config.timeouts.navigationMs });
   const pageText = await page.locator('body').innerText();
   return {
     submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
