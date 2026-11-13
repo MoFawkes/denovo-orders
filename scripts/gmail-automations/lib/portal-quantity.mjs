@@ -46,3 +46,14 @@ export function extractPurchaseOrderLines(batch) {
   }
   return null;
 }
+
+// The same batch carries the shipment for the PO, when one exists. Its
+// labelStatus is the Portal's own record: 'inProgress' while cartons are only
+// saved, 'submitted' once they have been submitted.
+export function extractLabelStatus(batch) {
+  for (const entry of Array.isArray(batch) ? batch : []) {
+    const json = entry?.result?.data?.json;
+    if (json && typeof json === 'object' && 'labelStatus' in json) return json.labelStatus ?? null;
+  }
+  return null;
+}

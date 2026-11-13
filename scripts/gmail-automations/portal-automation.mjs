@@ -13,7 +13,7 @@ import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearP
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
-import { checkPortalQuantities, extractPurchaseOrderLines } from './lib/portal-quantity.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus } from './lib/portal-quantity.mjs';
 
 const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
@@ -73,10 +73,13 @@ async function login(page, config) {
 
 async function openWizard(page, config, po) {
   // The wizard's own data call lists every PO line with its ordered quantity.
-  const linesPromise = page.waitForResponse(
+  const dataPromise = page.waitForResponse(
     (candidate) => candidate.url().includes('purchaseOrders.single') && candidate.ok(),
     { timeout: config.timeouts.navigationMs },
-  ).then(async (candidate) => extractPurchaseOrderLines(await candidate.json())).catch(() => null);
+  ).then(async (candidate) => {
+    const batch = await candidate.json();
+    return { lines: extractPurchaseOrderLines(batch), labelStatus: extractLabelStatus(batch), loaded: true };
+  }).catch(() => ({ lines: null, labelStatus: null, loaded: false }));
   const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
@@ -88,12 +91,18 @@ async function openWizard(page, config, po) {
   // for that rather than for the indicator to go away.
   await page.getByRole('button', { name: /^(Submit|Unsubmit)$/ }).first()
     .waitFor({ state: 'visible', timeout: config.timeouts.navigationMs });
+  // The button bar can show Submit for a moment before it switches to
+  // Unsubmit, so take "submitted" from the Portal's own shipment data and
+  // only fall back to the buttons when that data could not be read.
+  const data = await dataPromise;
+  const unsubmit = page.getByRole('button', { name: 'Unsubmit', exact: true });
+  if (data.labelStatus === 'submitted') await unsubmit.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   const pageText = await page.locator('body').innerText();
   return {
-    submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
+    submitted: data.loaded ? data.labelStatus === 'submitted' : await unsubmit.isVisible().catch(() => false),
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
     sampleApproved: parsePortalSampleApproval(pageText),
-    lines: await linesPromise,
+    lines: data.lines,
   };
 }
 
