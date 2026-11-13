@@ -1,11 +1,12 @@
 // Compare the packed cartons with the Portal's purchase-order lines before
-// anything is entered. Small differences are normal (a unit over, a few
-// short); large ones usually mean a wrong packing list and must stop the run.
-export const DEFAULT_QUANTITY_TOLERANCE = { maxOver: 5, maxUnder: 10 };
+// anything is entered. Orders are sometimes cut short, so packing under the
+// ordered quantity only warns. Packing more than a few units over usually
+// means a wrong packing list and stops the run.
+export const DEFAULT_QUANTITY_TOLERANCE = { maxOver: 5 };
 
 const key = (value) => String(value ?? '').trim().toUpperCase();
 
-export function checkPortalQuantities(lines, cartons, { maxOver, maxUnder } = DEFAULT_QUANTITY_TOLERANCE) {
+export function checkPortalQuantities(lines, cartons, { maxOver } = DEFAULT_QUANTITY_TOLERANCE) {
   if (!Array.isArray(lines) || lines.length === 0) throw new Error('Portal purchase-order lines are unavailable');
   const groups = new Map();
   for (const carton of cartons) {
@@ -25,15 +26,13 @@ export function checkPortalQuantities(lines, cartons, { maxOver, maxUnder } = DE
     const difference = group.packed - ordered;
     if (difference > maxOver) errors.push(`${id}: packed ${group.packed} is ${difference} over the ordered ${ordered} (limit ${maxOver})`);
     else if (difference > 0) warnings.push(`${id}: packed ${group.packed} is ${difference} over the ordered ${ordered}`);
-    else if (-difference > maxUnder) errors.push(`${id}: packed ${group.packed} is ${-difference} under the ordered ${ordered} (limit ${maxUnder})`);
     else if (difference < 0) warnings.push(`${id}: packed ${group.packed} is ${-difference} under the ordered ${ordered}`);
   }
   for (const line of lines) {
     if (matched.has(line)) continue;
     const ordered = Number(line.quantity);
     const id = `${key(line.sku)} size ${key(line.size)}`;
-    if (ordered > maxUnder) errors.push(`${id}: nothing packed against the ordered ${ordered} (limit ${maxUnder} under)`);
-    else if (ordered > 0) warnings.push(`${id}: nothing packed against the ordered ${ordered}`);
+    if (ordered > 0) warnings.push(`${id}: nothing packed against the ordered ${ordered}`);
   }
   return { warnings, errors };
 }
