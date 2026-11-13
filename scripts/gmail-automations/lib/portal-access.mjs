@@ -22,6 +22,17 @@ export async function assertPortalAccess(response, page, stage) {
   );
 }
 
+// Match the Portal by hostname only. The Cognito sign-in URLs carry the Portal
+// address in their redirect_uri query string, so a substring or regex match
+// reports "arrived at the Portal" while the browser is still on Cognito. The
+// next navigation then cancels the sign-in before its callback completes.
+export function portalUrlMatcher(targetUrl) {
+  const portalHost = new URL(targetUrl).hostname;
+  return (url) => {
+    try { return new URL(String(url)).hostname === portalHost; } catch { return false; }
+  };
+}
+
 export async function redirectToPortalRoot(page, targetUrl, navigationMs) {
   const rootUrl = new URL('/', targetUrl).href;
   const rootResponse = await page.goto(rootUrl, {
