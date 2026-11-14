@@ -230,35 +230,67 @@ async function validateAndSubmit(page, config, onBeforeSubmit) {
 }
 
 // Saves what a wizard button produces. "Download Packing List" is a normal
-// file download, but "Print Labels" builds the PDF in the page and opens it in
-// a new tab as a blob: URL, which never raises a download event. Blob URLs are
-// readable from the page that created them, so fetch the bytes from there.
+// file download, but "Print Labels" builds the PDF in the page and shows it in
+// a new tab from a blob: URL, which never raises a download event and leaves
+// the tab reporting about:blank. So record the Blobs the page creates while
+// the button is handled and read the PDF's bytes straight from the page.
 export async function downloadFromButton(page, name, directory, filename, timeout) {
-  const downloaded = page.waitForEvent('download', { timeout }).then((download) => ({ download }), () => null);
-  const opened = page.waitForEvent('popup', { timeout }).then((popup) => ({ popup }), () => null);
-  await page.getByRole('button', { name, exact: true }).click();
-  const result = (await Promise.race([downloaded, opened])) ?? (await downloaded) ?? (await opened);
-  if (!result) throw new Error(`"${name}" produced neither a download nor a new tab within ${timeout}ms`);
-  const path = join(directory, filename);
-  if (result.download) {
-    await result.download.saveAs(path);
-    return path;
-  }
-  const { popup } = result;
-  await popup.waitForURL(/^blob:/, { timeout }).catch(() => {});
-  const blobUrl = popup.url();
-  if (!blobUrl.startsWith('blob:')) throw new Error(`"${name}" opened an unexpected tab: ${blobUrl.slice(0, 80)}`);
-  const base64 = await page.evaluate(async (url) => {
-    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
-    let binary = '';
-    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  await page.evaluate(() => {
+    window.__portalBlobs = [];
+    if (!window.__portalBlobHook) {
+      const createObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (object) => {
+        if (object instanceof Blob) window.__portalBlobs.push(object);
+        return createObjectURL(object);
+      };
+      window.__portalBlobHook = true;
     }
-    return btoa(binary);
-  }, blobUrl);
-  await writeFile(path, Buffer.from(base64, 'base64'));
-  await popup.close().catch(() => {});
-  return path;
+  });
+  const blobUrls = [];
+  const onRequest = (request) => { if (request.url().startsWith('blob:')) blobUrls.push(request.url()); };
+  page.context().on('request', onRequest);
+  try {
+    const downloaded = page.waitForEvent('download', { timeout }).then((download) => ({ download }), () => null);
+    const opened = page.waitForEvent('popup', { timeout }).then((popup) => ({ popup }), () => null);
+    await page.getByRole('button', { name, exact: true }).click();
+    const result = (await Promise.race([downloaded, opened])) ?? (await downloaded) ?? (await opened);
+    if (!result) throw new Error(`"${name}" produced neither a download nor a new tab within ${timeout}ms`);
+    const path = join(directory, filename);
+    if (result.download) {
+      await result.download.saveAs(path);
+      return path;
+    }
+    const deadline = Date.now() + timeout;
+    let base64 = null;
+    while (!base64 && Date.now() < deadline) {
+      base64 = await page.evaluate(async (urls) => {
+        const encode = (buffer) => {
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+          }
+          return btoa(binary);
+        };
+        const pdf = [...(window.__portalBlobs ?? [])].reverse().find((blob) => /pdf/i.test(blob.type) && blob.size > 0);
+        if (pdf) return encode(await pdf.arrayBuffer());
+        for (const url of [...urls].reverse()) {
+          try {
+            const response = await fetch(url);
+            if (response.ok) return encode(await response.arrayBuffer());
+          } catch { /* revoked or not readable from this page; try the next */ }
+        }
+        return null;
+      }, blobUrls);
+      if (!base64) await page.waitForTimeout(500);
+    }
+    await result.popup.close().catch(() => {});
+    if (!base64) throw new Error(`"${name}" opened a new tab but no PDF could be read from the page within ${timeout}ms`);
+    await writeFile(path, Buffer.from(base64, 'base64'));
+    return path;
+  } finally {
+    page.context().off('request', onRequest);
+  }
 }
 
 async function downloadPortalDocuments(page, config, manifest) {
