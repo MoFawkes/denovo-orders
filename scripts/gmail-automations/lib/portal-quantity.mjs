@@ -57,3 +57,12 @@ export function extractLabelStatus(batch) {
   }
   return null;
 }
+
+// Number of cartons the Portal already holds for the PO (saved or submitted).
+export function extractSavedCartonCount(batch) {
+  for (const entry of Array.isArray(batch) ? batch : []) {
+    const cartons = entry?.result?.data?.json?.masterCartons;
+    if (Array.isArray(cartons)) return cartons.length;
+  }
+  return 0;
+}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus } from '../lib/portal-quantity.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus, extractSavedCartonCount } from '../lib/portal-quantity.mjs';
 
 const lines = [
   { sku: 'CNK5852/197/72', size: '4', quantity: 30 },
@@ -50,4 +50,9 @@ test('reads the shipment label status from a tRPC batch', () => {
   assert.equal(extractLabelStatus([po, { result: { data: { json: { shipmentId: 1, labelStatus: 'inProgress' } } } }]), 'inProgress');
   assert.equal(extractLabelStatus([po, { result: { data: { json: null } } }]), null);
   assert.equal(extractLabelStatus(null), null);
+});
+
+test('counts the cartons the Portal already holds', () => {
+  assert.equal(extractSavedCartonCount([{ result: { data: { json: { purchaseOrderLines: lines } } } }, { result: { data: { json: { labelStatus: 'inProgress', masterCartons: [{}, {}, {}] } } } }]), 3);
+  assert.equal(extractSavedCartonCount([{ result: { data: { json: null } } }]), 0);
 });
