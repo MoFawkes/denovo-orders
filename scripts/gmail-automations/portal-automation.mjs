@@ -311,10 +311,14 @@ async function deliver(manifest, belPath, packingListPath, quantityWarnings = []
   });
   const thread = await getThread(accessToken, manifest.gmailThreadId);
   const latest = thread.messages.at(-1);
+  // The newest message is normally this mailbox's own confirmation, so
+  // replying to its sender would deliver the labels to ourselves. Address the
+  // reply to whoever last wrote in from outside.
+  const latestInbound = [...thread.messages].reverse().find((message) => !message.labelIds?.includes('SENT')) ?? latest;
   await sendReply(accessToken, {
     threadId: manifest.gmailThreadId,
     replyTo: latest,
-    to: getHeader(latest, 'From'),
+    to: getHeader(latestInbound, 'From'),
     subject: getHeader(latest, 'Subject') || `Portal labels ${manifest.po}`,
     body: `ISC Portal submission completed for PO ${manifest.po}. The validated BEL labels and official Portal packing list are attached. Print labels at 100% / Actual size.` +
       (quantityWarnings.length ? `\n\nQuantity warnings (submitted within tolerance):\n${quantityWarnings.map((warning) => `- ${warning}`).join('\n')}` : ''),
