@@ -157,7 +157,10 @@ does not open a browser; `login-smoke` stops after MFA; `navigate-only` opens
 the PO without changing it; `deliver-only` re-downloads the labels and Portal
 packing list for one already-Submitted PO and emails them, without changing the
 Portal or the submission state (it needs that PO's handoff, so pass
-`portal_run_id` if the handoff came from an earlier run); `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
+`portal_run_id` if the handoff came from an earlier run); `submit-saved`
+finishes one PO whose cartons are already saved in the Portal but not submitted
+(it adds no cartons, checks the saved count against the handoff, then validates,
+saves, submits, downloads and emails); `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
 through the protected environment. Use the read-only modes before enabling submission. Scheduled Portal
 submission runs when `PORTAL_SCHEDULED_ENABLED=1`, never when it is `0`, and
 otherwise only up to the `PORTAL_SCHEDULED_TRIAL_UNTIL` date set in the workflow

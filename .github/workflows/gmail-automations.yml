@@ -30,14 +30,14 @@ on:
       portal_mode:
         description: ISC Portal rollout mode (submitting mode uses the protected portal-submission environment)
         type: choice
-        options: [submit-fresh, disabled, validate-config, login-smoke, navigate-only, deliver-only, submit-one]
+        options: [submit-fresh, disabled, validate-config, login-smoke, navigate-only, deliver-only, submit-saved, submit-one]
         default: submit-fresh
       invoice_start:
         description: Optional next invoice number to carry on from (leave blank to continue automatically)
         type: string
         default: ''
       portal_po:
-        description: Required PO for submit-one and deliver-only; optional filter for navigate-only
+        description: Required PO for submit-one, submit-saved and deliver-only; optional filter for navigate-only
         type: string
         default: ''
       portal_run_id:

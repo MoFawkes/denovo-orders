@@ -14,9 +14,10 @@ import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearP
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
-import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus } from './lib/portal-quantity.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus, extractSavedCartonCount } from './lib/portal-quantity.mjs';
 
-const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled']);
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'deliver-only', 'submit-saved', 'submit-one', 'submit-fresh', 'scheduled']);
+const SINGLE_PO_MODES = new Set(['submit-one', 'deliver-only', 'submit-saved']);
 
 function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
@@ -79,8 +80,8 @@ async function openWizard(page, config, po) {
     { timeout: config.timeouts.navigationMs },
   ).then(async (candidate) => {
     const batch = await candidate.json();
-    return { lines: extractPurchaseOrderLines(batch), labelStatus: extractLabelStatus(batch), loaded: true };
-  }).catch(() => ({ lines: null, labelStatus: null, loaded: false }));
+    return { lines: extractPurchaseOrderLines(batch), labelStatus: extractLabelStatus(batch), savedCartons: extractSavedCartonCount(batch), loaded: true };
+  }).catch(() => ({ lines: null, labelStatus: null, savedCartons: null, loaded: false }));
   const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
@@ -104,6 +105,8 @@ async function openWizard(page, config, po) {
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
     sampleApproved: parsePortalSampleApproval(pageText),
     lines: data.lines,
+    labelStatus: data.labelStatus,
+    savedCartons: data.savedCartons,
   };
 }
 
@@ -211,11 +214,16 @@ async function validateAndSubmit(page, config, onBeforeSubmit) {
       await dialog.waitFor({ state: 'hidden', timeout: config.timeouts.actionMs });
     }
   }
-  const saved = page.waitForResponse(
-    (candidate) => candidate.url().includes('cartons.save'), { timeout: config.timeouts.actionMs },
-  );
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  if (!(await saved).ok()) throw new Error('Portal did not save the cartons');
+  // Save is disabled when the cartons on screen are already saved (the
+  // submit-saved path); there is then nothing to save before Submit.
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  if (await save.isEnabled()) {
+    const saved = page.waitForResponse(
+      (candidate) => candidate.url().includes('cartons.save'), { timeout: config.timeouts.actionMs },
+    );
+    await save.click();
+    if (!(await saved).ok()) throw new Error('Portal did not save the cartons');
+  }
   onBeforeSubmit();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   // When there are warnings the Portal shows them again after Submit, this
@@ -362,7 +370,7 @@ async function main() {
   if (!MODES.has(mode)) throw new Error(`unsupported PORTAL_RUN_MODE: ${mode}`);
   const config = await loadPortalConfig();
   console.log('Portal configuration is valid.');
-  if (process.env.DRY_RUN === '1' && ['submit-one', 'submit-fresh', 'scheduled'].includes(mode)) {
+  if (process.env.DRY_RUN === '1' && ['submit-saved', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode)) {
     throw new Error('Portal submission has no dry-run simulation; use navigate-only instead');
   }
   if (mode === 'validate-config') return;
@@ -375,12 +383,12 @@ async function main() {
     process.env.PORTAL_PO,
     mode === 'navigate-only',
   );
-  if (['navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
-    if (mode === 'submit-one' || mode === 'deliver-only') throw new Error(`${mode} found no fresh manifest for the requested PO`);
+  if (['navigate-only', 'deliver-only', 'submit-saved', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
+    if (SINGLE_PO_MODES.has(mode)) throw new Error(`${mode} found no fresh manifest for the requested PO`);
     console.log('No fresh Portal handoff manifests found.');
     return;
   }
-  if ((mode === 'submit-one' || mode === 'deliver-only') && manifests.length !== 1) throw new Error(`${mode} requires exactly one matching manifest`);
+  if (SINGLE_PO_MODES.has(mode) && manifests.length !== 1) throw new Error(`${mode} requires exactly one matching manifest`);
 
   const headless = process.env.PORTAL_HEADLESS !== '0';
   const browserChannel = process.env.PORTAL_BROWSER_CHANNEL?.trim() || undefined;
@@ -414,6 +422,22 @@ async function main() {
         if (process.env.DRY_RUN === '1') console.log(`[dry-run] deliver PO ${manifest.po}: ${validation.pages} BELs validated; email not sent.`);
         else await deliver(manifest, belPath, packingListPath);
         console.log(`PO ${manifest.po} documents downloaded${process.env.DRY_RUN === '1' ? '' : ' and delivered'} (${validation.pages} BELs).`);
+        continue;
+      }
+      if (mode === 'submit-saved') {
+        // Finishes a PO whose cartons are already saved in the Portal but not
+        // submitted (for example after a run stopped between Save and
+        // Submit). Adds no cartons and records no submission state: it
+        // validates, saves, submits, then downloads and emails the documents.
+        if (portalState.submitted) throw new Error(`PO ${manifest.po} is already Submitted in the Portal; use deliver-only`);
+        if (portalState.savedCartons !== manifest.expectedCartonCount) {
+          throw new Error(`PO ${manifest.po} has ${portalState.savedCartons ?? 'an unknown number of'} saved cartons in the Portal; the handoff expects ${manifest.expectedCartonCount}`);
+        }
+        await validateAndSubmit(page, config, () => {});
+        console.log(`PO ${manifest.po} submitted in the Portal from its saved cartons.`);
+        const { belPath, packingListPath, validation } = await downloadPortalDocuments(page, config, manifest);
+        await deliver(manifest, belPath, packingListPath);
+        console.log(`PO ${manifest.po} documents delivered (${validation.pages} BELs).`);
         continue;
       }
       if (portalState.submitted) {
