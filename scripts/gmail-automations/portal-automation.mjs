@@ -13,9 +13,9 @@ import { assertPortalAccess, recoverPortalRedirect, redirectToPortalRoot, clearP
 import { getAccessToken, getThread, getHeader, getOrCreateLabel, modifyThreadLabels, sendReply } from './lib/google.mjs';
 import { stampPortalPackingList } from './lib/portal-packing-list.mjs';
 import { parsePortalSampleApproval } from './lib/portal-sample-approval.mjs';
-import { checkPortalQuantities, extractPurchaseOrderLines } from './lib/portal-quantity.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus } from './lib/portal-quantity.mjs';
 
-const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'submit-one', 'submit-fresh', 'scheduled']);
+const MODES = new Set(['validate-config', 'login-smoke', 'navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled']);
 
 function requireSecret(name, value) {
   if (!value) throw new Error(`${name} is required`);
@@ -73,25 +73,36 @@ async function login(page, config) {
 
 async function openWizard(page, config, po) {
   // The wizard's own data call lists every PO line with its ordered quantity.
-  const linesPromise = page.waitForResponse(
+  const dataPromise = page.waitForResponse(
     (candidate) => candidate.url().includes('purchaseOrders.single') && candidate.ok(),
     { timeout: config.timeouts.navigationMs },
-  ).then(async (candidate) => extractPurchaseOrderLines(await candidate.json())).catch(() => null);
+  ).then(async (candidate) => {
+    const batch = await candidate.json();
+    return { lines: extractPurchaseOrderLines(batch), labelStatus: extractLabelStatus(batch), loaded: true };
+  }).catch(() => ({ lines: null, labelStatus: null, loaded: false }));
   const response = await page.goto(config.urls.cartonWizard.replace('{po}', po), {
     waitUntil: 'domcontentloaded', timeout: config.timeouts.navigationMs,
   });
   await assertPortalAccess(response, page, `carton-wizard navigation for PO ${po}`);
   await page.getByRole('button', { name: /Back/i }).waitFor({ timeout: config.timeouts.actionMs });
-  // The wizard shows its frame (including Back) while the PO is still loading.
-  // Reading the Submit/Unsubmit buttons before then reports "not submitted"
-  // for a PO that is in fact already submitted.
-  await page.getByText('Loading purchase order data').waitFor({ state: 'hidden', timeout: config.timeouts.navigationMs });
+  // The wizard shows its frame (including Back) before the PO has loaded, and
+  // the loading indicator may not have appeared yet either. A loaded wizard
+  // always has exactly one of Submit (not yet submitted) or Unsubmit, so wait
+  // for that rather than for the indicator to go away.
+  await page.getByRole('button', { name: /^(Submit|Unsubmit)$/ }).first()
+    .waitFor({ state: 'visible', timeout: config.timeouts.navigationMs });
+  // The button bar can show Submit for a moment before it switches to
+  // Unsubmit, so take "submitted" from the Portal's own shipment data and
+  // only fall back to the buttons when that data could not be read.
+  const data = await dataPromise;
+  const unsubmit = page.getByRole('button', { name: 'Unsubmit', exact: true });
+  if (data.labelStatus === 'submitted') await unsubmit.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
   const pageText = await page.locator('body').innerText();
   return {
-    submitted: await page.getByRole('button', { name: 'Unsubmit', exact: true }).isVisible().catch(() => false),
+    submitted: data.loaded ? data.labelStatus === 'submitted' : await unsubmit.isVisible().catch(() => false),
     canSubmit: await page.getByRole('button', { name: 'Submit', exact: true }).isVisible().catch(() => false),
     sampleApproved: parsePortalSampleApproval(pageText),
-    lines: await linesPromise,
+    lines: data.lines,
   };
 }
 
@@ -140,7 +151,10 @@ async function readPurchaseOrderStatus(page, config, po) {
   // The Portal renders each PO as <tr role="button">, so getByRole('row') never matches.
   const row = page.locator('tbody tr').filter({ hasText: po }).first();
   await row.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
-  return { submitted: /\bSubmitted\b/i.test((await row.textContent()) ?? '') };
+  // Compare whole cells: the row's textContent joins cells with no separator
+  // ("…Denovo ApparelSubmitted"), which hides the status from a word match.
+  const cells = await row.locator('td').allTextContents();
+  return { submitted: cells.some((cell) => /^submitted$/i.test(cell.trim())) };
 }
 
 async function chooseOption(page, control, matcher) {
@@ -215,13 +229,78 @@ async function validateAndSubmit(page, config, onBeforeSubmit) {
   ]).catch(() => { throw new Error('Portal did not confirm the submission after Submit was clicked'); });
 }
 
-async function downloadFromButton(page, name, directory, filename, timeout) {
-  const downloadPromise = page.waitForEvent('download', { timeout });
-  await page.getByRole('button', { name, exact: true }).click();
-  const download = await downloadPromise;
-  const path = join(directory, filename);
-  await download.saveAs(path);
-  return path;
+// Saves what a wizard button produces. "Download Packing List" is a normal
+// file download, but "Print Labels" builds the PDF in the page and shows it in
+// a new tab from a blob: URL, which never raises a download event and leaves
+// the tab reporting about:blank. So record the Blobs the page creates while
+// the button is handled and read the PDF's bytes straight from the page.
+export async function downloadFromButton(page, name, directory, filename, timeout) {
+  await page.evaluate(() => {
+    window.__portalBlobs = [];
+    if (!window.__portalBlobHook) {
+      const createObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (object) => {
+        if (object instanceof Blob) window.__portalBlobs.push(object);
+        return createObjectURL(object);
+      };
+      window.__portalBlobHook = true;
+    }
+  });
+  const blobUrls = [];
+  const onRequest = (request) => { if (request.url().startsWith('blob:')) blobUrls.push(request.url()); };
+  page.context().on('request', onRequest);
+  try {
+    const downloaded = page.waitForEvent('download', { timeout }).then((download) => ({ download }), () => null);
+    const opened = page.waitForEvent('popup', { timeout }).then((popup) => ({ popup }), () => null);
+    await page.getByRole('button', { name, exact: true }).click();
+    const result = (await Promise.race([downloaded, opened])) ?? (await downloaded) ?? (await opened);
+    if (!result) throw new Error(`"${name}" produced neither a download nor a new tab within ${timeout}ms`);
+    const path = join(directory, filename);
+    if (result.download) {
+      await result.download.saveAs(path);
+      return path;
+    }
+    const deadline = Date.now() + timeout;
+    let base64 = null;
+    while (!base64 && Date.now() < deadline) {
+      base64 = await page.evaluate(async (urls) => {
+        const encode = (buffer) => {
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+          }
+          return btoa(binary);
+        };
+        const pdf = [...(window.__portalBlobs ?? [])].reverse().find((blob) => /pdf/i.test(blob.type) && blob.size > 0);
+        if (pdf) return encode(await pdf.arrayBuffer());
+        for (const url of [...urls].reverse()) {
+          try {
+            const response = await fetch(url);
+            if (response.ok) return encode(await response.arrayBuffer());
+          } catch { /* revoked or not readable from this page; try the next */ }
+        }
+        return null;
+      }, blobUrls);
+      if (!base64) await page.waitForTimeout(500);
+    }
+    await result.popup.close().catch(() => {});
+    if (!base64) throw new Error(`"${name}" opened a new tab but no PDF could be read from the page within ${timeout}ms`);
+    await writeFile(path, Buffer.from(base64, 'base64'));
+    return path;
+  } finally {
+    page.context().off('request', onRequest);
+  }
+}
+
+async function downloadPortalDocuments(page, config, manifest) {
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
+  const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
+  const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
+  const stampedPackingList = await stampPortalPackingList(await readFile(packingListPath), manifest);
+  await writeFile(packingListPath, stampedPackingList);
+  const validation = await validateBelPdf(belPath, manifest);
+  return { belPath, packingListPath, validation };
 }
 
 async function deliver(manifest, belPath, packingListPath, quantityWarnings = []) {
@@ -295,12 +374,12 @@ async function main() {
     process.env.PORTAL_PO,
     mode === 'navigate-only',
   );
-  if (['navigate-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
-    if (mode === 'submit-one') throw new Error('submit-one found no fresh manifest for the requested PO');
+  if (['navigate-only', 'deliver-only', 'submit-one', 'submit-fresh', 'scheduled'].includes(mode) && manifests.length === 0) {
+    if (mode === 'submit-one' || mode === 'deliver-only') throw new Error(`${mode} found no fresh manifest for the requested PO`);
     console.log('No fresh Portal handoff manifests found.');
     return;
   }
-  if (mode === 'submit-one' && manifests.length !== 1) throw new Error('submit-one requires exactly one matching manifest');
+  if ((mode === 'submit-one' || mode === 'deliver-only') && manifests.length !== 1) throw new Error(`${mode} requires exactly one matching manifest`);
 
   const headless = process.env.PORTAL_HEADLESS !== '0';
   const browserChannel = process.env.PORTAL_BROWSER_CHANNEL?.trim() || undefined;
@@ -323,6 +402,17 @@ async function main() {
       if (mode === 'navigate-only') {
         await page.locator(config.selectors.sku).waitFor({ state: 'visible' });
         console.log(`PO ${manifest.po} carton-entry UI is available.`);
+        continue;
+      }
+      if (mode === 'deliver-only') {
+        // Read-only recovery for a PO submitted outside this run: fetch the
+        // Portal's labels and packing list and email them. No Portal writes
+        // and no submission-state changes.
+        if (!portalState.submitted) throw new Error(`PO ${manifest.po} is not Submitted in the Portal; deliver-only has nothing to fetch`);
+        const { belPath, packingListPath, validation } = await downloadPortalDocuments(page, config, manifest);
+        if (process.env.DRY_RUN === '1') console.log(`[dry-run] deliver PO ${manifest.po}: ${validation.pages} BELs validated; email not sent.`);
+        else await deliver(manifest, belPath, packingListPath);
+        console.log(`PO ${manifest.po} documents downloaded${process.env.DRY_RUN === '1' ? '' : ' and delivered'} (${validation.pages} BELs).`);
         continue;
       }
       if (portalState.submitted) {
@@ -361,12 +451,7 @@ async function main() {
         state = 'portal-submitted';
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-generated');
         state = 'bels-generated';
-        const outputDirectory = await mkdtemp(join(tmpdir(), 'denovo-portal-'));
-        const belPath = await downloadFromButton(page, 'Print Labels', outputDirectory, `${manifest.po}_BELs.pdf`, config.timeouts.downloadMs);
-        const packingListPath = await downloadFromButton(page, 'Download Packing List', outputDirectory, `${manifest.po}_packing_list.xlsx`, config.timeouts.downloadMs);
-        const stampedPackingList = await stampPortalPackingList(await readFile(packingListPath), manifest);
-        await writeFile(packingListPath, stampedPackingList);
-        const validation = await validateBelPdf(belPath, manifest);
+        const { belPath, packingListPath, validation } = await downloadPortalDocuments(page, config, manifest);
         await transitionPortalSubmission(callPackingListDb, manifest, state, 'bels-downloaded', { validation });
         state = 'bels-downloaded';
         await deliver(manifest, belPath, packingListPath, quantityWarnings);

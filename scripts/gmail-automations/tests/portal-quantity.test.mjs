@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkPortalQuantities, extractPurchaseOrderLines } from '../lib/portal-quantity.mjs';
+import { checkPortalQuantities, extractPurchaseOrderLines, extractLabelStatus } from '../lib/portal-quantity.mjs';
 
 const lines = [
   { sku: 'CNK5852/197/72', size: '4', quantity: 30 },
@@ -42,4 +42,12 @@ test('refuses to judge without Portal lines and finds them in a tRPC batch', () 
   assert.throws(() => checkPortalQuantities(null, [carton('4', 30)]), /lines are unavailable/);
   assert.equal(extractPurchaseOrderLines([{ result: { data: { json: { shipmentId: 1 } } } }]), null);
   assert.deepEqual(extractPurchaseOrderLines([{ result: { data: { json: { purchaseOrderLines: lines } } } }, {}]), lines);
+});
+
+test('reads the shipment label status from a tRPC batch', () => {
+  const po = { result: { data: { json: { purchaseOrderLines: lines } } } };
+  assert.equal(extractLabelStatus([po, { result: { data: { json: { shipmentId: 68833, labelStatus: 'submitted' } } } }]), 'submitted');
+  assert.equal(extractLabelStatus([po, { result: { data: { json: { shipmentId: 1, labelStatus: 'inProgress' } } } }]), 'inProgress');
+  assert.equal(extractLabelStatus([po, { result: { data: { json: null } } }]), null);
+  assert.equal(extractLabelStatus(null), null);
 });
