@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { loadPortalConfig } from './lib/portal-config.mjs';
+import { scheduledSubmissionEnabled } from './lib/portal-schedule.mjs';
 import { buildPortalNavigationTarget, validatePortalManifest } from './lib/portal-manifest.mjs';
 import { generateTotp } from './lib/totp.mjs';
 import { callPackingListDb } from './lib/automation-db.mjs';
@@ -365,7 +366,7 @@ async function main() {
     throw new Error('Portal submission has no dry-run simulation; use navigate-only instead');
   }
   if (mode === 'validate-config') return;
-  if (mode === 'scheduled' && process.env.PORTAL_SCHEDULED_ENABLED !== '1') {
+  if (mode === 'scheduled' && !scheduledSubmissionEnabled(process.env)) {
     console.log('Scheduled Portal submission is disabled pending operational sign-off.');
     return;
   }

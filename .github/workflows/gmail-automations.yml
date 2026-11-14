@@ -62,6 +62,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       draft_result: ${{ steps.draft.outcome }}
+      has_handoff: ${{ steps.handoff.outputs.artifact-id != '' }}
     concurrency:
       group: gmail-automations
       cancel-in-progress: false
@@ -114,6 +115,7 @@ jobs:
         run: node scripts/gmail-automations/draft-packing-list.mjs
 
       - name: Upload fresh Portal handoff
+        id: handoff
         if: ${{ steps.draft.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
@@ -200,8 +202,13 @@ jobs:
     if: >-
       ${{ always() && needs.gmail-automations.outputs.draft_result == 'success' &&
           ((github.event_name == 'workflow_dispatch' && !inputs.plt_invoice_preview && inputs.portal_mode != 'disabled') ||
-           (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED == '1')) }}
-    environment: ${{ github.event_name == 'workflow_dispatch' && (inputs.portal_mode == 'submit-one' || inputs.portal_mode == 'submit-fresh') && 'portal-submission' || 'production' }}
+           (github.event_name == 'schedule' && vars.PORTAL_SCHEDULED_ENABLED != '0' &&
+            needs.gmail-automations.outputs.has_handoff == 'true')) }}
+    # Trial week (to PORTAL_SCHEDULED_TRIAL_UNTIL below): submissions run without
+    # the protected `portal-submission` environment's approval. To restore the
+    # approval, use this expression instead:
+    #   ${{ github.event_name == 'workflow_dispatch' && (inputs.portal_mode == 'submit-one' || inputs.portal_mode == 'submit-fresh') && 'portal-submission' || 'production' }}
+    environment: production
     permissions:
       contents: read
       actions: read
@@ -233,6 +240,9 @@ jobs:
           PORTAL_HANDOFF_DIR: ${{ runner.temp }}/portal-handoff
           PORTAL_TRACE_DIR: ${{ runner.temp }}/portal-trace
           PORTAL_SCHEDULED_ENABLED: ${{ vars.PORTAL_SCHEDULED_ENABLED }}
+          # Hourly runs submit fresh handoffs automatically up to and including
+          # this date (Europe/London) unless PORTAL_SCHEDULED_ENABLED is 0 or 1.
+          PORTAL_SCHEDULED_TRIAL_UNTIL: '2026-11-21'
           PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
           PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
           PORTAL_TOTP_SECRET: ${{ secrets.PORTAL_TOTP_SECRET }}

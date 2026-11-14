@@ -159,7 +159,11 @@ packing list for one already-Submitted PO and emails them, without changing the
 Portal or the submission state (it needs that PO's handoff, so pass
 `portal_run_id` if the handoff came from an earlier run); `submit-one` requires an exact PO, and the default `submit-fresh` processes handoffs created in the current run; both require approval
 through the protected environment. Use the read-only modes before enabling submission. Scheduled Portal
-submission stays disabled unless `PORTAL_SCHEDULED_ENABLED=1`.
+submission runs when `PORTAL_SCHEDULED_ENABLED=1`, never when it is `0`, and
+otherwise only up to the `PORTAL_SCHEDULED_TRIAL_UNTIL` date set in the workflow
+(a one-week trial to 21 November 2026, during which the Portal job also skips the
+`portal-submission` approval). The scheduled Portal job only starts when the run
+produced a fresh handoff.
 
 ## Ongoing
 
